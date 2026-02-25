@@ -1,0 +1,31 @@
+site_name: Brain Factory — DoPeJarMo Architecture
+site_description: >-
+  Architecture authority documents, build process, and specification templates
+  for DoPeJarMo.
+docs_dir: docs
+site_dir: /tmp/brain_factory_site
+nav:
+  - Home: index.md
+  - Architecture:
+      - NORTH STAR — Read This First: architecture/NORTH_STAR.md
+      - BUILDER SPEC — Assembly Instructions: architecture/BUILDER_SPEC.md
+      - OPERATIONAL SPEC — How DoPeJarMo Runs: architecture/OPERATIONAL_SPEC.md
+  - Build Process:
+      - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
+  - Templates:
+      - Guide: sawmill-templates/GUIDE.md
+      - D1 — Constitution: sawmill-templates/D1_CONSTITUTION.md
+      - D2 — Specification: sawmill-templates/D2_SPECIFICATION.md
+      - D3 — Data Model: sawmill-templates/D3_DATA_MODEL.md
+      - D4 — Contracts: sawmill-templates/D4_CONTRACTS.md
+      - D5 — Research: sawmill-templates/D5_RESEARCH.md
+      - D6 — Gap Analysis: sawmill-templates/D6_GAP_ANALYSIS.md
+      - D7 — Plan: sawmill-templates/D7_PLAN.md
+      - D8 — Tasks: sawmill-templates/D8_TASKS.md
+      - D9 — Holdout Scenarios: sawmill-templates/D9_HOLDOUT_SCENARIOS.md
+      - D10 — Agent Context: sawmill-templates/D10_AGENT_CONTEXT.md
+      - Builder Handoff Standard: sawmill-templates/BUILDER_HANDOFF_STANDARD.md
+      - Builder Prompt Contract: sawmill-templates/BUILDER_PROMPT_CONTRACT.md
+      - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
+plugins:
+  - techdocs-core

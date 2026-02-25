@@ -1,0 +1,21 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: brain-factory
+  description: "DoPeJarMo architecture authority — NORTH_STAR, BUILDER_SPEC, OPERATIONAL_SPEC, Sawmill build process, D1-D10 templates."
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: rabruni/Brain_Factory
+  tags:
+    - architecture
+    - dopejarmo
+    - dopejar
+  links:
+    - url: https://github.com/rabruni/Brain_Factory
+      title: GitHub
+      icon: github
+spec:
+  type: documentation
+  owner: ray-bruni
+  lifecycle: production
+  system: dopejarmo
