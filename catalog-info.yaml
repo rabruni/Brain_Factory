@@ -16,6 +16,6 @@ metadata:
       icon: github
 spec:
   type: documentation
-  owner: ray-bruni
+  owner: user:ray-bruni
   lifecycle: production
   system: dopejarmo

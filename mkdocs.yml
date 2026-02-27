@@ -10,8 +10,10 @@ nav:
       - NORTH STAR — Read This First: architecture/NORTH_STAR.md
       - BUILDER SPEC — Assembly Instructions: architecture/BUILDER_SPEC.md
       - OPERATIONAL SPEC — How DoPeJarMo Runs: architecture/OPERATIONAL_SPEC.md
-  - Build Process:
       - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
+      - Build Plan: architecture/BUILD-PLAN.md
+      - Fwk 0 Draft: architecture/FWK-0-DRAFT.md
+      - Fwk 0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
   - Templates:
       - Guide: sawmill-templates/GUIDE.md
       - D1 — Constitution: sawmill-templates/D1_CONSTITUTION.md
@@ -24,6 +26,7 @@ nav:
       - D8 — Tasks: sawmill-templates/D8_TASKS.md
       - D9 — Holdout Scenarios: sawmill-templates/D9_HOLDOUT_SCENARIOS.md
       - D10 — Agent Context: sawmill-templates/D10_AGENT_CONTEXT.md
+      - Agent Build Process: sawmill-templates/AGENT_BUILD_PROCESS.yaml
       - Builder Handoff Standard: sawmill-templates/BUILDER_HANDOFF_STANDARD.md
       - Builder Prompt Contract: sawmill-templates/BUILDER_PROMPT_CONTRACT.md
       - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
