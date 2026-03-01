@@ -16,6 +16,7 @@ Categories:
 9. Resource Accounting — | Resource | Accounting Method | Status |
 
 Per gap (GAP-N): Category | What Is Needed | Existing Contract (ref or NONE) | Gap Description | Shared? (YES/NO) | Recommendation | Resolution | Impact If Unresolved
+Canonical: `GAP-1: Data In | Need:event schema | Existing:NONE | Shared:YES | Impact:builder blocks`
 
 ## Clarification Log (CLR-### IDs)
 Per clarification: Found During (D1-D5) | Question | Options | Status (OPEN|RESOLVED|ASSUMED) | Blocks

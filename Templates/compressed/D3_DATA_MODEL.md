@@ -9,6 +9,7 @@ Per entity:
 - Description: one paragraph
 
 Fields table: | Field | Type | Required | Description | Constraints |
+Canonical: `| field_name:string | Type:uuid-v7 | Req:yes | Desc:text | Constraint:pattern |`
 JSON example with realistic values.
 Invariants: rules that must always hold for this entity.
 

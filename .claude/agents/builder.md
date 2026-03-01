@@ -25,6 +25,9 @@ Question 9: Testing (how many tests, verification criteria from D8)
 Question 10: Integration (how does this connect to existing components)
 Questions 11-13: Adversarial (selected per system maturity — see BUILDER_PROMPT_CONTRACT.md)
 
+### CRITICAL_REVIEW_REQUIRED (MANDATORY)
+When answering the 13Q, flag any question where your interpretation feels "loose" with: `[CRITICAL_REVIEW_REQUIRED]: [what you assumed and why it might be wrong]`. This helps the human reviewer focus on your weakest understanding.
+
 ## Step 2: DTT (Design-Test-Then-implement)
 For EACH behavior in the handoff's Test Plan:
 1. DESIGN: Decide function/method, signature, return type, errors. Write as comment. Do NOT implement.

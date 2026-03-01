@@ -9,24 +9,25 @@
 ```
 IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)
 
-## Required Sections (all 10, in order)
+## Required Sections (ALL 10, in this exact order, no exceptions)
 1. **Mission** — one paragraph: what + why + package ID(s)
-2. **Critical Constraints** — numbered non-negotiable rules. Always includes: staging-only, DTT, package everything, E2E verify, no hardcoding, no file replacement, deterministic archives, results file, full regression, baseline snapshot.
-3. **Architecture/Design** — diagrams, data flows, interfaces, boundaries
-4. **Implementation Steps** — numbered, ordered, with file paths + signatures
-5. **Package Plan** — per package: ID, layer, assets, dependencies, manifest
-6. **Test Plan** — every test method: name, description, expected behavior. Minimums: small(1-2 files)=10+, medium(3-5)=25+, large(6+)=40+
+2. **Critical Constraints** — numbered non-negotiable rules. ALWAYS includes ALL of: staging-only, DTT, package everything, E2E verify, no hardcoding, no file replacement, deterministic archives, results file, full regression of ALL packages, baseline snapshot.
+3. **Architecture/Design** — diagrams, data flows, every interface and boundary
+4. **Implementation Steps** — numbered, strictly ordered, with file paths + function signatures
+5. **Package Plan** — per package: ID, layer, every asset, all dependencies, manifest
+6. **Test Plan** — every test method: name, description, expected behavior. Mandatory minimums: small(1-2 files)=10+, medium(3-5)=25+, large(6+)=40+
 7. **Existing Code to Reference** — | What | Where | Why |
-8. **E2E Verification** — exact copy-paste commands + expected output
-9. **Files Summary** — | File | Location | Action (CREATE/MODIFY) |
+8. **E2E Verification** — exact copy-paste commands + expected output, no exceptions
+9. **Files Summary** — | File | Location | Action (CREATE/MODIFY) | for every file, no omissions
 10. **Design Principles** — 4-6 non-negotiable design rules
 
-## Results File (MANDATORY, written by builder when finished)
-Required sections: Status (PASS|FAIL|PARTIAL) | Files Created (path + SHA256) | Files Modified (SHA256 before/after) | Archives Built (SHA256) | Test Results THIS PACKAGE (total/passed/failed/skipped/command) | Full Regression ALL PACKAGES (same + new_failures) | Baseline Snapshot (packages installed, total tests) | Clean-Room Verification (packages, install order, all pass) | Issues Encountered | Notes for Reviewer | Session Log (key decisions, blockers, architectural choices, retry context)
+## Results File (MANDATORY — every handoff agent MUST write this when finished, no exceptions)
+Required sections, ALL mandatory: Status (PASS|FAIL|PARTIAL) | Files Created (path + SHA256 for every file) | Files Modified (SHA256 before + after) | Archives Built (SHA256) | Test Results THIS PACKAGE (total/passed/failed/skipped/command) | Full Regression ALL PACKAGES (same + new_failures list or NONE) | Baseline Snapshot (packages installed, total tests) | Clean-Room Verification (packages, install order, all tests pass after each install) | Issues Encountered | Notes for Reviewer | Session Log (key decisions, blockers resolved, architectural choices not in spec, retry context)
+Canonical: `| Status:PASS | Files:N (SHA256 each) | Tests:N/N/N | Regression:ALL pkgs |`
 
-## Reviewer Checklist
-ALL must pass before VALIDATED: results file exists + correct location, all required sections, clean-room complete, baseline present, full regression run, no new failures, correct hash format, correct naming.
+## Reviewer Checklist (ALL must pass before VALIDATED, no partial credit)
+Results file exists at correct location, ALL required sections present, clean-room verification complete, baseline snapshot present, full regression was run on ALL packages (not just this one), no new test failures introduced, every manifest hash uses correct format, results file naming follows convention.
 
 ## Multi-Package (Parallel Waves)
-Each package gets own RESULTS. Reviewer validates each. Clean-room per wave.
-After final wave: Integration Handoff (MANDATORY) — wire into entrypoint, resolve lifecycle, E2E smoke, RESULTS with full system baseline.
+Every package gets its own RESULTS file. Reviewer validates every one against the full checklist. Clean-room verification for every wave.
+After final wave: Integration Handoff (MANDATORY, no exceptions) — wire all new packages into entrypoint, resolve every package lifecycle (mark superseded, update all dependencies), E2E smoke test of integrated system, RESULTS file with full system baseline snapshot.

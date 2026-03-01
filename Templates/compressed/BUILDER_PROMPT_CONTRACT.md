@@ -40,6 +40,9 @@ User may: correct + proceed | follow-up questions | redirect | greenlight.
 **Genesis** (no established tools/gates): Q11=Dependency Trap (what depends on nonexistent?), Q12=Scope Creep Check (closest to building infrastructure?), Q13=Semantic Audit (one ambiguous word, redefine)
 **Infrastructure** (tools/gates operational): Q11=Failure Mode (which file/hash most likely gate failure?), Q12=Shortcut Check (tempted to skip established tool?), Q13=Semantic Audit
 
+## CRITICAL_REVIEW_REQUIRED (MANDATORY)
+On any 13Q answer where interpretation feels loose, agent MUST flag: `[CRITICAL_REVIEW_REQUIRED]: [assumption + why it might be wrong]`. Human reviewer focuses on these flags.
+
 ## Variables
 | Variable | Source |
 HANDOFF_ID, ONE_LINE_MISSION, CONTRACT_VERSION, PROJECT_NAME, STAGING_PATH, PROTECTED_PATH, RESULTS_PATH, QUESTION (per-handoff)

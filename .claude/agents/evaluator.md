@@ -78,5 +78,13 @@ Final verdict: FAIL
 ```
 No other text on that line. The orchestrator script parses this line to determine build outcome.
 
+## Friction Table (MANDATORY, end of EVALUATION_REPORT.md, before verdict line)
+Append a maximum 3-row table showing scenarios where your evaluation confidence is lowest:
+
+| Risk Area | Confidence | The "Loose" Interpretation | Why it might fail |
+|-----------|-----------|---------------------------|-------------------|
+
+Only include items below 80% confidence.
+
 ## Gate
 All P0 pass. All P1 pass. 90% overall. No partial credit.
