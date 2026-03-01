@@ -57,7 +57,7 @@ Every Ledger event has this base shape:
 }
 ```
 
-**Sequence numbering**: Global monotonic. Single writer (Write Path) ensures no conflicts. Sequence 0 is the genesis event.
+**Sequence numbering**: Global monotonic. Single writer (Write Path) ensures no conflicts. Sequence 0 is the genesis event. The Ledger enforces monotonicity internally — callers do NOT pass sequence numbers. The Ledger reads the current tip, increments by 1, and assigns. If a concurrent call somehow arrives (design violation — should be impossible with single writer), the Ledger MUST reject with `LedgerSequenceError` rather than silently creating a fork.
 
 **Event types** (from BUILDER_SPEC.md):
 - `node_creation` — new node in Graph
@@ -78,11 +78,25 @@ Each event type has a type-specific `payload` schema. The spec agent should defi
 
 ### Hash Chain
 
-- **Algorithm**: SHA-256 over the JSON-serialized event (excluding the `hash` field itself)
+- **Algorithm**: SHA-256 over the canonical JSON-serialized event (sorted keys, no whitespace, `hash` field excluded from input)
 - **Chain structure**: Linear. Each event's `previous_hash` = the `hash` of the preceding event.
-- **Genesis event**: `previous_hash` = `sha256:0000...0000` (64 zero hex chars)
-- **Verification**: Walk from genesis to tip. Recompute each hash. Compare. Any mismatch = corruption.
+- **Genesis event**: `previous_hash` = `sha256:0000000000000000000000000000000000000000000000000000000000000000` (exactly 64 zero hex chars)
+- **Verification**: Walk from genesis to tip. Recompute each hash from canonical JSON. Compare against stored hash. Any mismatch = corruption at that sequence number.
 - **Cold verification**: Requires only the Ledger data file. No runtime services needed.
+
+**Observable hash chain behaviors** (the spec agent should extract these as D2 scenarios so the holdout agent can test them):
+- GIVEN empty ledger WHEN first event appended THEN event.previous_hash = `sha256:` + 64 zeros AND event.sequence = 0
+- GIVEN ledger with N events WHEN event N+1 appended THEN event.previous_hash = hash of event N AND event.sequence = N
+- GIVEN ledger with events 0-5 WHEN verify_chain(0, 5) THEN recompute SHA-256 of each event's canonical JSON (excluding hash field), compare to stored hash, return valid=true if all match
+- GIVEN ledger with corrupted event at sequence 3 WHEN verify_chain() THEN return {valid: false, break_at: 3}
+- GIVEN ledger data exported to file WHEN verify_chain run offline (no immudb) THEN produces same result as online verification
+
+**Canonical JSON rules** (the spec agent should include in D3 as a data model constraint):
+- Keys sorted alphabetically at every nesting level
+- No whitespace between tokens (no pretty-printing)
+- The `hash` field is excluded from the serialization before hashing
+- All other fields including `previous_hash` are included
+- This ensures the same event always produces the same hash regardless of field insertion order
 
 ### immudb Integration
 
@@ -96,11 +110,30 @@ The Ledger module wraps immudb. Callers see a Ledger interface, never immudb dir
 - `verify_chain(start?, end?) → {valid: bool, break_at?: sequence}` — verify hash chain integrity
 - `get_tip() → {sequence_number, hash}` — get the latest event's sequence and hash
 
+**Sequence enforcement**: Every `append()` call MUST enforce `new_sequence = get_tip().sequence + 1`. The Ledger is the sole owner of sequence numbering — callers do NOT pass a sequence number. This is the syntactic guarantee behind "append-only": if the tip is at sequence 41, the next event is ALWAYS 42, no exceptions.
+
 **immudb mapping** (implementation detail for builder, not for D4):
-- immudb `Set(key, value)` for append (key = sequence number, value = serialized event)
+- immudb `Set(key, value)` for append (key = sequence number as zero-padded string, value = serialized event)
 - immudb `Get(key)` for read
 - immudb `Scan(prefix, start, end)` for range reads
 - immudb gRPC on `localhost:3322`, database name `ledger`
+
+### immudb Operational Detail (APPROVED for builder extraction)
+
+**Authentication**: immudb ships with default credentials (`immudb` / `immudb`). The Ledger module uses these for local development. Production credentials are config-driven via `platform_sdk.config` — NEVER hardcoded. The spec agent should include this in D4 as a configuration dependency; the builder should read credentials from config.
+
+**Connection handling**: Single persistent gRPC connection. No connection pooling (single writer model — one connection is sufficient). On disconnect: close, wait 1 second, reconnect, retry the operation once. If retry fails: return `LedgerConnectionError`. Connection parameters (host, port, database name) are config-driven.
+
+**Forbidden administrative operations**: The Ledger module MUST NOT expose or call any immudb administrative gRPC methods. Specifically forbidden:
+- `DatabaseDelete` / `DropDatabase`
+- `CompactIndex`
+- `TruncateDatabase`
+- `CleanIndex`
+- Any method that modifies, deletes, or reorganizes existing data
+
+These are D1 constitutional violations (append-only immutability). The builder MUST NOT import or wrap these methods. The spec agent should include this in D1 as an explicit NEVER boundary.
+
+**Database initialization**: On first connection, if the `ledger` database does not exist, create it via `CreateDatabaseV2`. This is the ONLY administrative operation permitted. After creation, switch to the `ledger` database via `UseDatabase`. Flag in D6: should initialization be a separate bootstrap step or part of the Ledger module's connect() method?
 
 **Error types**:
 - `LedgerConnectionError` — cannot reach immudb
