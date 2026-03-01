@@ -2,7 +2,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: brain-factory
-  description: "DoPeJarMo architecture authority — NORTH_STAR, BUILDER_SPEC, OPERATIONAL_SPEC, Sawmill build process, D1-D10 templates."
+  description: "DoPeJarMo architecture authority — design specs, Sawmill build pipeline, D1-D10 templates, agent roles, and compression standard."
   annotations:
     backstage.io/techdocs-ref: dir:.
     github.com/project-slug: rabruni/Brain_Factory

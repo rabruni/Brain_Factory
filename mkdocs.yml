@@ -6,6 +6,7 @@ docs_dir: docs
 site_dir: /tmp/brain_factory_site
 nav:
   - Home: index.md
+  - Institutional Context: institutional-context.md
   - Architecture:
       - NORTH STAR — Read This First: architecture/NORTH_STAR.md
       - BUILDER SPEC — Assembly Instructions: architecture/BUILDER_SPEC.md
@@ -16,6 +17,7 @@ nav:
       - Fwk 0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
       - Fwk 0 Pragmatic Resolutions: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
       - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
+      - Framework Registry: architecture/FRAMEWORK_REGISTRY.md
   - Templates:
       - Guide: sawmill-templates/GUIDE.md
       - D1 — Constitution: sawmill-templates/D1_CONSTITUTION.md
@@ -32,5 +34,13 @@ nav:
       - Builder Handoff Standard: sawmill-templates/BUILDER_HANDOFF_STANDARD.md
       - Builder Prompt Contract: sawmill-templates/BUILDER_PROMPT_CONTRACT.md
       - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
+  - Sawmill Pipeline:
+      - Cold Start Protocol: sawmill/COLD_START.md
+  - Agent Roles:
+      - Spec Agent (Turn A + B): agents/spec-agent.md
+      - Holdout Agent (Turn C): agents/holdout-agent.md
+      - Builder (Turn D): agents/builder.md
+      - Evaluator (Turn E): agents/evaluator.md
+  - Compression Standard: compressed/COMPRESSION_STANDARD.md
 plugins:
   - techdocs-core
