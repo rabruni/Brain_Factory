@@ -91,12 +91,17 @@ Each event type has a type-specific `payload` schema. The spec agent should defi
 - GIVEN ledger with corrupted event at sequence 3 WHEN verify_chain() THEN return {valid: false, break_at: 3}
 - GIVEN ledger data exported to file WHEN verify_chain run offline (no immudb) THEN produces same result as online verification
 
-**Canonical JSON rules** (the spec agent should include in D3 as a data model constraint):
+**Canonical JSON rules** (the spec agent should include in D3 as a data model constraint AND D4 as a serialization contract):
 - Keys sorted alphabetically at every nesting level
-- No whitespace between tokens (no pretty-printing)
+- No whitespace between tokens: separators are `,` and `:` with no spaces (Python: `json.dumps(obj, sort_keys=True, separators=(',', ':'))`)
 - The `hash` field is excluded from the serialization before hashing
 - All other fields including `previous_hash` are included
 - This ensures the same event always produces the same hash regardless of field insertion order
+- **Encoding**: UTF-8, no BOM. All strings are UTF-8 encoded before hashing.
+- **Number representation**: integers as bare digits (no decimal point, no trailing zeros). No floating point fields exist in the base schema — if a payload includes floats, they MUST be serialized as strings to avoid cross-language representation drift.
+- **Unicode**: no escaped unicode sequences. Characters are stored as literal UTF-8 bytes, not `\uNNNN` escapes. (Python: `ensure_ascii=False`)
+- **Null handling**: null fields are included in serialization as `"field":null`, not omitted.
+- The spec agent MUST extract this as a D4 Serialization Contract (e.g., SIDE-002 or a dedicated contract) that defines the exact byte-ordering of hash input. Without this contract, the hash chain will diverge across language boundaries.
 
 ### immudb Integration
 
@@ -111,6 +116,12 @@ The Ledger module wraps immudb. Callers see a Ledger interface, never immudb dir
 - `get_tip() → {sequence_number, hash}` — get the latest event's sequence and hash
 
 **Sequence enforcement**: Every `append()` call MUST enforce `new_sequence = get_tip().sequence + 1`. The Ledger is the sole owner of sequence numbering — callers do NOT pass a sequence number. This is the syntactic guarantee behind "append-only": if the tip is at sequence 41, the next event is ALWAYS 42, no exceptions.
+
+**Atomicity**: The read-tip-then-write-event operation MUST be atomic. The builder MUST NOT implement this as a separate `get_tip()` followed by a `Set()` — that creates a read-then-write race window. Implementation options (builder chooses, spec agent flags in D5 as a research question):
+- Option A: Use immudb's `ExecAll` to batch the read+write in a single transaction
+- Option B: Use an in-process mutex/lock (acceptable because single-writer architecture guarantees one caller)
+- Option C: Use immudb's `VerifiedSet` which provides server-side atomicity
+The spec agent should document this choice in D5 (Research) and the builder implements whichever option D5 resolves to.
 
 **immudb mapping** (implementation detail for builder, not for D4):
 - immudb `Set(key, value)` for append (key = sequence number as zero-padded string, value = serialized event)
@@ -133,7 +144,7 @@ The Ledger module wraps immudb. Callers see a Ledger interface, never immudb dir
 
 These are D1 constitutional violations (append-only immutability). The builder MUST NOT import or wrap these methods. The spec agent should include this in D1 as an explicit NEVER boundary.
 
-**Database initialization**: On first connection, if the `ledger` database does not exist, create it via `CreateDatabaseV2`. This is the ONLY administrative operation permitted. After creation, switch to the `ledger` database via `UseDatabase`. Flag in D6: should initialization be a separate bootstrap step or part of the Ledger module's connect() method?
+**Database initialization**: APPROVED: database creation is a separate bootstrap operation, NOT part of the Ledger module's `connect()` method. Reason: "Connect" is operational, "Create" is provisioning. If `connect()` handles creation, multiple agents connecting simultaneously to a non-existent database would race on `CreateDatabaseV2`, potentially corrupting the immudb system catalog. The bootstrap step uses `CreateDatabaseV2` (the ONLY permitted admin operation) then `UseDatabase`. The Ledger module's `connect()` MUST fail fast with `LedgerConnectionError` if the `ledger` database does not exist. This enforces "Ledger does NOT own infrastructure."
 
 **Error types**:
 - `LedgerConnectionError` — cannot reach immudb
