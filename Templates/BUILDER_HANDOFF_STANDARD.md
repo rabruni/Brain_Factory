@@ -57,7 +57,7 @@ Add task-specific constraints as needed.
 Explain WHAT to build. Diagrams, data flows, component relationships. Be explicit about interfaces and boundaries.
 
 ### 4. Implementation Steps
-Numbered, ordered steps. Include file paths, function signatures, and enough detail that the agent can execute without interpretation.
+Numbered, ordered steps. Include file paths, function signatures, and enough detail that the agent can execute without interpretation. Every step that enforces a safety or architectural constraint MUST include a one-line "Why" so the builder understands the intent, not just the instruction.
 
 ### 5. Package Plan
 For each package: package ID, layer, assets list, dependencies, and any framework manifest.

@@ -23,6 +23,9 @@ You MUST NOT read or reference:
 - Every scenario maps to D2 scenarios in the coverage matrix.
 - Verify steps must be concrete enough that a different agent can run them mechanically.
 
+### Contract Shape Verification (MANDATORY)
+You read D4. Use it. For every error path scenario, your verify step MUST check the SHAPE of the response, not just that an error occurred. If D4 specifies that an error returns specific metadata fields (e.g., expected_sequence, received_sequence), your test MUST assert those fields exist and contain correct values. A test that only checks "did it error?" is a shadow pass — code that throws a generic exception will satisfy a weak test but violate the D4 contract. The evaluator does NOT read D4, so if your tests don't verify contract shapes, nobody will.
+
 ## Template
 Use `Templates/compressed/D9_HOLDOUT_SCENARIOS.md` (token-efficient agent version).
 
@@ -47,6 +50,8 @@ Append a maximum 3-row table showing your lowest-confidence holdout scenarios:
 |-----------|-----------|---------------------------|-------------------|
 
 Only include items below 80% confidence. Human Gate reviewer deep-dives these.
+
+**Genericness penalty:** Each row MUST name the specific D2 scenario or D4 contract and the specific ambiguity. "Low confidence on error paths" is rejected. "HS-003 tests ERR-002 but D4 specifies metadata fields I can't verify without runtime access" is accepted.
 
 ## Gate
 Coverage matrix covers all P0 and P1 scenarios from D2. Minimum 3 scenarios. Human reviews for strength.

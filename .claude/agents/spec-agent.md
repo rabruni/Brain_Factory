@@ -71,5 +71,7 @@ Append a maximum 3-row table showing your lowest-confidence interpretations:
 
 Only include items below 80% confidence. This is the Human Gate reviewer's heat map — they deep-dive these, not the full document.
 
+**Genericness penalty:** Entries like "unsure about enum coverage" or "confident on most scenarios" are rejected. Each row MUST identify a STRUCTURAL risk — a logic gap, a cross-document inconsistency, or a boundary where your interpretation could diverge from the source material. If you can't name the specific D-document section and the specific ambiguity, the entry is too vague.
+
 ## Output Location
 All output goes to `sawmill/<FMWK-ID>/`. The orchestrator tells you the FMWK-ID.

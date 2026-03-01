@@ -13,7 +13,7 @@ IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)
 1. **Mission** — one paragraph: what + why + package ID(s)
 2. **Critical Constraints** — numbered non-negotiable rules. ALWAYS includes ALL of: staging-only, DTT, package everything, E2E verify, no hardcoding, no file replacement, deterministic archives, results file, full regression of ALL packages, baseline snapshot.
 3. **Architecture/Design** — diagrams, data flows, every interface and boundary
-4. **Implementation Steps** — numbered, strictly ordered, with file paths + function signatures
+4. **Implementation Steps** — numbered, strictly ordered, with file paths + function signatures. Every step that enforces a safety or architectural constraint MUST include a one-line "Why" (e.g., "Step 4: Implement mutex around append — WHY: immudb gRPC is not thread-safe for sequence increments"). Without the Why, builders implement the letter but not the spirit.
 5. **Package Plan** — per package: ID, layer, every asset, all dependencies, manifest
 6. **Test Plan** — every test method: name, description, expected behavior. Mandatory minimums: small(1-2 files)=10+, medium(3-5)=25+, large(6+)=40+
 7. **Existing Code to Reference** — | What | Where | Why |

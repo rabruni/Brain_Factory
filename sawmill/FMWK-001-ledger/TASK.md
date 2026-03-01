@@ -80,7 +80,8 @@ Each event type has a type-specific `payload` schema. The spec agent should defi
 
 - **Algorithm**: SHA-256 over the canonical JSON-serialized event (sorted keys, no whitespace, `hash` field excluded from input)
 - **Chain structure**: Linear. Each event's `previous_hash` = the `hash` of the preceding event.
-- **Genesis event**: `previous_hash` = `sha256:0000000000000000000000000000000000000000000000000000000000000000` (exactly 64 zero hex chars)
+- **Genesis event**: `previous_hash` = `sha256:0000000000000000000000000000000000000000000000000000000000000000` (exactly 64 lowercase hex chars, no `0x` prefix, no uppercase)
+- **Hash format**: ALL hashes in the system use the format `sha256:<64 lowercase hex chars>`. No variations: no uppercase, no `0x` prefix, no raw bytes, no base64. This is a byte-level contract — tests MUST compare exact string equality, not semantic equivalence.
 - **Verification**: Walk from genesis to tip. Recompute each hash from canonical JSON. Compare against stored hash. Any mismatch = corruption at that sequence number.
 - **Cold verification**: Requires only the Ledger data file. No runtime services needed.
 
