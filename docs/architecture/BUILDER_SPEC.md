@@ -100,10 +100,7 @@ A named counter that tracks signal deltas as Ledger events, folded into a contin
 **Governance gates (install-time):**
 - Degenerate case of the same concept: threshold = 1, single evaluation, no accumulation
 - Binary pass/fail validation at each layer of the framework hierarchy
-- G0A: package self-consistency (manifest matches files, hashes match contents)
-- G0B: no ownership conflicts (no file claimed by two packages)
-- G1: framework chain valid (package → spec pack → framework references resolve)
-- G1-COMPLETE: framework fully wired (all declared spec packs and packs exist)
+- The specific gate definitions (what checks run, at which layer, in what order) are defined by the framework framework — the first artifact authored in GENESIS. Gate names from previous builds (G0A, G0B, G1, G1-COMPLETE) are retired. The gate concept and the validation layers remain; the concrete gate specs are designed as part of the framework framework.
 
 ### 3. HO1 — Execution
 

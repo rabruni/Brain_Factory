@@ -542,7 +542,7 @@ Nothing in DoPeJarMo without a framework — but the framework system itself nee
 
 The word "gate" appears in two systems. Same underlying concept — a counter with a threshold — but different contexts and different behaviors.
 
-**Governance gates** validate package and filesystem integrity at install time. Binary pass/fail (threshold=1, no accumulation). Deterministic. Part of the package install lifecycle. They answer: "is this artifact safe to add to the system?" Examples: G0A (package self-consistency), G0B (no ownership conflicts), G1 (framework chain valid), G1-COMPLETE (framework fully wired). These are primitive-level.
+**Governance gates** validate package and filesystem integrity at install time. Binary pass/fail (threshold=1, no accumulation). Deterministic. Part of the package install lifecycle. They answer: "is this artifact safe to add to the system?" Validation runs at every layer of the framework hierarchy — package, spec pack, pack, file — checking consistency, ownership, hash integrity, and chain resolution. The specific gate definitions are authored as part of the framework framework in GENESIS. These are primitive-level.
 
 **Signal accumulators (cognitive gates)** track signal at runtime. Continuous methylation values (0.0–1.0) on Graph nodes. Part of the cognitive stack. HO2 uses them as a continuous `(1 - M)` accessibility modifier. The MLA framework applies bistable mode control (hysteresis thresholds) on top to trigger discrete mode changes and consolidation. The accumulator is the primitive; the thresholds and mode switching are framework logic.
 

@@ -33,9 +33,12 @@
 <!-- 3-7 concrete scenarios in GIVEN/WHEN/THEN format. Each describes one interaction path
      from the caller's perspective. Include priority, source tracing, and testing approach. -->
 
+<!-- MANDATORY: All scenarios MUST use SC-### format (SC-001, SC-002, etc.)
+     to enable traceability to D8 tasks and D9 holdout scenarios. -->
+
 #### SC-001: [Scenario title]
 
-**Priority:** [P1 (must-have) | P2 (important) | P3 (nice-to-have)]
+**Priority:** [P0 (blocker) | P1 (must-have) | P2 (important) | P3 (nice-to-have)]
 **Source:** [Design doc section this was extracted from, or "NEW — justification"]
 
 **GIVEN** [precondition — state of the system before this scenario]
@@ -100,9 +103,10 @@
 
 ## Clarification Markers
 
-<!-- Flag anything that needs resolution before building. These feed into D6 (Gap Analysis).
-     Use [NEEDS CLARIFICATION] prefix for items that block design decisions. -->
+<!-- All clarifications live in D6 (Gap Analysis) — NOT inline here.
+     Use pointers only: "See D6 CLR-001" for each unresolved item.
+     This prevents duplication between D2 and D6. -->
 
-[NEEDS CLARIFICATION]: [Question that must be resolved — e.g., which backend to use, which protocol, etc.]
+See D6: [CLR-NNN for any unresolved items]
 
 <!-- Remove this section if no clarifications are needed. -->

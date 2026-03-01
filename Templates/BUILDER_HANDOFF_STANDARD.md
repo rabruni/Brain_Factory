@@ -141,6 +141,12 @@ Non-negotiable design rules for this specific component. Usually 4-6 items.
 
 ## Notes for Reviewer
 - [Design decisions made outside spec]
+
+## Session Log
+- [Key decisions made during build]
+- [Blockers encountered and how they were resolved]
+- [Architectural choices not in the spec — why they were made]
+- [Context for next session if this handoff retries]
 ```
 
 ---

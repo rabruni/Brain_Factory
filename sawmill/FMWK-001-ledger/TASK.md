@@ -1,0 +1,132 @@
+# Task: FMWK-001-ledger
+
+## Framework
+- ID: FMWK-001
+- Name: ledger
+- Layer: KERNEL
+
+## What to Spec
+The Ledger is the append-only, hash-chained event store. It is the sole source of truth for all DoPeJarMo state. Every mutation in the system is recorded as a Ledger event. The in-memory Graph (HO3) is derived entirely from Ledger replay — if the Graph is lost, it is rebuilt from the Ledger.
+
+The Ledger uses immudb as its backing store (gRPC on port 3322). Events are hash-chained: each event includes the hash of the previous event, creating a tamper-evident chain.
+
+## Owns
+- Append-only event store
+- Event schemas (the canonical shape of every event type)
+- Hash chain integrity (each event hashes the previous)
+- Event replay (ordered retrieval for Graph reconstruction)
+
+## Dependencies
+- FMWK-000 (FWK-0) only. FMWK-001 is the foundation. All other KERNEL frameworks depend on it.
+
+## Constraints
+- The Ledger NEVER deletes or modifies events. Append-only is constitutional.
+- The Ledger does NOT execute business logic. It stores events. Period.
+- Events must be self-describing (include their type, schema version, and provenance).
+- The hash chain must be verifiable from cold storage with no runtime services.
+- immudb is the backing store. The Ledger abstracts over immudb — callers never interact with immudb directly.
+- All access goes through the platform_sdk. Never import immudb libraries directly.
+
+---
+
+## Specification Detail (for Spec Agent extraction)
+
+The following decisions are APPROVED for extraction into D1-D6.
+The spec agent should use these as source material — not invent beyond them.
+Items marked OPEN should be flagged in D6 for human resolution.
+
+### Event Schema
+
+Every Ledger event has this base shape:
+
+```json
+{
+  "event_id": "uuid-v7",
+  "sequence": 0,
+  "event_type": "string",
+  "schema_version": "1.0.0",
+  "timestamp": "ISO-8601 UTC",
+  "provenance": {
+    "framework_id": "FMWK-NNN",
+    "pack_id": "PC-NNN-name",
+    "actor": "system | operator | agent"
+  },
+  "previous_hash": "sha256:<64hex>",
+  "payload": {},
+  "hash": "sha256:<64hex>"
+}
+```
+
+**Sequence numbering**: Global monotonic. Single writer (Write Path) ensures no conflicts. Sequence 0 is the genesis event.
+
+**Event types** (from BUILDER_SPEC.md):
+- `node_creation` — new node in Graph
+- `signal_delta` — increment/decrement signal on a node
+- `methylation_delta` — direct methylation adjustment (rare, admin)
+- `suppression` — suppress a node (M → 1.0)
+- `unsuppression` — unsuppress a node
+- `mode_change` — change node mode
+- `consolidation` — merge nodes
+- `work_order_transition` — work order state change
+- `intent_transition` — intent lifecycle state change
+- `session_start` / `session_end` — session boundaries
+- `package_install` / `package_uninstall` — package lifecycle
+- `framework_install` — framework installed via gates
+- `snapshot_created` — snapshot taken
+
+Each event type has a type-specific `payload` schema. The spec agent should define at minimum the payload schemas for: `node_creation`, `signal_delta`, `package_install`, `session_start`. Other payload schemas can be deferred to the frameworks that own them (flag in D6).
+
+### Hash Chain
+
+- **Algorithm**: SHA-256 over the JSON-serialized event (excluding the `hash` field itself)
+- **Chain structure**: Linear. Each event's `previous_hash` = the `hash` of the preceding event.
+- **Genesis event**: `previous_hash` = `sha256:0000...0000` (64 zero hex chars)
+- **Verification**: Walk from genesis to tip. Recompute each hash. Compare. Any mismatch = corruption.
+- **Cold verification**: Requires only the Ledger data file. No runtime services needed.
+
+### immudb Integration
+
+The Ledger module wraps immudb. Callers see a Ledger interface, never immudb directly.
+
+**Interface** (what the spec agent should define as D4 contracts):
+- `append(event) → sequence_number` — append one event, returns its sequence
+- `read(sequence_number) → event` — read one event by sequence
+- `read_range(start, end) → [events]` — read a range of events
+- `read_since(sequence_number) → [events]` — read all events after a sequence
+- `verify_chain(start?, end?) → {valid: bool, break_at?: sequence}` — verify hash chain integrity
+- `get_tip() → {sequence_number, hash}` — get the latest event's sequence and hash
+
+**immudb mapping** (implementation detail for builder, not for D4):
+- immudb `Set(key, value)` for append (key = sequence number, value = serialized event)
+- immudb `Get(key)` for read
+- immudb `Scan(prefix, start, end)` for range reads
+- immudb gRPC on `localhost:3322`, database name `ledger`
+
+**Error types**:
+- `LedgerConnectionError` — cannot reach immudb
+- `LedgerCorruptionError` — hash chain verification failed
+- `LedgerSequenceError` — sequence number conflict (should be impossible with single writer)
+- `LedgerSerializationError` — event cannot be serialized
+
+### Snapshots
+
+- **OPEN**: Snapshot format (JSON dump of Graph state? protobuf? custom binary?)
+  - Flag in D6. The spec agent should not decide this — it depends on FMWK-005 (graph) snapshot needs.
+- **APPROVED**: Snapshot is taken by writing a `snapshot_created` event to the Ledger, with the snapshot file hash in the payload.
+- **APPROVED**: Snapshots are stored alongside the Ledger. Location: `/snapshots/<sequence_number>.snapshot`
+- **APPROVED**: Replay after snapshot = load snapshot into Graph, then replay events with sequence > snapshot's sequence.
+
+### Durability
+
+- **Synchronous writes**: Every `append()` call is synchronous. The caller blocks until immudb confirms the write.
+- **No batching**: Events are written one at a time. No write buffering.
+- **immudb handles fsync**: immudb's built-in durability guarantees apply. The Ledger trusts immudb for disk persistence.
+- **On immudb failure**: `append()` returns `LedgerConnectionError`. The Write Path (FMWK-002) decides what to do — the Ledger does not retry.
+
+### What the Ledger Does NOT Own
+
+- **Fold logic** — owned by FMWK-002 (write-path). The Ledger stores events; the Write Path interprets them.
+- **Graph structure** — owned by FMWK-005 (graph). The Ledger provides replay; the Graph builds its structure.
+- **Signal accumulation** — owned by FMWK-002. The Ledger stores `signal_delta` events; the Write Path computes methylation.
+- **Gate logic** — owned by FMWK-006 (package-lifecycle). The Ledger stores `package_install` events; gates are run by FMWK-006.
+- **Work order management** — owned by FMWK-003. The Ledger stores transitions; orchestration manages state.

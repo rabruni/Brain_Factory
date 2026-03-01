@@ -260,6 +260,13 @@ This is feasible but the CLI tools need to be independent of the kernel. They ne
 | Q5.2 | No direct function calls. Reading published artifacts from governed filesystem permitted. Runtime data through primitives only. | Clean separation of published specs vs runtime communication |
 | Q5.3 | Hot reload after install | Install lifecycle triggers registry refresh |
 | Q7.1 | Staging provides scaffold/seal/validate/package CLI tools + inspect (read-only view of governed filesystem) + mock providers for testing | Full dark factory build environment |
+| Q1.1 | Hybrid ID assignment: builder proposes, gates validate uniqueness at install. Reserved ranges: 001-009 KERNEL, 010-019 Layer 1, 020-029 Layer 2, 030+ extensions. | Unblocks parallel development, deterministic gates, forward-compatible with content-addressed IDs |
+| Q2.1 | Governance rules as `checks` array in framework.json. Each rule has mechanical checks (schema-validation, dependency-check, interface-validation, pattern-match, ownership-check, sequence-check) + cognitive checks (code-review, output-evaluation, behavioral-assessment) via HO1. KERNEL gates mechanical only; Layer 1+ adds cognitive tier. Categories: structural, boundary, quality, process, ownership, behavioral, affect. Cold-storage validation runs mechanical checks only. | Two-tier enforcement: mechanical catches honest mistakes, LLM catches devious workarounds. Same schema handles technical through emotional frameworks. |
+| Q3.3 | Replace in place. Rollback from Ledger replay. No version directories on filesystem. | Simple ownership model, fast upgrade, Ledger is source of truth for version history |
+| C8.5 | ID+name paths (FMWK-NNN-name). Rename = new framework. | Human-readable provenance > rename flexibility |
+| Q9.1 | Additive only. FWK-0 immutable after GENESIS. Extensions are separate frameworks layered on top. Generalizes to all frameworks: no cross-framework extensions — upgrade via new spec packs + version bump. | Keeps framework as atomic governance unit, prevents split ownership and boundary blur |
+| Q9.2 | Topological sort (Kahn's algorithm). Cycle detection. Sequential install in sorted order. | Simple, deterministic, fast. Parallelization deferred to Layer 1+ |
+| Q5.1 | 6 KERNEL frameworks: FMWK-001 ledger, FMWK-002 write-path, FMWK-003 orchestration, FMWK-004 execution, FMWK-005 graph, FMWK-006 package-lifecycle. Three decomposition tests (splitting, merging, ownership) codified in FWK-0-DRAFT Section 3.0 as binding standard for all future frameworks. CLI merged into package-lifecycle (merging test). Signal Accumulator is fold logic in Write Path (merging test). Work Order owned by Orchestration, Prompt Contract owned by Execution (ownership test). | Microservice boundaries verified by three reusable tests. 6 not 7 — every framework passes all three tests. |
 
 ## Structural Decisions (from design session 2026-02-26)
 
@@ -273,17 +280,20 @@ This is feasible but the CLI tools need to be independent of the kernel. They ne
 | Multi-tenant OS | DoPeJarMo hosts any agent, not just DoPeJar |
 | Dark factory is first-class | Build process defined in FWK-0, not an afterthought |
 
+## Structural Decisions (from design session 2026-02-28)
+
+| Decision | Description |
+|----------|-------------|
+| Two-tier gate enforcement | KERNEL gates are mechanical only (no cognitive stack available). Layer 1+ gates add cognitive tier via HO1 work orders. Both tiers must pass. |
+| `checks` array replaces single enforcement | Governance rules use a `checks` array — multiple mechanical + cognitive checks can stack per rule. All must pass. |
+| Full category spectrum | Governance rule categories span: structural, boundary, quality, process, ownership, behavioral, affect — covering technical through emotional frameworks. |
+| Resource budgets at two levels | Framework level sets the envelope (tokens_per_session, storage_quota_mb, max_graph_nodes, etc.). Pack level allocates within the envelope (tokens_per_call, timeout_ms, priority). Gate validates sum of pack allocations fits within framework envelope. |
+| No cross-framework extensions | Frameworks don't extend other frameworks. Add capability via spec pack + version upgrade. FWK-0 is the sole exception (Q9.1 — additive extensions because FWK-0 is immutable). |
+| Hard budget walls for v1 | Frameworks don't share resource budgets. Simpler, predictable, debuggable. Cross-framework budget sharing deferred. |
+| Framework Decomposition Standard | Three binding tests for all framework boundaries: (1) Splitting — independently authorable from spec pack alone, (2) Merging — operational modes of same capability = one framework with separate spec packs, (3) Ownership — exclusive data ownership, no shared schemas/events/node types. |
+| KERNEL = 6 frameworks | FMWK-001 ledger, FMWK-002 write-path, FMWK-003 orchestration, FMWK-004 execution, FMWK-005 graph, FMWK-006 package-lifecycle. CLI merged into package-lifecycle. Signal Accumulator is fold logic in Write Path. Work Order owned by Orchestration. Prompt Contract owned by Execution. |
+
 ## New Open Questions (added 2026-02-26)
-
-### Q9.1 — Hierarchy Extension Mechanism
-**Severity:** High — affects long-term evolvability
-**Question:** How does a hierarchy extension work concretely? Does it modify FWK-0's schemas directly (dangerous — changes the foundation), or add supplementary schemas that extend FWK-0 (safer — additive only)?
-**Decision needed:** Extension mechanism: modify-in-place or additive-only?
-
-### Q9.2 — Multi-Framework Package Internal Dependency Order
-**Severity:** Medium — affects KERNEL package design
-**Question:** Within a multi-framework package, frameworks may depend on each other. How does the install lifecycle determine the order to validate and place frameworks? Topological sort of internal dependency graph?
-**Decision needed:** Internal dependency resolution strategy.
 
 ### Q9.3 — External Agent Integration Protocol
 **Severity:** Low for now — important long-term
@@ -303,27 +313,31 @@ This is feasible but the CLI tools need to be independent of the kernel. They ne
 ## Summary: Decision Priority (Updated)
 
 **Must resolve before drafting final FWK-0:**
-1. Q1.1 — ID assignment (who, when)
-2. Q2.1 — Governance rules as data
-3. Q3.3 — Version coexistence or replacement
-4. Q5.1 — KERNEL decomposition count
-5. C8.5 — ID-only vs ID+name paths
-6. Q9.1 — Hierarchy extension mechanism
-7. Q9.2 — Multi-framework package dependency order
+1. ~~Q1.1 — ID assignment~~ RESOLVED 2026-02-28
+2. ~~Q2.1 — Governance rules as data~~ RESOLVED 2026-02-28 (evolved to two-tier checks array)
+3. ~~Q3.3 — Version coexistence or replacement~~ RESOLVED 2026-02-28
+4. ~~Q5.1 — KERNEL decomposition count~~ RESOLVED 2026-02-28 (6 frameworks + decomposition standard)
+5. ~~C8.5 — ID-only vs ID+name paths~~ RESOLVED 2026-02-28
+6. ~~Q9.1 — Hierarchy extension mechanism~~ RESOLVED 2026-02-28
+7. ~~Q9.2 — Multi-framework package dependency order~~ RESOLVED 2026-02-28
 
-**Should resolve but can defer:**
-8. Q4.3 — System gate checklist
-9. Q6.1 — Uninstall process
-10. Q9.5 — Packaging guidelines
+**All 7 must-resolve questions: RESOLVED.** FWK-0-DRAFT is ready for promotion to authority.
 
-**Can defer to implementation or other frameworks:**
-11. Q1.3 — ID numbering ranges
-12. Q2.4 — Interface contract detail
-13. Q3.2 — Metadata file ownership
-14. Q6.2 — Upgrade path
-15. Q7.2 — Reference framework location
-16. Q9.3 — External agent integration protocol
-17. Q9.4 — Hybrid context model
+**Resolved during implementation (answers exist in PRAGMATIC-RESOLUTIONS):**
+8. ~~Q4.3 — System gate checklist~~ RESOLVED — 6 checks defined: hash match, pack→specpack declared, specpack→framework declared, interface contracts satisfied, no ownership conflicts, dependency graph acyclic. Incremental validation for performance; cold-storage does full sweep.
+9. ~~Q6.1 — Uninstall process~~ RESOLVED — Reverse dependency check → remove files → clear ownership → append uninstall events → system gate. Deferred to post-KERNEL v1 implementation.
+10. ~~Q9.5 — Packaging guidelines~~ RESOLVED — One framework per package (common case). Multi-framework packages only for atomic boot phases (GENESIS, KERNEL). Builder judgment beyond that.
+
+**Resolved by other decisions:**
+11. ~~Q1.3 — ID numbering ranges~~ RESOLVED via Q1.1 — Reserved: 001-009 KERNEL, 010-019 Layer 1, 020-029 Layer 2, 030+ extensions.
+12. ~~Q2.4 — Interface contract detail~~ RESOLVED — Full API schemas (input/output types) in protocol definition packs. Gate validates consumed interfaces have matching providers. Detail level justified by dark factory testing (mock providers need schemas).
+13. ~~Q3.2 — Metadata file ownership~~ RESOLVED — Metadata files are owned by their parent framework. FWK-0's metadata is self-owned (bootstrap circularity resolved by hand-verification in GENESIS).
+14. ~~Q6.2 — Upgrade path~~ RESOLVED via Q3.3 — Replace in place. No data migration needed (Graph is derived from Ledger). If fold logic changes, refold is a governed maintenance operation.
+15. ~~Q7.2 — Reference framework location~~ RESOLVED — FMWK-001-ledger serves as canonical reference (simplest KERNEL framework). No separate reference framework needed.
+
+**Deferred to Layer 1+ (not FWK-0 scope):**
+16. Q9.3 — External agent integration protocol → Layer 1 FMWK-010-agent-interface scope
+17. Q9.4 — Hybrid context model → Layer 2 FMWK-022-conversation scope
 
 ---
 
@@ -333,42 +347,27 @@ Concrete v1 answers proposed for all 7 must-resolve questions. Full analysis wit
 
 | Question | Proposed Resolution | Status |
 |----------|-------------------|--------|
-| Q1.1 — ID assignment | Hybrid: builder proposes, gates validate uniqueness at install. Reserved ranges (001-009 KERNEL, 010-019 Layer 1, 020-029 Layer 2, 030+ extensions). | PENDING APPROVAL |
-| Q2.1 — Governance rules | Declarative JSON. Three enforcement types: gate-check, architectural-boundary, ownership-check. Rules are data, not code. | PENDING APPROVAL |
-| Q3.3 — Versioning | Replace in place. Rollback from Ledger replay. No version directories on filesystem. | PENDING APPROVAL |
-| Q5.1 — KERNEL decomposition | 7 frameworks: ledger, write-path, orchestration, execution, graph, package-lifecycle, kernel-cli. | PENDING APPROVAL |
-| C8.5 — Paths | ID+name (FMWK-NNN-name). Rename = new framework. Human-readable provenance > rename flexibility. | PENDING APPROVAL |
-| Q9.1 — Hierarchy extension | Additive only. FWK-0 immutable after GENESIS. Extensions are separate frameworks layered on top. | PENDING APPROVAL |
-| Q9.2 — Dependency order | Topological sort (Kahn's algorithm). Cycle detection. Sequential install in sorted order. | PENDING APPROVAL |
+| Q1.1 — ID assignment | Hybrid: builder proposes, gates validate uniqueness at install. Reserved ranges (001-009 KERNEL, 010-019 Layer 1, 020-029 Layer 2, 030+ extensions). | **APPROVED** 2026-02-28 |
+| Q2.1 — Governance rules | Two-tier `checks` array: mechanical (schema-validation, dependency-check, interface-validation, pattern-match, ownership-check, sequence-check) + cognitive (code-review, output-evaluation, behavioral-assessment via HO1). KERNEL mechanical only; Layer 1+ adds cognitive. Categories: structural, boundary, quality, process, ownership, behavioral, affect. | **APPROVED** 2026-02-28 |
+| Q3.3 — Versioning | Replace in place. Rollback from Ledger replay. No version directories on filesystem. | **APPROVED** 2026-02-28 |
+| Q5.1 — KERNEL decomposition | 6 frameworks: ledger, write-path, orchestration, execution, graph, package-lifecycle. Three decomposition tests (splitting, merging, ownership) codified as binding standard in FWK-0-DRAFT Section 3.0. | **APPROVED** 2026-02-28 |
+| C8.5 — Paths | ID+name (FMWK-NNN-name). Rename = new framework. Human-readable provenance > rename flexibility. | **APPROVED** 2026-02-28 |
+| Q9.1 — Hierarchy extension | Additive only. FWK-0 immutable after GENESIS. No cross-framework extensions for regular frameworks — upgrade via spec packs + version bump. | **APPROVED** 2026-02-28 |
+| Q9.2 — Dependency order | Topological sort (Kahn's algorithm). Cycle detection. Sequential install in sorted order. | **APPROVED** 2026-02-28 |
 
-## New Gaps Surfaced (2026-02-26)
+## Gaps Surfaced (2026-02-26) — Status Updated 2026-02-28
 
-Seven critical gaps not captured in original open questions. Full analysis in `FWK-0-PRAGMATIC-RESOLUTIONS.md`.
+Seven critical gaps identified. Full analysis and concrete solutions in `FWK-0-PRAGMATIC-RESOLUTIONS.md`.
 
-### GAP-1 — GENESIS Bootstrap Sequence
-**Severity:** Critical — blocks everything
-**Issue:** GENESIS is described as "hand-verified" but no concrete step-by-step sequence exists. GENESIS is a ceremony, not an automated script. 10 steps: create volumes → init immudb → populate FWK-0 files → compute/verify hashes → assemble self-referential package → record bootstrap events → validate → operator confirmation.
+| Gap | Status | Blocks Build? | Resolution |
+|-----|--------|---------------|------------|
+| GAP-1 — GENESIS Bootstrap Sequence | **DESIGNED** | Yes — must execute before KERNEL | 10-step ceremony defined in PRAGMATIC-RESOLUTIONS. Implement as bootstrap.sh. |
+| GAP-2 — Builder Context Window Budget | **DESIGNED** | No — mitigation exists | Layer-stratified reading paths. Complex modules use phased authoring. |
+| GAP-3 — Mock Provider Architecture | **DESIGNED** | Yes — blocks dark factory | Mock Ollama, Ledger, Graph defined. Same APIs, canned responses. Three test tiers. Must implement before builder tasks. |
+| GAP-4 — KERNEL Activation Sequence | **DESIGNED** | Yes — gap between installed and running | 12-step sequence defined. Implement in kernel process startup. |
+| GAP-5 — WebSocket Server Ownership | **RESOLVED** | No | WebSocket is KERNEL infrastructure. Agent Interface is a framework that uses it. |
+| GAP-6 — Prompt Contract Testing | **DESIGNED** | No — workaround exists | 5-stage validation pipeline. Structural + mock execution sufficient for KERNEL build. |
+| GAP-7 — Capability Discovery | **DESIGNED** | No — needed for Layer 1+ | `capabilities[]` array in framework.json. Composition registry built at startup. |
 
-### GAP-2 — Builder Agent Context Window Budget
-**Severity:** Medium — affects builder effectiveness
-**Issue:** FWK-0 + spec pack + generated framework must fit in context. FWK-0 should be stratified with reading paths per pack type to reduce token load. Complex module packs may need phased authoring.
-
-### GAP-3 — Mock Provider Architecture
-**Severity:** High — blocks dark factory testing
-**Issue:** Mock Ollama, Ledger, Graph need concrete design. Same APIs as real services, deterministic responses. Three test tiers: smoke (gates pass), integration (prompts execute), E2E (full turn works).
-
-### GAP-4 — KERNEL Activation Sequence
-**Severity:** High — gap between "installed" and "running"
-**Issue:** 12-step sequence from "KERNEL files on disk" to "accepting operator sessions" is undocumented. Includes: integrity validation → snapshot load → event replay → Write Path init → HO1/Zitadel init → composition registry → WebSocket start.
-
-### GAP-5 — WebSocket Server Ownership
-**Severity:** Medium — architectural clarity
-**Decision:** WebSocket is KERNEL infrastructure, not a framework. Agent Interface uses it but doesn't own it. Prevents deadlock: removing Agent Interface doesn't kill the interaction path.
-
-### GAP-6 — Prompt Contract Testing Before Cognitive Stack
-**Severity:** Medium — affects builder validation
-**Issue:** 5-stage validation: structural (schema), template (sanity), consistency (rules match output), mock execution (canned responses), integration (HO1 dispatcher works).
-
-### GAP-7 — Capability Discovery and Registration
-**Severity:** Medium — affects runtime composition
-**Issue:** framework.json needs `capabilities[]` array mapping capability_id → contract → pack. Composition registry built at startup. HO1 looks up capability, loads contract, executes. Conflict detection (two frameworks claiming same capability).
+**Build-blocking gaps (must implement before builder tasks):** GAP-1, GAP-3, GAP-4.
+**Non-blocking (designed, implement during build):** GAP-2, GAP-5, GAP-6, GAP-7.

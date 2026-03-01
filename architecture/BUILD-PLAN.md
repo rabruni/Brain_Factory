@@ -49,10 +49,9 @@ Every framework that must exist for DoPeJar to be alive, in dependency order.
 | FMWK-003 | orchestration | HO2, Work Orders | FMWK-001, FMWK-002 | Mechanical planning, work order dispatch, LIVE ∩ REACHABLE computation, aperture determination. |
 | FMWK-004 | execution | HO1, Prompt Contracts | FMWK-003, FMWK-002 | All LLM calls. Prompt contract enforcement. One mouth. Signal delta submission. |
 | FMWK-005 | graph | HO3 (Graph) | FMWK-001, FMWK-002 | In-memory materialized view. Node/edge structure. Scoring/retrieval queries. Snapshot/replay. |
-| FMWK-006 | package-lifecycle | Package Lifecycle, Framework Hierarchy | FMWK-001, FMWK-000 | Gate runner, install/uninstall, composition registry, scaffold/seal/validate/package CLI. |
-| FMWK-007 | kernel-cli | CLI Tools | FMWK-000 | Offline validation. Connects directly to immudb. Rollback, list-frameworks, validate-filesystem. |
+| FMWK-006 | package-lifecycle | Package Lifecycle, Framework Hierarchy, CLI Tools | FMWK-001, FMWK-000 | Gate runner, install/uninstall, composition registry, scaffold/seal/validate/package CLI, cold-storage validation. Includes offline tools (previously proposed as FMWK-007) — merged per decomposition standard (merging test: CLI is an operational mode of the packaging capability). |
 
-**KERNEL is delivered as ONE package containing 7 frameworks.** Installed via topological sort: 001 → 002 → {003, 005} → 004 → {006, 007}. Hand-verified because KERNEL creates the gate system itself.
+**KERNEL is delivered as ONE package containing 6 frameworks.** Installed via topological sort: 001 → 002 → {003, 005} → 004 → 006. Hand-verified because KERNEL creates the gate system itself.
 
 **After KERNEL:** Core operational invariant holds. CLI tools available. Gates operational. No interactive agent yet — CLI only.
 
@@ -122,8 +121,7 @@ FMWK-000 (framework/FWK-0)
   │     ├── FMWK-006 (package-lifecycle)
   │     └── FMWK-012 (storage-management)
   │
-  ├── FMWK-006 (package-lifecycle)
-  └── FMWK-007 (kernel-cli)
+  └── FMWK-006 (package-lifecycle)
 ```
 
 **Verified:** No cycles. Topological sort produces valid install order at every phase.
@@ -142,7 +140,7 @@ FMWK-000 (framework/FWK-0)
 | Finalize FWK-0 JSON schemas | Claude | framework-schema.json, specpack-schema.json, pack-schema.json, manifest-schema.json | GENESIS |
 | Write gate definition JSON files | Claude | framework-gate.json, specpack-gate.json, pack-gate.json, file-gate.json, package-gate.json, system-gate.json | Package Lifecycle |
 | Write GENESIS bootstrap script | Claude | genesis.sh (shell script, deterministic, reviewable) | Phase 0 |
-| Write KERNEL spec packs (all 7) | Claude | specpack.json for each KERNEL framework | Builder agents |
+| Write KERNEL spec packs (all 6) | Claude | specpack.json for each KERNEL framework | Builder agents |
 | Design mock provider containers | Claude | docker-compose-staging.yml with mock-ollama, mock-ledger, mock-graph | Dark factory |
 
 **Critical path:** FWK-0 schemas must be complete before GENESIS can run. Spec packs must be written before builders can start.
@@ -155,11 +153,11 @@ FMWK-000 (framework/FWK-0)
 |------|-------|------------|--------|
 | Run GENESIS ceremony | Ray (with Claude assist) | /governed/FMWK-000-framework/ populated, Ledger initialized, bootstrap events recorded | Everything after |
 | Validate FWK-0 self-referential test | Ray | FWK-0 passes its own gates | Builder confidence |
-| Scaffold KERNEL frameworks (directories + stubs) | Claude | /staging/FMWK-001 through FMWK-007 with framework.json, specpack.json stubs | Builder agents |
+| Scaffold KERNEL frameworks (directories + stubs) | Claude | /staging/FMWK-001 through FMWK-006 with framework.json, specpack.json stubs | Builder agents |
 
 ### Hour 8–24: KERNEL BUILD (Parallel builder agents)
 
-**Goal:** All 7 KERNEL frameworks authored, tested, packaged.
+**Goal:** All 6 KERNEL frameworks authored, tested, packaged.
 
 Builder agents work in parallel on independent frameworks. Dependencies between KERNEL frameworks are resolved at package assembly, not authoring.
 
@@ -170,11 +168,10 @@ Builder agents work in parallel on independent frameworks. Dependencies between 
 | FMWK-003 orchestration | Agent C | High — work order state machine, planning heuristics, scoring formula | FMWK-001, FMWK-002 (needs interfaces as reference) |
 | FMWK-004 execution | Agent D | Medium — prompt contract enforcement, LLM routing, budget tracking | FMWK-003 (needs work order schema) |
 | FMWK-005 graph | Agent E | Medium — node/edge schemas, query interface, snapshot format | FMWK-002 (needs fold logic interface) |
-| FMWK-006 package-lifecycle | Agent F | High — gate runner, install logic, composition registry, CLI tools | FMWK-001 (needs Ledger event interface) |
-| FMWK-007 kernel-cli | Agent G | Low — standalone validation tools, cold-storage walkthrough | Independent |
+| FMWK-006 package-lifecycle | Agent F | High — gate runner, install logic, composition registry, CLI tools, cold-storage validation | FMWK-001 (needs Ledger event interface) |
 
 **Parallelization strategy:**
-- Hour 8-12: Start FMWK-001, FMWK-007 (no internal dependencies)
+- Hour 8-12: Start FMWK-001 (foundation, no internal dependencies)
 - Hour 8-16: Start FMWK-002, FMWK-005, FMWK-006 (depend only on FMWK-001 interfaces, can use stubs)
 - Hour 12-20: Start FMWK-003, FMWK-004 (depend on 001+002 interfaces)
 - Hour 20-24: Assemble KERNEL package, run gate validation, fix failures
@@ -198,7 +195,7 @@ Builder agents work in parallel on independent frameworks. Dependencies between 
 
 | Task | Owner | Deliverable | Blocks |
 |------|-------|------------|--------|
-| Assemble KERNEL package (manifest.json) | Claude | Single package containing 7 frameworks | Install |
+| Assemble KERNEL package (manifest.json) | Claude | Single package containing 6 frameworks | Install |
 | Hand-verify KERNEL package | Ray | Human review of critical schemas and interfaces | Install |
 | Install KERNEL via GENESIS CLI | Ray | KERNEL frameworks in /governed/, Ledger events recorded | Layer 1 |
 | Run cold-storage validation | Claude (CLI) | All framework chains validate against Ledger | Confidence |
@@ -298,7 +295,6 @@ Before builders can start, spec packs must be written. Priority order based on c
 | P1 | FMWK-003 orchestration | Work order state machine needed for all dispatch. |
 | P2 | FMWK-004 execution | Prompt contract enforcement. Can stub against HO2. |
 | P2 | FMWK-005 graph | Materialized view. Can stub against Write Path. |
-| P3 | FMWK-007 kernel-cli | Independent. Lowest coupling. |
 | P3 | FMWK-010 agent-interface | Can start after KERNEL spec packs done. |
 | P4 | FMWK-011 routing | Simple policy. Low complexity. |
 | P4 | FMWK-012 storage-management | Deferrable for 48 hours. |
@@ -393,11 +389,11 @@ Build the {name} framework for DoPeJarMo.
 
 ## Open Decisions for Ray
 
-Before execution begins, Ray needs to approve or adjust:
+All 7 must-resolve FWK-0 questions are now APPROVED (2026-02-28). KERNEL decomposition confirmed at 6 frameworks. Remaining decisions before execution:
 
-1. **7 must-resolve decisions** from FWK-0-PRAGMATIC-RESOLUTIONS.md — approve, modify, or reject each
-2. **KERNEL decomposition** — 7 frameworks as proposed, or different split?
-3. **Framework ID ranges** — reserved ranges as proposed (001-009, 010-019, 020-029)?
+1. ~~7 must-resolve decisions~~ ALL APPROVED 2026-02-28
+2. ~~KERNEL decomposition~~ 6 frameworks APPROVED 2026-02-28
+3. ~~Framework ID ranges~~ Reserved ranges APPROVED (001-009 KERNEL, 010-019 Layer 1, 020-029 Layer 2)
 4. **48-hour timeline** — realistic? Which milestones are hard requirements vs nice-to-have?
 5. **Deferral list** — anything on the "deferred" list that must be in scope?
 6. **Builder agent strategy** — how many parallel agents? Which LLM? Handoff format?

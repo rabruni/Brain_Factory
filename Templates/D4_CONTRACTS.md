@@ -7,6 +7,11 @@
 
 ---
 
+<!-- MANDATORY: All contracts MUST use standardized IDs for cross-document traceability:
+     IN-NNN (inbound), OUT-NNN (outbound), SIDE-NNN (side-effect), ERR-NNN (error).
+     Every contract MUST reference at least one D2 scenario in its Scenarios field.
+     Contracts with no source scenario indicate a gap — add to D6. -->
+
 ## Inbound Contracts
 
 <!-- Define every way this component can be invoked. Each contract specifies:

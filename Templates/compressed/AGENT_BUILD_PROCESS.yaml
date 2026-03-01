@@ -1,0 +1,53 @@
+# AGENT_BUILD_PROCESS.yaml — compressed
+# Machine-readable agent build workflow
+
+meta:
+  source_standard: "BUILDER_HANDOFF_STANDARD.md"
+  handoff_directory: "[handoffs_dir]/"
+
+context_loading:
+  sequence: [BUILDER_HANDOFF_STANDARD.md, BUILDER_PROMPT_CONTRACT.md, "<handoff_spec>"]
+  budget: "~8000 tokens"
+
+handoff_lifecycle:
+  states: [NOT_DISPATCHED, DISPATCHED, APPROVED, COMPLETE, VALIDATED, FAILED, BLOCKED, SUPERSEDED]
+  flow: "NOT_DISPATCHED → DISPATCHED → APPROVED → COMPLETE → VALIDATED"
+  retry: "FAILED → DISPATCHED"
+
+handoff_structure:
+  path: "[handoffs_dir]/<id>/<id>_BUILDER_HANDOFF.md"
+  results: "[handoffs_dir]/<id>/<id>_RESULTS.md"
+  ids: { new: "H-<N>", followup: "H-<N><letter>", cleanup: "CLEANUP-<N>" }
+  sections: [Mission, Critical Constraints, Architecture/Design, Implementation Steps, Package Plan, Test Plan, Existing Code, E2E Verification, Files Summary, Design Principles]
+  test_minimums: { small: "10+", medium: "25+", large: "40+" }
+
+agent_prompt:
+  elements: [Identity line, Spec pointer, 7 mandatory rules, 13Q gate, STOP instruction]
+  questions: { scope: [1-3], technical: [4-6], packaging: [7-8], testing: [9], integration: [10], adversarial: [11-13] }
+  adversarial_sets:
+    genesis: [Dependency Trap, Scope Creep Check, Semantic Audit]
+    infrastructure: [Failure Mode, Shortcut Check, Semantic Audit]
+
+build_phases:
+  1_understand: "Read spec → answer 13Q → STOP"
+  2_build: "Per-behavior TDD: red (failing test) → green (minimum code) → refactor (tests stay green)"
+  3_govern: "SHA256 all files → update manifest → deterministic archive"
+  4_verify: "Full regression → E2E smoke test"
+  5_report: "RESULTS file → STOP"
+
+results_sections: [Status, Files Created, Files Modified, Archives Built, Test Results (this pkg), Full Regression (all pkgs), Baseline Snapshot, Clean-Room Verification, Issues, Notes for Reviewer]
+
+reviewer_checklist: [results exists, all sections present, clean-room complete, baseline present, full regression run, no new failures, correct hash format, correct naming]
+
+lexicon_of_precision:
+  - { forbidden: "I updated all files", required: "I modified N files (SHA256 list below)" }
+  - { forbidden: "We log everything", required: "I implemented logging for <specific transitions>" }
+  - { forbidden: "It's fully tested", required: "N Passes / 0 Fails" }
+  - { forbidden: "The code is optimized", required: "Refactored to reduce <metric>" }
+  - { forbidden: "Integrated successfully", required: "All tests pass, no undeclared files" }
+
+prompt_routing:
+  - { type: build, contract: BUILDER_PROMPT_CONTRACT.md, status: ACTIVE }
+  - { type: review, contract: REVIEWER_PROMPT_CONTRACT.md, status: NOT_CREATED }
+  - { type: integration, contract: INTEGRATION_PROMPT_CONTRACT.md, status: NOT_CREATED }
+  - { type: conformance, contract: CONFORMANCE_PROMPT_CONTRACT.md, status: NOT_CREATED }

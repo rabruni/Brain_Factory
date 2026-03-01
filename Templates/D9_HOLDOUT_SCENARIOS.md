@@ -105,7 +105,12 @@ priority: [P0 | P1 | P2]
 
 ## Scenario Coverage Matrix
 
-<!-- Map D2 scenarios to holdout coverage. Identify any scenarios not covered. -->
+<!-- Map D2 scenarios to holdout coverage.
+     COVERAGE GATE (MANDATORY):
+     - All D2 P0 scenarios MUST have at least one holdout scenario.
+     - All D2 P1 scenarios MUST have at least one holdout scenario.
+     - P2/P3 scenarios MAY be deferred to unit tests.
+     - Zero P0/P1 gaps allowed. If any P0/P1 scenario is uncovered, D9 is INCOMPLETE. -->
 
 | D2 Scenario | Priority | Holdout Coverage | Notes |
 |-------------|----------|-----------------|-------|

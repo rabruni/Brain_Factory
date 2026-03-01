@@ -111,6 +111,31 @@ A file's provenance is readable from its path without opening any metadata file.
 
 A framework is a single-responsibility capability in DoPeJarMo. It declares what it does, what rules govern it, what interfaces it exposes, what interfaces it consumes, and what it depends on.
 
+### 3.0 Framework Decomposition Standard
+
+Before authoring a framework, apply these three tests to confirm the boundary is correct. All three must be satisfied. These tests apply at every layer — KERNEL, Layer 1, Layer 2, and beyond.
+
+**Test 1 — Splitting Test:** A framework MUST be independently authorable. A builder agent, given only a spec pack and FWK-0, can produce a complete framework without needing to co-author another framework simultaneously. If two things must be written together to work, they are one framework.
+
+**Test 2 — Merging Test:** If two candidate frameworks are operational modes of the same capability — different behaviors of the same underlying mechanism — they MUST be merged into one framework with separate spec packs. Spec packs within a framework handle modal variation. Frameworks handle capability boundaries.
+
+**Test 3 — Ownership Test:** A framework MUST have exclusive data ownership. No shared schemas, no shared event types, no shared graph node types between frameworks. If two frameworks need the same data, one owns it and the other consumes it through a declared interface. Shared ownership is a decomposition error.
+
+**Application to KERNEL (6 frameworks):**
+
+| Framework | ID | Owns | Rationale |
+|-----------|-----|------|-----------|
+| Ledger | FMWK-001 | Append-only store, event schemas, hash chain | Independent storage primitive. Builder can author from event schema spec alone. |
+| Write Path | FMWK-002 | Synchronous mutation, fold logic, snapshot | Owns the Ledger→Graph consistency invariant. Tightly coupled to Ledger at runtime but independently authorable — Write Path's spec is "given events, fold into Graph." |
+| Orchestration (HO2) | FMWK-003 | Work order planning, dispatch, context computation, aperture | Mechanical only. Reads Graph, plans work. No LLM. Independently authorable from a spec pack defining dispatch rules. |
+| Execution (HO1) | FMWK-004 | LLM calls, prompt contract enforcement, signal delta submission | All cognitive work. Independently authorable — "given a work order and a prompt contract, execute and return." |
+| Graph (HO3) | FMWK-005 | In-memory directed graph, node/edge schemas, query interface | Pure storage. Independently authorable — "given fold events from Write Path, maintain queryable state." |
+| Package Lifecycle | FMWK-006 | Gates, install/uninstall, staging CLI tools, composition registry | Merges previous "kernel-cli" into Package Lifecycle (merging test: CLI tools are operational modes of the packaging capability, not a separate capability). |
+
+**Why 6, not 7:** The splitting test fails for a standalone "kernel-cli" framework — CLI tools cannot be authored independently from the gate logic they invoke. The merging test confirms they are operational modes (CLI = user-facing mode, gates = validation mode) of the same packaging capability.
+
+**Why not fewer:** Signal Accumulator is fold logic inside Write Path, not a separate framework (merging test — it's an operational mode of folding). Work Order is a data structure owned by Orchestration (ownership test — HO2 owns the lifecycle). Prompt Contract is a schema owned by Execution (ownership test — HO1 enforces them).
+
 ### 3.1 Schema — framework.json
 
 Every framework contains a `framework.json` at its root directory.
@@ -592,7 +617,7 @@ Phase N: Additional agents and capabilities (gate-governed)
   DoPeJarMo is a multi-tenant cognitive OS — not a single-product runtime.
 ```
 
-> **OPEN QUESTION:** How many frameworks does KERNEL actually decompose into? One per primitive? One for Write Path? One for Package Lifecycle? See FWK-0-OPEN-QUESTIONS.md.
+> **RESOLVED:** KERNEL decomposes into 6 frameworks: FMWK-001 (ledger), FMWK-002 (write-path), FMWK-003 (orchestration), FMWK-004 (execution), FMWK-005 (graph), FMWK-006 (package-lifecycle). See Section 3.0 for the decomposition standard and rationale.
 
 ### 8.4 Framework-to-Framework Communication
 
@@ -884,7 +909,7 @@ Seven must-resolve questions were analyzed and given concrete v1 answers (captur
 - ID assignment: builder proposes, gates validate uniqueness at install, reserved ranges prevent collisions
 - Governance rules: declarative JSON with three enforcement types (gate-check, architectural-boundary, ownership-check)
 - Versioning: replace in place, rollback from Ledger replay
-- KERNEL decomposition: 7 frameworks (ledger, write-path, orchestration, execution, graph, package-lifecycle, kernel-cli)
+- KERNEL decomposition: 6 frameworks (ledger, write-path, orchestration, execution, graph, package-lifecycle). CLI merged into package-lifecycle per decomposition standard (Section 3.0).
 - Paths: ID+name (FMWK-NNN-name), rename = new framework
 - Hierarchy extension: additive only, FWK-0 is immutable after GENESIS
 - Multi-framework dependency: topological sort, cycle detection

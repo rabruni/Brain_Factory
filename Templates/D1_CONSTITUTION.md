@@ -14,7 +14,21 @@
   Articles should cover: source of truth, isolation boundaries, separation of concerns,
   traceability, validation gates, failure handling, and determinism.
 
-  Typical article count: 5-10. Each article needs all four subsections.
+  REQUIRED: Every D1 MUST include articles verifying the Framework Decomposition Standard
+  (FWK-0-DRAFT Section 3.0). The three decomposition tests are constitutional:
+
+  1. SPLITTING TEST — This framework is independently authorable. A builder with only its
+     spec pack and FWK-0 can produce it without co-authoring another framework.
+  2. MERGING TEST — This framework does not contain what should be a separate framework.
+     If multiple spec packs represent different capabilities (not modes of the same capability),
+     the framework must be split.
+  3. OWNERSHIP TEST — This framework has exclusive data ownership. No shared schemas, event
+     types, or graph node types with other frameworks. Consumed data comes through declared
+     interfaces.
+
+  These three articles should appear first, before component-specific articles.
+
+  Typical article count: 5-10 (including the 3 decomposition articles). Each needs all four subsections.
 -->
 
 ### Article 1: [Principle Name]
@@ -42,6 +56,12 @@
 ---
 
 ## Boundary Definitions
+
+<!-- DEFAULT STANCE: Actions not explicitly listed in any category default to ASK FIRST.
+     ALWAYS = automatic, no approval needed.
+     ASK FIRST = human decision required.
+     NEVER = absolute prohibition, refused even if instructed.
+     If a builder encounters an action not listed here, treat it as ASK FIRST. -->
 
 ### ALWAYS (component does this without asking)
 

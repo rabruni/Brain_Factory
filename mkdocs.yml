@@ -14,6 +14,8 @@ nav:
       - Build Plan: architecture/BUILD-PLAN.md
       - Fwk 0 Draft: architecture/FWK-0-DRAFT.md
       - Fwk 0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
+      - Fwk 0 Pragmatic Resolutions: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
+      - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
   - Templates:
       - Guide: sawmill-templates/GUIDE.md
       - D1 — Constitution: sawmill-templates/D1_CONSTITUTION.md
