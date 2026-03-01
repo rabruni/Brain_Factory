@@ -1,0 +1,79 @@
+#!/bin/sh
+#
+# pre-commit hook: Sync source files into docs/ for TechDocs rendering.
+# Runs on every git commit, regardless of which agent or human commits.
+#
+# Activate with: git config core.hooksPath .githooks
+#
+# Sync rules:
+#   architecture/*.md        → docs/architecture/
+#   .claude/agents/*.md      → docs/agents/
+#   sawmill/COLD_START.md    → docs/sawmill/
+#   Templates/compressed/COMPRESSION_STANDARD.md → docs/compressed/
+#   CLAUDE.md                → docs/institutional-context.md
+#
+# Only syncs files that are staged for commit (not all files).
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CHANGED=0
+
+# Get list of staged files
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+
+for file in $STAGED; do
+    case "$file" in
+        architecture/*.md)
+            basename=$(basename "$file")
+            dest="docs/architecture/$basename"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$REPO_ROOT/docs/architecture"
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+        .claude/agents/*.md)
+            basename=$(basename "$file")
+            dest="docs/agents/$basename"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$REPO_ROOT/docs/agents"
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+        sawmill/COLD_START.md)
+            dest="docs/sawmill/COLD_START.md"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$REPO_ROOT/docs/sawmill"
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+        Templates/compressed/COMPRESSION_STANDARD.md)
+            dest="docs/compressed/COMPRESSION_STANDARD.md"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$REPO_ROOT/docs/compressed"
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+        CLAUDE.md)
+            dest="docs/institutional-context.md"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+    esac
+done
+
+if [ "$CHANGED" -eq 1 ]; then
+    echo "pre-commit: synced source files to docs/ for TechDocs"
+fi
+
+# Always allow the commit to proceed
+exit 0

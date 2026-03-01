@@ -335,6 +335,7 @@ Before running the Sawmill for the first time:
 - [ ] `Templates/compressed/` has all compressed templates (for agents)
 - [ ] `.holdouts/` directory exists
 - [ ] `sawmill/` directory exists
+- [ ] Git hooks activated: `git config core.hooksPath .githooks` (syncs source → docs/ on commit)
 - [ ] Agent CLIs installed: `claude`, `codex`, `gemini` (whichever you're using)
 - [ ] Codex fallback configured (if using Codex without symlinks): `project_doc_fallback_filenames = ["CLAUDE.md"]`
 - [ ] Gemini context configured (if using Gemini without symlinks): `"contextFileName": ["GEMINI.md", "CLAUDE.md"]`
