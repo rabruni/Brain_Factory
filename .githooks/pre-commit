@@ -10,6 +10,8 @@
 #   .claude/agents/*.md      → docs/agents/
 #   sawmill/COLD_START.md    → docs/sawmill/
 #   Templates/compressed/COMPRESSION_STANDARD.md → docs/compressed/
+#   Templates/*.md            → docs/sawmill-templates/
+#   Templates/*.yaml          → docs/sawmill-templates/
 #   CLAUDE.md                → docs/institutional-context.md
 #
 # Only syncs files that are staged for commit (not all files).
@@ -55,6 +57,16 @@ for file in $STAGED; do
             dest="docs/compressed/COMPRESSION_STANDARD.md"
             if [ -f "$REPO_ROOT/$file" ]; then
                 mkdir -p "$REPO_ROOT/docs/compressed"
+                cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
+                git add "$REPO_ROOT/$dest"
+                CHANGED=1
+            fi
+            ;;
+        Templates/*.md|Templates/*.yaml)
+            basename=$(basename "$file")
+            dest="docs/sawmill-templates/$basename"
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$REPO_ROOT/docs/sawmill-templates"
                 cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"
                 git add "$REPO_ROOT/$dest"
                 CHANGED=1
