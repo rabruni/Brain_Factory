@@ -145,6 +145,7 @@ Reads (in order):
   architecture/FWK-0-DRAFT.md        ← framework rules
   architecture/BUILD-PLAN.md          ← current plan
   sawmill/<FMWK>/TASK.md              ← which framework to spec
+  catalog-info.yaml                    ← system relationships and build annotations
   sawmill/<FMWK>/SOURCE_MATERIAL.md   ← detailed spec material (if it exists)
   Templates/compressed/D1-D6          ← output format (compressed for agents)
 
@@ -171,7 +172,7 @@ Reads (ONLY these two):
   sawmill/<FMWK>/D4_CONTRACTS.md
   Templates/compressed/D9_HOLDOUT_SCENARIOS.md
 
-CANNOT read: D1, D3, D5, D6, D7, D8, D10, architecture/*, src/*
+CANNOT read: D1, D3, D5, D6, D7, D8, D10, architecture/*, staging/*
 
 Writes:
   .holdouts/<FMWK>/D9_HOLDOUT_SCENARIOS.md
@@ -190,9 +191,12 @@ On retry, also reads:
 CANNOT read: .holdouts/*, EVALUATION_REPORT.md
 
 Writes:
-  src/<FMWK>/**
+  staging/<FMWK>/**
   sawmill/<FMWK>/RESULTS.md
   PR on branch build/<FMWK>
+
+Note: Staging is in Brain_Factory, not dopejar. The builder imports from
+`/Users/raymondbruni/dopejar/platform_sdk/` but writes code to `staging/` in this repo.
 ```
 
 **Evaluator Agent (Turn E)** — STRICT ISOLATION:
@@ -295,7 +299,7 @@ The orchestrator creates a `TASK.md` in each framework's sawmill directory befor
 | D7-D8-D10 | - | WRITE | - | READ | - |
 | BUILDER_HANDOFF | - | WRITE | - | READ | - |
 | D9 (holdouts) | - | - | WRITE | NEVER | READ |
-| src/ code | - | - | - | WRITE | READ (PR) |
+| staging/ code | - | - | - | WRITE | READ (PR) |
 | RESULTS.md | - | - | - | WRITE | NEVER |
 | EVALUATION_REPORT | - | - | - | NEVER | WRITE |
 | EVALUATION_ERRORS | - | - | - | READ (retry) | WRITE |

@@ -6,16 +6,28 @@ metadata:
   annotations:
     backstage.io/techdocs-ref: dir:.
     github.com/project-slug: rabruni/Brain_Factory
+    dopejarmo.dev/staging-path: staging/
+    dopejarmo.dev/sdk-local-path: /Users/raymondbruni/dopejar/platform_sdk
+    dopejarmo.dev/runtime-local-path: /Users/raymondbruni/dopejar
   tags:
     - architecture
     - dopejarmo
     - dopejar
+    - sawmill
   links:
     - url: https://github.com/rabruni/Brain_Factory
       title: GitHub
+      icon: github
+    - url: https://github.com/rabruni/dopejar_sdk
+      title: Runtime Repo (dopejar)
       icon: github
 spec:
   type: documentation
   owner: user:ray-bruni
   lifecycle: production
   system: dopejarmo
+  consumesApis:
+    - platform-sdk-mcp-api
+  dependsOn:
+    - component:platform-sdk
+    - component:kernel

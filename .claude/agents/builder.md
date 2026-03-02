@@ -65,7 +65,7 @@ Follow the orchestrator's READING ORDER prompt exactly.
 NEVER read: `.holdouts/*`, `EVALUATION_REPORT.md`, other builders' work.
 
 ## Output Location
-- Code: `src/<FMWK-ID>/`
+- Code: `staging/<FMWK-ID>/`
 - Results: `sawmill/<FMWK-ID>/RESULTS.md`
 - PR: branch `build/<FMWK-ID>`
 

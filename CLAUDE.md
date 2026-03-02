@@ -32,6 +32,22 @@ Never resolve ambiguity by inventing an answer.
 
 Read `AGENT_BOOTSTRAP.md` first. It provides orientation before you encounter detail.
 
+## Repository Layout
+
+Two locations. Do not confuse them.
+
+**Brain_Factory** (`/Users/raymondbruni/Cowork/Brain_Factory/`) — this repo. Architecture, sawmill pipeline, templates, AND code staging. Builders create code in `staging/<FMWK-ID>/` here.
+
+**dopejar** (`/Users/raymondbruni/dopejar/`) — the runtime. Docker services, kernel, platform_sdk (46 modules). The builder imports from the SDK here but does not write to it during the sawmill.
+
+| What | Path |
+|------|------|
+| Builder staging | `staging/<FMWK-ID>/` (relative to this repo root) |
+| Platform SDK | `/Users/raymondbruni/dopejar/platform_sdk/` |
+| Docker services | `/Users/raymondbruni/dopejar/docker-compose.yml` |
+| Backstage catalog (runtime) | `/Users/raymondbruni/dopejar/catalog-info.yaml` |
+| Backstage catalog (this repo) | `catalog-info.yaml` |
+
 ## The Nine Primitives
 
 Assemble from these. Do NOT create new primitives.

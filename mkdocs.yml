@@ -41,6 +41,8 @@ nav:
       - Holdout Agent (Turn C): agents/holdout-agent.md
       - Builder (Turn D): agents/builder.md
       - Evaluator (Turn E): agents/evaluator.md
+  - System Topology:
+      - DoPeJarMo Catalog: dopejar-catalog.md
   - Compression Standard: compressed/COMPRESSION_STANDARD.md
 plugins:
   - techdocs-core

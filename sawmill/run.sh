@@ -29,7 +29,7 @@ set -euo pipefail
 FMWK="${1:?Usage: ./sawmill/run.sh <FMWK-ID> (e.g., FMWK-001-ledger)}"
 SAWMILL_DIR="sawmill/${FMWK}"
 HOLDOUT_DIR=".holdouts/${FMWK}"
-SRC_DIR="src/${FMWK}"
+STAGING_DIR="staging/${FMWK}"
 MAX_ATTEMPTS=3
 BRANCH="build/${FMWK}"
 
@@ -157,7 +157,7 @@ for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT; do
 done
 
 # Create working directories
-mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${SRC_DIR}"
+mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
 
 # Verify TASK.md exists
 if [ ! -f "${SAWMILL_DIR}/TASK.md" ]; then
