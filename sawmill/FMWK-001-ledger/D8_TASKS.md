@@ -71,13 +71,16 @@ Acceptance Criteria:
 3. `provenance` is a nested dataclass with `framework_id`, `pack_id`, `actor` (actor: Literal["system", "operator", "agent"]).
 4. `LedgerTip` dataclass with `sequence_number: int` and `hash: str`. Empty-ledger default: `sequence_number=-1, hash=""`.
 5. `VerifyChainResult` dataclass with `valid: bool` and `break_at: int | None = None`. Invariant: `break_at` must be absent (None) if `valid=True`; must be present (≥ 0) if `valid=False`.
-6. `SnapshotCreatedPayload` dataclass with `snapshot_path: str`, `snapshot_hash: str`, `snapshot_sequence: int`.
-7. `NodeCreationPayload` dataclass with `node_id: str`, `node_type: str`, `base_weight: str`, `initial_methylation: str`. (Note: `base_weight` and `initial_methylation` are strings, not floats.)
-8. `SessionStartPayload` dataclass with `session_id: str`, `operator_id: str | None`, `user_id: str | None`.
-9. `SessionEndPayload` dataclass with `session_id: str`, `end_reason: Literal["operator_disconnect", "user_disconnect", "timeout", "system_shutdown"]`.
-10. `PackageInstallPayload` dataclass with `package_id: str`, `package_version: str`, `gate_results: list[GateResult]`, `file_hashes: dict[str, str]`.
-11. `EVENT_TYPE_CATALOG: frozenset[str]` containing exactly the 15 event types from D3 E-009. No more, no fewer.
-12. Zero float-type fields on any schema (all decimal values are `str`).
+6. `LedgerConfig` dataclass with fields `host: str`, `port: int`, `database: str`, `username: str`, `password: str`.
+7. `LedgerConfig.from_env() -> LedgerConfig` reads `IMMUDB_HOST`, `IMMUDB_PORT`, and `IMMUDB_DATABASE` from environment variables, using `platform_sdk.tier0_core.config.get_config()` only for general platform bootstrap compatibility, and reads credentials via `platform_sdk.tier0_core.secrets.get_secret("immudb_username")` and `get_secret("immudb_password")`.
+8. `LedgerConfig.from_env()` defaults: `IMMUDB_HOST="localhost"`, `IMMUDB_PORT=3322`, `IMMUDB_DATABASE="ledger"` if unset.
+9. `SnapshotCreatedPayload` dataclass with `snapshot_path: str`, `snapshot_hash: str`, `snapshot_sequence: int`.
+10. `NodeCreationPayload` dataclass with `node_id: str`, `node_type: str`, `base_weight: str`, `initial_methylation: str`. (Note: `base_weight` and `initial_methylation` are strings, not floats.)
+11. `SessionStartPayload` dataclass with `session_id: str`, `operator_id: str | None`, `user_id: str | None`.
+12. `SessionEndPayload` dataclass with `session_id: str`, `end_reason: Literal["operator_disconnect", "user_disconnect", "timeout", "system_shutdown"]`.
+13. `PackageInstallPayload` dataclass with `package_id: str`, `package_version: str`, `gate_results: list[GateResult]`, `file_hashes: dict[str, str]`.
+14. `EVENT_TYPE_CATALOG: frozenset[str]` containing exactly the 15 event types from D3 E-009. No more, no fewer.
+15. Zero float-type fields on any schema (all decimal values are `str`).
 
 ---
 
@@ -136,23 +139,24 @@ Acceptance Criteria:
 - Contracts Implemented: SIDE-001 (immudb write shape — zero-padded key, canonical JSON value), IN-007 connect contract, SIDE-003 (reconnect behavior — 1 second wait, 1 retry)
 
 Acceptance Criteria:
-1. File `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/immudb_adapter.py` created.
-2. `ImmudbAdapter` Protocol defined with methods: `connect(config: dict) -> None`, `kv_set(key: str, value: bytes) -> None`, `kv_get(key: str) -> bytes`, `kv_scan(start_key: str, end_key: str | None) -> list[tuple[str, bytes]]`, `list_databases() -> list[str]`.
-3. `MockImmudbAdapter` class:
+1. Files `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py` and `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/immudb_adapter.py` created.
+2. `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py` re-exports the existing `platform_sdk.tier0_core.data` functionality needed by the staging packet, plus the new immudb adapter symbols. The staging package structure is independent of the live SDK's single-file `data.py` layout.
+3. `ImmudbAdapter` Protocol defined with methods: `connect(config: dict) -> None`, `kv_set(key: str, value: bytes) -> None`, `kv_get(key: str) -> bytes`, `kv_scan(start_key: str, end_key: str | None) -> list[tuple[str, bytes]]`, `list_databases() -> list[str]`.
+4. `MockImmudbAdapter` class:
    - Stores KV pairs in `dict[str, bytes]`.
    - Tracks all method calls in `self.call_log: list[str]` for assertion in tests.
    - Exposes `set_failure_on_next_write(err: Exception)` for connection-lost simulation.
    - `list_databases()` returns `["ledger"]` by default; supports overriding to `[]` to simulate missing DB.
    - Zero immudb SDK imports.
-4. `RealImmudbAdapter` class:
+5. `RealImmudbAdapter` class:
    - Wraps immudb gRPC SDK (`immudb` Python package) — only file permitted to import immudb SDK.
    - Uses zero-padded key format for `kv_set` and `kv_get`: key is exactly the string passed (caller formats key).
    - Reconnect logic (SIDE-003): on gRPC failure, waits exactly 1 second (`time.sleep(1)`), retries once; raises `LedgerConnectionError` if retry also fails.
    - MUST NOT call `CreateDatabaseV2`, `DatabaseDelete`, `DropDatabase`, `CompactIndex`, `TruncateDatabase`, or `CleanIndex` — ever.
    - Credentials loaded via `platform_sdk.tier0_core.secrets.get_secret("immudb_username")` and `get_secret("immudb_password")`.
-5. `get_adapter() -> ImmudbAdapter` function selects provider via `PLATFORM_DATA_BACKEND` env var: `"mock"` → `MockImmudbAdapter`, `"immudb"` → `RealImmudbAdapter`.
-6. `kv_scan()` returns entries in lexicographic key order (correct for zero-padded sequence keys).
-7. No existing platform_sdk file is modified — the new file is additive only.
+6. `get_adapter() -> ImmudbAdapter` function selects provider via `PLATFORM_DATA_BACKEND` env var: `"mock"` → `MockImmudbAdapter`, `"immudb"` → `RealImmudbAdapter`.
+7. `kv_scan()` returns entries in lexicographic key order (correct for zero-padded sequence keys).
+8. No existing live platform_sdk file is modified — the staging `data/` package is additive only.
 
 ---
 
@@ -172,7 +176,9 @@ Acceptance Criteria:
 1. File `staging/FMWK-001-ledger/ledger/ledger.py` created with `Ledger` class skeleton.
 2. `Ledger.__init__(self)` initializes: `self._adapter = None`, `self._mutex = threading.Lock()`, `self._config = None`.
 3. `Ledger.connect(self, config: LedgerConfig) -> None`:
-   - Reads host, port, database from config via `platform_sdk.tier0_core.config`.
+   - `LedgerConfig` is defined in `ledger/schemas.py` and exposes `from_env()` for builder-controlled configuration loading.
+   - `LedgerConfig.from_env()` reads `IMMUDB_HOST`, `IMMUDB_PORT`, and `IMMUDB_DATABASE` from environment variables; defaults are `localhost`, `3322`, and `ledger`.
+   - `LedgerConfig.from_env()` may call `platform_sdk.tier0_core.config.get_config()` for general platform bootstrap compatibility, but immudb host/port/database are not read from `PlatformConfig` fields because the live SDK does not define them.
    - Reads credentials via `platform_sdk.tier0_core.secrets`.
    - Calls `self._adapter.connect(config)`.
    - Calls `self._adapter.list_databases()` to check `"ledger"` is present.
@@ -199,6 +205,7 @@ Acceptance Criteria:
    - Calls `self._adapter.kv_scan(start_key="", end_key=None)` and takes the last entry by key order.
    - Returns `LedgerTip(sequence_number=-1, hash="")` if no entries exist.
    - Returns `LedgerTip(sequence_number=N, hash=<event_N.hash>)` from deserializing the last entry.
+   - Raises `LedgerConnectionError` if adapter unreachable.
 2. `Ledger.append(self, event: dict) -> int`:
    - MUST accept no `sequence`, `previous_hash`, or `hash` parameter — signature is `append(self, event: dict) -> int`.
    - Calls `check_no_floats(event)` first; raises `LedgerSerializationError` if any float found.
@@ -228,8 +235,9 @@ Acceptance Criteria:
    - `test_get_tip_empty_ledger`: no events; assert `LedgerTip(sequence_number=-1, hash="")`.
    - `test_get_tip_after_5_events`: append 5 events; assert tip is `{sequence_number: 4, hash: <hash_of_event_4>}`.
    - `test_get_tip_hash_matches_last_event`: re-read event at tip sequence; assert `tip.hash == event.hash`.
+   - `test_get_tip_raises_connection_error_on_adapter_failure`: mock `kv_scan` to raise adapter error; assert `LedgerConnectionError`.
    - `test_snapshot_event_payload_fields_stored`: append `snapshot_created` event with E-005 payload; re-read; assert `snapshot_path`, `snapshot_hash`, `snapshot_sequence` present.
-4. All 14 tests pass.
+4. All 15 tests pass.
 
 ---
 
@@ -246,6 +254,7 @@ Acceptance Criteria:
    - Calls `self._adapter.kv_get(key=f"{sequence_number:012d}")`.
    - Deserializes and returns the event exactly as stored — no re-serialization or field mutation.
    - Raises `LedgerConnectionError` if adapter unreachable.
+   - Raises `LedgerConnectionError` if `sequence_number` is out of range / missing in storage.
 2. `Ledger.read_range(self, start: int, end: int) -> list[LedgerEvent]`:
    - Returns events with sequences in `[start, end]` inclusive, strictly ascending.
    - Returns empty list if `start > current_tip.sequence_number`.
@@ -261,7 +270,8 @@ Acceptance Criteria:
    - `test_read_since_returns_events_after_sequence`: write 20 events, call `read_since(10)`, assert events 11-20 returned in order.
    - `test_read_since_empty_at_tip`: call `read_since(N)` where N == current tip; assert empty list.
    - `test_read_returns_no_mutation`: assert read event fields are identical to written fields including `hash` and `previous_hash`.
-5. All 6 tests pass.
+   - `test_read_out_of_range_raises`: call `read(999)` on a 5-event ledger; assert `LedgerConnectionError`.
+5. All 7 tests pass.
 
 ---
 
@@ -284,13 +294,15 @@ Acceptance Criteria:
    - Returns `VerifyChainResult(valid=True)` if all events pass.
    - MUST NOT require kernel process, Graph, HO1, HO2, or any cognitive runtime — only the adapter connection.
    - `break_at` field is absent (`None`) when `valid=True` (D3 E-004 invariant).
+   - Raises `LedgerConnectionError` if the adapter cannot reach immudb during the chain walk.
 2. Unit tests in `test_ledger_unit.py` (added in this task):
    - `test_verify_chain_intact_returns_valid_true`: write 10 events, call `verify_chain()`, assert `{valid: True}` and `break_at` is absent.
    - `test_verify_chain_detects_hash_corruption_at_position_3`: write 6 events in mock, directly corrupt event 3's `hash` field in mock storage, call `verify_chain()`, assert `{valid: False, break_at: 3}`.
    - `test_verify_chain_stops_at_first_break`: corrupt event 3 in 6-event ledger, assert events 4 and 5 were NOT read (check adapter call_log shows no kv_get for keys `000000000004` and `000000000005`).
    - `test_verify_chain_detects_broken_previous_hash_link`: write 5 events, replace `event[2].previous_hash` with wrong value in mock, call `verify_chain()`, assert `{valid: False, break_at: 2}`.
    - `test_verify_chain_valid_true_has_no_break_at`: assert `VerifyChainResult.break_at is None` on success (not `0` or missing key — must be None).
-3. All 5 tests pass.
+   - `test_verify_chain_raises_connection_error_on_adapter_failure`: mock adapter raises on `kv_get`; assert `LedgerConnectionError`.
+3. All 6 tests pass.
 
 ---
 
@@ -327,13 +339,13 @@ Acceptance Criteria:
 1. `test_ledger_unit.py` contains the complete set accumulated from T-005 through T-009 tests.
 2. Final count: exactly 25 tests minimum in `test_ledger_unit.py`.
    - From T-005: 2 tests (connect tests)
-   - From T-006: 14 tests (append + get_tip tests)
-   - From T-007: 6 tests (read tests)
-   - From T-008: 5 tests (verify_chain tests)
+   - From T-006: 15 tests (append + get_tip tests)
+   - From T-007: 7 tests (read tests)
+   - From T-008: 6 tests (verify_chain tests)
    - From T-009: 3 tests (reconnect tests)
-   - Total: 30 tests (exceeds 25 minimum)
-3. Combined with `test_serializer.py` (12 tests): 42 unit tests total.
-4. All 42 unit tests pass against MockProvider (no Docker required).
+   - Total: 33 tests (exceeds 25 minimum)
+3. Combined with `test_serializer.py` (12 tests): 45 unit tests total.
+4. All 45 unit tests pass against MockProvider (no Docker required).
 5. `pytest tests/unit/ -v` exits with code 0.
 
 ---
@@ -462,4 +474,4 @@ T-006 + T-007 + T-008 + T-009 ──→ T-010 (complete unit test suite)
 
 **MVP Tasks (all required — no deferrals):** T-001 through T-012.
 
-**Test count: 42 unit + 8 integration = 50 tests minimum.**
+**Test count: 45 unit + 8 integration = 53 tests minimum.**

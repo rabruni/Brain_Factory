@@ -13,7 +13,7 @@ Each handoff gets its own directory:
 ```
 [handoffs_dir]/<handoff_id>/
 ├── <handoff_id>_BUILDER_HANDOFF.md    ← the spec
-├── <handoff_id>_RESULTS.md            ← the results (written by builder)
+├── sawmill/<FMWK-ID>/RESULTS.md       ← the results (written by builder)
 └── <handoff_id>_AGENT_PROMPT.md       ← the dispatched prompt (optional, for audit)
 ```
 

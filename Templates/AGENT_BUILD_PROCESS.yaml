@@ -73,7 +73,7 @@ handoff_lifecycle:
 handoff_structure:
   file_organization:
     pattern: "[handoffs_dir]/<handoff_id>/<handoff_id>_BUILDER_HANDOFF.md"
-    results: "[handoffs_dir]/<handoff_id>/<handoff_id>_RESULTS.md"
+    results: "sawmill/<FMWK-ID>/RESULTS.md"
     handoff_ids:
       new_component: "H-<N>"
       followup: "H-<N><letter>"
@@ -234,7 +234,7 @@ build_phases:
 # ═══════════════════════════════════════════
 
 results_file:
-  location: "[handoffs_dir]/<handoff_id>/<handoff_id>_RESULTS.md"
+  location: "sawmill/<FMWK-ID>/RESULTS.md"
   required_sections:
     - name: "Status"
       values: ["PASS", "FAIL", "PARTIAL"]

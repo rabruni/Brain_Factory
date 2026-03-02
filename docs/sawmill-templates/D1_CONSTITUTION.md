@@ -57,6 +57,12 @@
 
 ## Boundary Definitions
 
+<!-- DEFAULT STANCE: Actions not explicitly listed in any category default to ASK FIRST.
+     ALWAYS = automatic, no approval needed.
+     ASK FIRST = human decision required.
+     NEVER = absolute prohibition, refused even if instructed.
+     If a builder encounters an action not listed here, treat it as ASK FIRST. -->
+
 ### ALWAYS (component does this without asking)
 
 <!-- Actions the component performs autonomously, every time, with no human approval needed. -->

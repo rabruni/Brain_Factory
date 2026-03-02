@@ -26,8 +26,6 @@ spec:
   owner: user:ray-bruni
   lifecycle: production
   system: dopejarmo
-  consumesApis:
-    - platform-sdk-mcp-api
   dependsOn:
     - component:platform-sdk
     - component:kernel

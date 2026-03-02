@@ -12,7 +12,7 @@ sequenced, SHA-256-linked event. Your deliverable has three parts: (1) an immudb
 `platform_sdk.tier0_core.data` that wraps immudb behind a Protocol + MockProvider + RealProvider
 pattern; (2) the Ledger class in `staging/FMWK-001-ledger/ledger/` implementing seven methods
 (connect, append, read, read_range, read_since, get_tip, verify_chain) with full error handling
-and mutex-based append atomicity; (3) 50 tests (42 unit via MockProvider, 8 integration via Docker
+and mutex-based append atomicity; (3) 53 tests (45 unit via MockProvider, 8 integration via Docker
 immudb) that fully cover all 13 D2 scenarios including cold-storage verification (SC-005: kernel
 stopped, CLI connects directly to immudb). Nothing goes to the governed filesystem — all work
 stays in `staging/FMWK-001-ledger/`.
@@ -23,13 +23,21 @@ stays in `staging/FMWK-001-ledger/`.
 
 1. **Staging only.** ALL work in `staging/FMWK-001-ledger/` (relative to Brain_Factory repo root). NEVER write to the governed filesystem during authoring. The governed filesystem is populated by GENESIS, not by this build. The existing platform_sdk is at `/Users/raymondbruni/dopejar/platform_sdk/`. Import from there. Do not stub it.
 2. **DTT per behavior.** For every acceptance criterion in D8: write the failing test first, implement the behavior, confirm the test passes. No behavior ships without a test.
-3. **No hardcoding.** immudb host, port, database, and credentials are config/secret driven via `platform_sdk.tier0_core.{config,secrets}`. The only hardcoded value permitted is the 1-second reconnect delay (specified in SOURCE_MATERIAL.md as non-configurable).
+3. **No hardcoding.** immudb host, port, database, and credentials are config/secret driven. Define `LedgerConfig` in `ledger/schemas.py`; `LedgerConfig.from_env()` reads `IMMUDB_HOST`, `IMMUDB_PORT`, and `IMMUDB_DATABASE`, and reads credentials via `platform_sdk.tier0_core.secrets`. The only hardcoded value permitted is the 1-second reconnect delay (specified in SOURCE_MATERIAL.md as non-configurable).
 4. **No file replacement.** The immudb adapter is a NEW file added to platform_sdk — no existing platform_sdk file is modified or replaced.
 5. **Deterministic archives.** When building the deliverable archive, use Python `zipfile` or `tarfile` with fixed-order file enumeration. NEVER use `shell tar` (non-deterministic on macOS).
 6. **SHA-256 hashes in results file.** Every file listed in the results file must have a `sha256:<64hex>` hash. Compute with `hashlib.sha256(open(f,'rb').read()).hexdigest()` and prefix `"sha256:"`.
-7. **Full regression, ALL packages.** Run `python -m pytest tests/ -v --tb=short` from `staging/FMWK-001-ledger/`. Report total/passed/failed/skipped. Zero failures permitted.
-8. **Results file mandatory.** Write `staging/FMWK-001-ledger/RESULTS.md` with all required sections per BUILDER_HANDOFF_STANDARD.md before this handoff is complete.
+7. **Full regression, ALL packages.** Run `python3 -m pytest tests/ -v --tb=short` from `staging/FMWK-001-ledger/`. Report total/passed/failed/skipped. Zero failures permitted.
+8. **Results file mandatory.** Write `sawmill/FMWK-001-ledger/RESULTS.md` with all required sections per BUILDER_HANDOFF_STANDARD.md before this handoff is complete.
 9. **Mock in unit tests, never real immudb.** Unit tests use `MockImmudbAdapter`. `PLATFORM_DATA_BACKEND=mock` env var selects it. Integration tests use `PLATFORM_DATA_BACKEND=immudb` and Docker.
+10. **Environment bootstrap required.** From `staging/FMWK-001-ledger/`, run `export PYTHONPATH=/Users/raymondbruni/dopejar:$PYTHONPATH` before invoking Python so `import platform_sdk` resolves from the staging directory.
+
+## Prerequisites
+
+- Python 3.12+ is required.
+- Install Python 3.12 with `brew install python@3.12`.
+- Docker and `docker-compose` must be available.
+- Export `PYTHONPATH=/Users/raymondbruni/dopejar:$PYTHONPATH` before running any Python commands from `staging/FMWK-001-ledger/`.
 10. **Baseline snapshot.** Record the full list of packages installed and total test count in the results file baseline snapshot section.
 11. **Zero admin ops.** No call to `DatabaseDelete`, `DropDatabase`, `CompactIndex`, `TruncateDatabase`, `CleanIndex`, or any immudb method that modifies or deletes existing data — anywhere in FMWK-001 code. Static analysis gate must catch any violation.
 12. **No float-type values.** `check_no_floats()` must be called before any `json.dumps()` in `append()`. A Python `float` anywhere in the event dict is a `LedgerSerializationError`.
@@ -49,6 +57,9 @@ staging/FMWK-001-ledger/
 ├── ledger/ledger.py          ── Ledger class (7 public methods)
 ├── ledger/__init__.py        ── exports
 │
+├── platform_sdk/tier0_core/data/__init__.py
+│                             ── staging-only package shim re-exporting existing
+│                             ── `platform_sdk.tier0_core.data` behavior plus immudb adapter
 ├── platform_sdk/tier0_core/data/immudb_adapter.py
 │                             ── ImmudbAdapter (Protocol)
 │                             ── MockImmudbAdapter (dict-backed, call tracking)
@@ -56,7 +67,7 @@ staging/FMWK-001-ledger/
 │                             ── get_adapter() -> ImmudbAdapter
 │
 ├── tests/unit/test_serializer.py    12 tests
-├── tests/unit/test_ledger_unit.py   30 tests
+├── tests/unit/test_ledger_unit.py   33 tests
 ├── tests/integration/test_ledger_integration.py  6 tests
 ├── tests/integration/test_cold_storage.py        2 tests
 │
@@ -161,38 +172,38 @@ Work strictly in this order. Each step includes a "Why" where safety or architec
 5. **Create `ledger/serializer.py`** — implement `GENESIS_SENTINEL`, `canonical_bytes()`, `compute_hash()`, `check_no_floats()`. Run test_serializer.py — all 12 must pass.
    WHY: Canonical serialization (SIDE-002) is a byte-level contract. Isolate it as a pure module and verify it completely before it is used by append() or verify_chain(). A bug here is silent until cold-storage verification fails across language boundaries.
 
-6. **Create `platform_sdk/tier0_core/data/immudb_adapter.py`** — ImmudbAdapter Protocol, MockImmudbAdapter, RealImmudbAdapter, get_adapter().
-   WHY: D1 Article 7 — all immudb access through platform_sdk. This adapter is the ONLY file permitted to import the immudb SDK. Build and verify Mock before RealProvider — unit tests only ever touch Mock.
+6. **Create `platform_sdk/tier0_core/data/__init__.py` and `platform_sdk/tier0_core/data/immudb_adapter.py`** — staging-only `data/` package shim plus ImmudbAdapter Protocol, MockImmudbAdapter, RealImmudbAdapter, get_adapter().
+   WHY: D1 Article 7 — all immudb access through platform_sdk. The live SDK uses a single-file `platform_sdk/tier0_core/data.py`; the staging packet intentionally creates a `data/` package that is independent of the live SDK layout and re-exports the existing functionality needed by the builder. This adapter is the ONLY file permitted to import the immudb SDK. Build and verify Mock before RealProvider — unit tests only ever touch Mock.
    - MockImmudbAdapter MUST track all method calls in `self.call_log` for admin-op assertions.
    - RealImmudbAdapter MUST implement SIDE-003 reconnect: wait 1 second, retry once, then raise LedgerConnectionError.
    - RealImmudbAdapter MUST NOT call CreateDatabaseV2, DatabaseDelete, or any other admin method.
 
 7. **Create `ledger/ledger.py`** Ledger class skeleton — `__init__` with `_adapter`, `_mutex`, `_config`.
 
-8. **Implement `Ledger.connect()`** — reads config via platform_sdk, calls `list_databases()`, raises `LedgerConnectionError` immediately if `"ledger"` absent.
+8. **Implement `Ledger.connect()`** — uses `LedgerConfig.from_env()` for `IMMUDB_HOST`, `IMMUDB_PORT`, `IMMUDB_DATABASE`, reads secrets via platform_sdk, calls `list_databases()`, raises `LedgerConnectionError` immediately if `"ledger"` absent.
    WHY: D1 Article 9 — connect does NOT provision. Zero admin calls. If this is wrong, every subsequent build that depends on FMWK-001 starts with the wrong assumption about database lifecycle.
    - Write connect() tests (`test_connect_raises_on_missing_database`, `test_connect_makes_zero_admin_calls`) — confirm both pass.
 
-9. **Implement `Ledger.get_tip()`** — scans adapter for last key, returns LedgerTip. Handle empty ledger (returns `{sequence_number: -1, hash: ""}`). Write and pass `test_get_tip_empty_ledger` and `test_get_tip_after_5_events`.
+9. **Implement `Ledger.get_tip()`** — scans adapter for last key, returns LedgerTip. Handle empty ledger (returns `{sequence_number: -1, hash: ""}`) and adapter-unreachable error path. Write and pass `test_get_tip_empty_ledger`, `test_get_tip_after_5_events`, and `test_get_tip_raises_connection_error_on_adapter_failure`.
 
 10. **Implement `Ledger.append()`** — full implementation with mutex.
     WHY (mutex): CLR-001 — in-process mutex is the chosen atomicity mechanism (Option B). The single-writer design makes this sufficient. `LedgerSequenceError` is the safety net if the invariant breaks. Without the mutex, two concurrent callers read the same tip and write duplicate sequence numbers — silent corruption.
     WHY (synchronous write): D1 NEVER "buffer or batch writes." Every append blocks until immudb confirms via gRPC. No buffering, no fire-and-forget.
     WHY (no caller sequence param): D1 Article 6. Caller-supplied sequences can produce forks. Ledger owns the guarantee.
-    - After implementing, run append() unit tests (T-006 list). All 14 must pass.
+    - After implementing, run append() unit tests (T-006 list). All 15 must pass.
 
-11. **Implement `Ledger.read()`, `read_range()`, `read_since()`** — return events exactly as stored. No re-serialization.
+11. **Implement `Ledger.read()`, `read_range()`, `read_since()`** — return events exactly as stored. No re-serialization. `read()` raises `LedgerConnectionError` for out-of-range sequence numbers (missing key).
     WHY: D1 NEVER "re-serialize or mutate events during read." If the stored canonical JSON changes shape on read, verify_chain() will compute a different hash than what was stored at write time.
-    - Run T-007 tests (6 tests). All must pass.
+    - Run T-007 tests (7 tests). All must pass.
 
-12. **Implement `Ledger.verify_chain()`** — walk from start to end, recompute each hash, check chain linkage. Stop at first mismatch.
+12. **Implement `Ledger.verify_chain()`** — walk from start to end, recompute each hash, check chain linkage. Stop at first mismatch. Raise `LedgerConnectionError` if the adapter becomes unreachable during the walk.
     WHY: Must be kernel-independent (D1 Article 8). Do NOT import anything from the kernel, Graph, or cognitive runtime. Any such import would break cold-storage verification if the kernel is down.
     WHY (stop at first break): D2 SC-EC-001 specifies stop-at-first — returning the position of first corruption is the operator's starting point for manual investigation.
-    - Run T-008 tests (5 tests). All must pass.
+    - Run T-008 tests (6 tests). All must pass.
 
 13. **Write `tests/unit/test_ledger_unit.py`** reconnect tests (T-009) — `test_reconnect_waits_one_second_before_retry`, `test_reconnect_raises_connection_error_after_one_retry_fails`, `test_reconnect_succeeds_on_second_attempt`. Monkeypatch `time.sleep`. Run — all 3 must pass.
 
-14. **Run full unit regression** — `python -m pytest tests/unit/ -v`. Confirm 42 tests pass.
+14. **Run full unit regression** — `python3 -m pytest tests/unit/ -v`. Confirm 45 tests pass.
 
 15. **Write `tests/integration/test_ledger_integration.py`** (6 tests) and `tests/integration/test_cold_storage.py` (2 tests). Requires Docker `ledger` service on :3322.
     - For test_cold_storage.py: the test writes events with kernel up, stops the kernel container via subprocess or Docker SDK, creates a fresh Ledger instance that connects directly to immudb :3322, calls verify_chain(), asserts result matches the online result.
@@ -200,9 +211,9 @@ Work strictly in this order. Each step includes a "Why" where safety or architec
 16. **Create `scripts/static_analysis.sh`** — 4 checks. Run it. Fix any violations before continuing.
     WHY: D1 Articles 2, 4, 7 are absolute prohibitions. A violation discovered after KERNEL installation requires a hand-verified rebuild. The static analysis gate catches violations at author time.
 
-17. **Run full regression** — `python -m pytest tests/ -v --tb=short`. All 50 tests must pass.
+17. **Run full regression** — `python3 -m pytest tests/ -v --tb=short`. All 53 tests must pass.
 
-18. **Generate `staging/FMWK-001-ledger/RESULTS.md`** per BUILDER_HANDOFF_STANDARD.md with SHA-256 hashes for every file created or modified.
+18. **Generate `sawmill/FMWK-001-ledger/RESULTS.md`** per BUILDER_HANDOFF_STANDARD.md with SHA-256 hashes for every file created or modified.
 
 ---
 
@@ -224,9 +235,10 @@ Work strictly in this order. Each step includes a "Why" where safety or architec
 | `ledger/schemas.py` | E-001..E-009 entities |
 | `ledger/serializer.py` | Canonical JSON + hash computation |
 | `ledger/ledger.py` | Ledger class (7 methods) |
+| `platform_sdk/tier0_core/data/__init__.py` | staging-only package shim re-exporting existing `data.py` behavior plus immudb adapter |
 | `platform_sdk/tier0_core/data/immudb_adapter.py` | immudb Protocol + Mock + Real |
 | `tests/unit/test_serializer.py` | 12 unit tests |
-| `tests/unit/test_ledger_unit.py` | 30 unit tests |
+| `tests/unit/test_ledger_unit.py` | 33 unit tests |
 | `tests/integration/test_ledger_integration.py` | 6 integration tests |
 | `tests/integration/test_cold_storage.py` | 2 cold-storage tests |
 | `scripts/static_analysis.sh` | 4-check analysis gate |
@@ -237,7 +249,7 @@ Work strictly in this order. Each step includes a "Why" where safety or architec
 
 ## 6. Test Plan
 
-Minimum: 42 unit tests (medium codebase: 3-5 files → 25+ minimum; 42 exceeds). 8 integration tests. 50 total.
+Minimum: 45 unit tests (medium codebase: 3-5 files → 25+ minimum; 45 exceeds). 8 integration tests. 53 total.
 
 ### test_serializer.py — 12 tests
 
@@ -256,7 +268,7 @@ Minimum: 42 unit tests (medium codebase: 3-5 files → 25+ minimum; 42 exceeds).
 | `test_float_detection_in_list_raises` | Pass `{"a": [1, 0.1, 2]}` | Raises LedgerSerializationError |
 | `test_genesis_sentinel_exact_string` | Assert `GENESIS_SENTINEL == "sha256:" + "0" * 64` | Exact string comparison, no regex |
 
-### test_ledger_unit.py — 30 tests
+### test_ledger_unit.py — 33 tests
 
 | Test Name | Description | Expected |
 |-----------|-------------|----------|
@@ -277,14 +289,17 @@ Minimum: 42 unit tests (medium codebase: 3-5 files → 25+ minimum; 42 exceeds).
 | `test_get_tip_empty_ledger` | Call get_tip() on empty ledger | `LedgerTip(sequence_number=-1, hash="")` |
 | `test_get_tip_after_5_events` | Append 5 events, call get_tip() | `sequence_number=4`, hash matches event[4].hash |
 | `test_get_tip_hash_matches_last_event` | Re-read event at tip.sequence_number | `tip.hash == event.hash` |
+| `test_get_tip_raises_connection_error_on_adapter_failure` | Mock kv_scan raises adapter error | LedgerConnectionError raised |
 | `test_read_returns_exact_stored_event` | Append event, read back by sequence | All fields identical including hash and previous_hash |
 | `test_read_no_mutation_of_fields` | Assert read event fields not transformed or re-serialized | Field-by-field equality including hash values |
+| `test_read_out_of_range_raises` | read(999) on 5-event ledger | LedgerConnectionError raised |
 | `test_read_range_returns_ascending_order` | Write 20 events, read_range(5, 15) | 11 events returned, sequences 5..15 in order, no gaps |
 | `test_read_range_empty_beyond_tip` | read_range(100, 200) on 20-event ledger | Returns empty list, no error |
 | `test_read_since_returns_events_after_sequence` | Write 20 events, read_since(10) | Events 11..20 returned in ascending order |
 | `test_read_since_empty_at_tip` | read_since(N) where N == tip | Returns empty list |
 | `test_verify_chain_intact_returns_valid_true` | Write 10 events, verify_chain() | `VerifyChainResult(valid=True)` |
 | `test_verify_chain_break_at_absent_on_success` | verify_chain() on intact chain | `result.break_at is None` (not 0, not absent key — must be None) |
+| `test_verify_chain_raises_connection_error_on_adapter_failure` | Mock adapter raises on kv_get | LedgerConnectionError raised |
 | `test_verify_chain_detects_hash_corruption` | Corrupt event[3].hash in mock storage, verify_chain() | `VerifyChainResult(valid=False, break_at=3)` |
 | `test_verify_chain_stops_at_first_break` | Corrupt event[3] in 6-event ledger, verify_chain() | kv_get NOT called for keys `000000000004` and `000000000005` (check call_log) |
 | `test_verify_chain_detects_broken_previous_hash_link` | Replace event[2].previous_hash with wrong value | `VerifyChainResult(valid=False, break_at=2)` |
@@ -315,13 +330,16 @@ Minimum: 42 unit tests (medium codebase: 3-5 files → 25+ minimum; 42 exceeds).
 
 | What | Where | Why |
 |------|-------|-----|
-| Existing data adapter pattern | `platform_sdk/tier0_core/data/__init__.py` | Understand Protocol + MockProvider + RealProvider pattern before writing immudb_adapter.py |
-| Error base class | `platform_sdk/tier0_core/errors/__init__.py` | LedgerXxx errors must inherit from platform_sdk base — find the base class name |
-| Logging conventions | `platform_sdk/tier0_core/logging/__init__.py` | `get_logger()` call pattern; every Ledger operation must log via this |
-| Config access | `platform_sdk/tier0_core/config/__init__.py` | How to read immudb host/port/database |
-| Secrets access | `platform_sdk/tier0_core/secrets/__init__.py` | How to call `get_secret("immudb_username")` — never os.getenv() for secrets |
-| All 46 SDK modules | `platform_sdk/MODULES.md` | Check before reaching for any external library — may already be covered |
-| Docker service definition | `docker-compose.yml` (repo root) | immudb service name, port mapping, volume name for integration tests |
+| Existing data module | `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/data.py` | Live SDK is a single-file module. In staging, create `platform_sdk/tier0_core/data/__init__.py` as a shim that re-exports the needed behavior plus the new adapter. |
+| Error base class | `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/errors.py` | LedgerXxx errors must inherit from the live platform_sdk base class |
+| Logging conventions | `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/logging.py` | `get_logger()` call pattern; every Ledger operation must log via this |
+| Config access | `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/config.py` | Use `get_config()` only for general platform bootstrap compatibility; immudb host/port/database come from `LedgerConfig.from_env()` using `IMMUDB_HOST`, `IMMUDB_PORT`, `IMMUDB_DATABASE` |
+| Secrets access | `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/secrets.py` | How to call `get_secret("immudb_username")` — never os.getenv() for secrets |
+| Existing ledger provider pattern | `platform_sdk/tier0_core/ledger.py` | Use `LedgerProvider` at line 70 as a structural Protocol example only — not as a behavioral example |
+| All 46 SDK modules | `/Users/raymondbruni/dopejar/platform_sdk/MODULES.md` | Check before reaching for any external library — may already be covered |
+| Docker service definition | `/Users/raymondbruni/dopejar/docker-compose.yml` | immudb service name, port mapping, volume name for integration tests |
+
+Note: the live SDK file `/Users/raymondbruni/dopejar/platform_sdk/tier0_core/ledger.py` predates the FMWK-001 packet and calls `CreateDatabaseV2`. That admin-op behavior is now prohibited by D1/D4/D8. Do not copy its connection logic; use it only for the Protocol pattern shape.
 
 ---
 
@@ -333,9 +351,10 @@ After completing all implementation steps, run these commands in order. Every li
 # From: staging/FMWK-001-ledger/ (inside Brain_Factory repo)
 
 # Step 1: Unit tests — no Docker needed
-PLATFORM_DATA_BACKEND=mock python -m pytest tests/unit/ -v --tb=short
-# Expected final line: "42 passed in <Xs>"
-# Accept: 42 passed, 0 failed, 0 errors
+export PYTHONPATH=/Users/raymondbruni/dopejar:$PYTHONPATH
+PLATFORM_DATA_BACKEND=mock python3 -m pytest tests/unit/ -v --tb=short
+# Expected final line: "45 passed in <Xs>"
+# Accept: 45 passed, 0 failed, 0 errors
 
 # Step 2: Static analysis gate
 bash scripts/static_analysis.sh
@@ -344,22 +363,22 @@ bash scripts/static_analysis.sh
 
 # Step 3: Start Docker immudb (from repo root)
 cd ../..
-docker-compose up -d ledger
-docker-compose ps ledger
+docker-compose -f /Users/raymondbruni/dopejar/docker-compose.yml up -d ledger
+docker-compose -f /Users/raymondbruni/dopejar/docker-compose.yml ps ledger
 # Expected: State=Up, Port=0.0.0.0:3322->3322/tcp
 cd staging/FMWK-001-ledger
 
 # Step 4: Integration tests
-PLATFORM_DATA_BACKEND=immudb python -m pytest tests/integration/test_ledger_integration.py -v --tb=short
+PLATFORM_DATA_BACKEND=immudb python3 -m pytest tests/integration/test_ledger_integration.py -v --tb=short
 # Expected: "6 passed in <Xs>"
 
 # Step 5: Cold-storage test
-PLATFORM_DATA_BACKEND=immudb python -m pytest tests/integration/test_cold_storage.py -v --tb=short
+PLATFORM_DATA_BACKEND=immudb python3 -m pytest tests/integration/test_cold_storage.py -v --tb=short
 # Expected: "2 passed in <Xs>"
 
 # Step 6: Full regression
-PLATFORM_DATA_BACKEND=immudb python -m pytest tests/ -v --tb=short
-# Expected: "50 passed in <Xs>" (or "50 passed, 0 failed")
+PLATFORM_DATA_BACKEND=immudb python3 -m pytest tests/ -v --tb=short
+# Expected: "53 passed in <Xs>" (or "53 passed, 0 failed")
 
 # Step 7: Verify static analysis catches violations (self-test of gate)
 echo "from immudb import grpc" >> /tmp/test_violation.py
@@ -398,8 +417,8 @@ print('PASS: GENESIS_SENTINEL is exactly correct')
 | `ledger/schemas.py` | `staging/FMWK-001-ledger/ledger/schemas.py` | CREATE |
 | `ledger/serializer.py` | `staging/FMWK-001-ledger/ledger/serializer.py` | CREATE |
 | `ledger/ledger.py` | `staging/FMWK-001-ledger/ledger/ledger.py` | CREATE |
+| `platform_sdk/tier0_core/data/__init__.py` | `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py` | CREATE |
 | `platform_sdk/tier0_core/data/immudb_adapter.py` | `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/immudb_adapter.py` | CREATE |
-| `platform_sdk/tier0_core/data/__init__.py` | `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py` | CREATE (exports only; no existing file modified) |
 | `tests/__init__.py` | `staging/FMWK-001-ledger/tests/__init__.py` | CREATE |
 | `tests/unit/__init__.py` | `staging/FMWK-001-ledger/tests/unit/__init__.py` | CREATE |
 | `tests/unit/test_serializer.py` | `staging/FMWK-001-ledger/tests/unit/test_serializer.py` | CREATE |
@@ -408,7 +427,7 @@ print('PASS: GENESIS_SENTINEL is exactly correct')
 | `tests/integration/test_ledger_integration.py` | `staging/FMWK-001-ledger/tests/integration/test_ledger_integration.py` | CREATE |
 | `tests/integration/test_cold_storage.py` | `staging/FMWK-001-ledger/tests/integration/test_cold_storage.py` | CREATE |
 | `scripts/static_analysis.sh` | `staging/FMWK-001-ledger/scripts/static_analysis.sh` | CREATE |
-| `RESULTS.md` | `staging/FMWK-001-ledger/RESULTS.md` | CREATE (by builder after completion) |
+| `RESULTS.md` | `sawmill/FMWK-001-ledger/RESULTS.md` | CREATE (by builder after completion) |
 
 **Total new files: 16 (15 source/test/script + 1 results)**
 **Files modified in dopejar: 0** (all work is additive in staging)

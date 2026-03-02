@@ -4,7 +4,7 @@
 ```
 [handoffs_dir]/<handoff_id>/
   <handoff_id>_BUILDER_HANDOFF.md  (spec)
-  <handoff_id>_RESULTS.md          (results, written by builder)
+  sawmill/<FMWK-ID>/RESULTS.md     (results, written by builder)
   <handoff_id>_AGENT_PROMPT.md     (dispatched prompt, optional audit)
 ```
 IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)

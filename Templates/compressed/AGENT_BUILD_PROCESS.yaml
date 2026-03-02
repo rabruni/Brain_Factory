@@ -16,7 +16,7 @@ handoff_lifecycle:
 
 handoff_structure:
   path: "[handoffs_dir]/<id>/<id>_BUILDER_HANDOFF.md"
-  results: "[handoffs_dir]/<id>/<id>_RESULTS.md"
+  results: "sawmill/<FMWK-ID>/RESULTS.md"
   ids: { new: "H-<N>", followup: "H-<N><letter>", cleanup: "CLEANUP-<N>" }
   sections: [Mission, Critical Constraints, Architecture/Design, Implementation Steps, Package Plan, Test Plan, Existing Code, E2E Verification, Files Summary, Design Principles]
   test_minimums: { small: "10+", medium: "25+", large: "40+" }

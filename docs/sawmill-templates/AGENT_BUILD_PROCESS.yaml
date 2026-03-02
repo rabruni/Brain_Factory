@@ -1,325 +1,53 @@
-# AGENT_BUILD_PROCESS.yaml
+# AGENT_BUILD_PROCESS.yaml — compressed
 # Machine-readable agent build workflow
-# Maps: context loading → handoff dispatch → 13Q gate → DTT → results → validation
-# Last updated: [YYYY-MM-DD]
 
 meta:
-  purpose: "Machine-readable agent build workflow — how work gets scoped, executed, and validated"
   source_standard: "BUILDER_HANDOFF_STANDARD.md"
-  handoffs_completed: 0
   handoff_directory: "[handoffs_dir]/"
 
-# ═══════════════════════════════════════════
-# SECTION 1: CONTEXT LOADING SEQUENCE
-# What an agent reads before starting work
-# ═══════════════════════════════════════════
-
 context_loading:
-  description: "Ordered sequence of documents an agent must read before building"
-  for_new_agent:
-    - order: 1
-      file: "BUILDER_HANDOFF_STANDARD.md"
-      purpose: "Process standard — critical constraints, DTT, results format"
-      tokens_approx: 3000
-    - order: 2
-      file: "BUILDER_PROMPT_CONTRACT.md"
-      purpose: "Prompt contract — agent template, 13Q gate protocol, behavior rules"
-      tokens_approx: 1000
-    - order: 3
-      file: "<specific_handoff_spec>"
-      purpose: "The actual task specification"
-      tokens_approx: "varies (2000-5000)"
-
-  total_context_budget:
-    new_agent: "~8,000 tokens for full context load (standard + prompt contract + spec)"
-
-# ═══════════════════════════════════════════
-# SECTION 2: HANDOFF LIFECYCLE
-# The complete lifecycle of a unit of work
-# ═══════════════════════════════════════════
+  sequence: [BUILDER_HANDOFF_STANDARD.md, BUILDER_PROMPT_CONTRACT.md, "<handoff_spec>"]
+  budget: "~8000 tokens"
 
 handoff_lifecycle:
-  states:
-    - state: NOT_DISPATCHED
-      description: "Handoff doc written, not yet sent to an agent"
-      transitions_to: [DISPATCHED]
-    - state: DISPATCHED
-      description: "Handoff sent to agent, awaiting 13-question answers"
-      transitions_to: [APPROVED, FAILED]
-    - state: APPROVED
-      description: "13-question answers reviewed, agent told to proceed"
-      transitions_to: [COMPLETE, FAILED]
-    - state: COMPLETE
-      description: "Agent finished, results file written"
-      transitions_to: [VALIDATED, FAILED]
-    - state: VALIDATED
-      description: "Reviewer verified results file + spot-checked hashes/tests"
-      transitions_to: []
-    - state: FAILED
-      description: "Agent failed, see notes"
-      transitions_to: [DISPATCHED]
-    - state: BLOCKED
-      description: "Waiting on dependency"
-      transitions_to: [NOT_DISPATCHED, DISPATCHED]
-    - state: SUPERSEDED
-      description: "Absorbed or replaced by another handoff"
-      transitions_to: []
-
-# ═══════════════════════════════════════════
-# SECTION 3: HANDOFF DOCUMENT STRUCTURE
-# What a handoff spec must contain
-# ═══════════════════════════════════════════
+  states: [NOT_DISPATCHED, DISPATCHED, APPROVED, COMPLETE, VALIDATED, FAILED, BLOCKED, SUPERSEDED]
+  flow: "NOT_DISPATCHED → DISPATCHED → APPROVED → COMPLETE → VALIDATED"
+  retry: "FAILED → DISPATCHED"
 
 handoff_structure:
-  file_organization:
-    pattern: "[handoffs_dir]/<handoff_id>/<handoff_id>_BUILDER_HANDOFF.md"
-    results: "[handoffs_dir]/<handoff_id>/<handoff_id>_RESULTS.md"
-    handoff_ids:
-      new_component: "H-<N>"
-      followup: "H-<N><letter>"
-      cleanup: "CLEANUP-<N>"
-
-  required_sections:
-    - section: 1
-      name: "Mission"
-      content: "One paragraph: what the agent is building and why. Include package ID(s)."
-    - section: 2
-      name: "Critical Constraints"
-      content: "Numbered list of non-negotiable rules"
-      mandatory_constraints:
-        - "ALL work in designated staging directory"
-        - "DTT: Design → Test → Then implement"
-        - "Package everything with manifests"
-        - "End-to-end verification"
-        - "No hardcoding"
-        - "No file replacement"
-        - "Deterministic archives"
-        - "Results file"
-        - "Full regression test"
-        - "Baseline snapshot"
-    - section: 3
-      name: "Architecture / Design"
-      content: "What to build — diagrams, data flows, component relationships"
-    - section: 4
-      name: "Implementation Steps"
-      content: "Numbered, ordered steps with file paths and function signatures"
-    - section: 5
-      name: "Package Plan"
-      content: "Package ID, layer, assets, dependencies"
-    - section: 6
-      name: "Test Plan"
-      content: "Every test method with name, description, expected behavior"
-      minimum_tests:
-        small: "10+ (1-2 source files)"
-        medium: "25+ (3-5 source files)"
-        large: "40+ (6+ source files)"
-    - section: 7
-      name: "Existing Code to Reference"
-      content: "Table of files agent should read before building"
-    - section: 8
-      name: "End-to-End Verification"
-      content: "Exact copy-paste commands with expected output"
-    - section: 9
-      name: "Files Summary"
-      content: "Table of every file created or modified"
-    - section: 10
-      name: "Design Principles"
-      content: "Non-negotiable design rules for this component (4-6 items)"
-
-# ═══════════════════════════════════════════
-# SECTION 4: AGENT PROMPT STRUCTURE
-# How an agent is initialized
-# ═══════════════════════════════════════════
+  path: "[handoffs_dir]/<id>/<id>_BUILDER_HANDOFF.md"
+  results: "sawmill/<FMWK-ID>/RESULTS.md"
+  ids: { new: "H-<N>", followup: "H-<N><letter>", cleanup: "CLEANUP-<N>" }
+  sections: [Mission, Critical Constraints, Architecture/Design, Implementation Steps, Package Plan, Test Plan, Existing Code, E2E Verification, Files Summary, Design Principles]
+  test_minimums: { small: "10+", medium: "25+", large: "40+" }
 
 agent_prompt:
-  structure:
-    - element: "Identity line"
-      format: "**Agent: [HANDOFF_ID]** — [one-line mission]"
-    - element: "Specification pointer"
-      format: "Read your specification: <path>"
-    - element: "Mandatory rules"
-      count: 7
-      content: "Non-negotiable constraints (staging path, DTT, archives, hashes, etc.)"
-    - element: "13-question gate"
-      content: "Questions 1-3: scope. 4-6: technical. 7-8: packaging. 9: tests. 10: integration. 11-13: adversarial."
-    - element: "STOP instruction"
-      content: "Do NOT proceed until user approval"
-
-  thirteen_question_gate:
-    purpose: "Checkpoint — proves agent understanding before implementation"
-    question_categories:
-      scope: [1, 2, 3]
-      technical: [4, 5, 6]
-      packaging: [7, 8]
-      testing: [9]
-      integration: [10]
-    adversarial_sets:
-      selection_rule: "Pick the set matching system maturity. Semantic Audit is universal."
-
-      genesis:
-        active_when: "No established tools, gates, or governance pipeline"
-        questions:
-          - name: "The Dependency Trap"
-            question: "What does your deliverable depend on that doesn't exist yet?"
-          - name: "The Scope Creep Check"
-            question: "What is the closest thing to 'building infrastructure' in your plan?"
-          - name: "The Semantic Audit"
-            question: "Identify one ambiguous word in my plan and redefine it precisely."
-
-      infrastructure:
-        active_when: "Established tools exist, gates running, governed pipeline operational"
-        questions:
-          - name: "The Failure Mode"
-            question: "Which specific file/hash is the most likely culprit if a gate check fails?"
-          - name: "The Shortcut Check"
-            question: "Is there an established tool I'm tempted to skip in favor of a manual approach?"
-          - name: "The Semantic Audit"
-            question: "Identify one ambiguous word in my plan and redefine it precisely."
-
-    behavior:
-      must_do: "Answer all 13 questions, then STOP and WAIT"
-      must_not: "Start creating directories, writing tests, making plans"
-      user_responses: ["Correct and proceed", "Follow-up questions", "Redirect approach", "Greenlight"]
-
-# ═══════════════════════════════════════════
-# SECTION 5: BUILD PHASES (DTT)
-# Design → Test → Then implement
-# ═══════════════════════════════════════════
+  elements: [Identity line, Spec pointer, 7 mandatory rules, 13Q gate, STOP instruction]
+  questions: { scope: [1-3], technical: [4-6], packaging: [7-8], testing: [9], integration: [10], adversarial: [11-13] }
+  adversarial_sets:
+    genesis: [Dependency Trap, Scope Creep Check, Semantic Audit]
+    infrastructure: [Failure Mode, Shortcut Check, Semantic Audit]
 
 build_phases:
-  phase_1_understand:
-    name: "Understand"
-    steps:
-      - "Read handoff spec"
-      - "Read referenced code (Section 7 of spec)"
-      - "Answer 13-question gate"
-      - "STOP. Wait for approval."
+  1_understand: "Read spec → answer 13Q → STOP"
+  2_build: "Per-behavior TDD: red (failing test) → green (minimum code) → refactor (tests stay green)"
+  3_govern: "SHA256 all files → update manifest → deterministic archive"
+  4_verify: "Full regression → E2E smoke test"
+  5_report: "RESULTS file → STOP"
 
-  phase_2_build:
-    name: "Build (Red-Green-Refactor)"
-    method: "Per-behavior TDD cycles, NOT all-tests-then-all-code"
-    cycle:
-      red:
-        action: "Write test(s) for one behavior"
-        requirement: "Test MUST fail before implementation"
-      green:
-        action: "Write minimum code to pass the test"
-        requirement: "Not elegant, not complete — just enough to go green"
-      refactor:
-        action: "Clean up code, tests stay green"
-        requirement: "Run tests after every change"
+results_sections: [Status, Files Created, Files Modified, Archives Built, Test Results (this pkg), Full Regression (all pkgs), Baseline Snapshot, Clean-Room Verification, Issues, Notes for Reviewer]
 
-  phase_3_govern:
-    name: "Govern"
-    steps:
-      - action: "Compute SHA256 for all modified files"
-      - action: "Update manifest"
-      - action: "Rebuild package archive using deterministic archiving"
-
-  phase_4_verify:
-    name: "Verify"
-    steps:
-      - action: "Run full regression"
-      - action: "E2E smoke test (from Section 8 of handoff spec)"
-
-  phase_5_report:
-    name: "Report"
-    steps:
-      - "Write RESULTS file following full template"
-      - "STOP. Report completion."
-
-# ═══════════════════════════════════════════
-# SECTION 6: RESULTS FILE STRUCTURE
-# What an agent produces when done
-# ═══════════════════════════════════════════
-
-results_file:
-  location: "[handoffs_dir]/<handoff_id>/<handoff_id>_RESULTS.md"
-  required_sections:
-    - name: "Status"
-      values: ["PASS", "FAIL", "PARTIAL"]
-    - name: "Files Created"
-      format: "path (SHA256: hash)"
-    - name: "Files Modified"
-      format: "path (SHA256 before: x, after: y)"
-    - name: "Archives Built"
-      format: "archive.tar.gz (SHA256: hash)"
-    - name: "Test Results — THIS PACKAGE"
-      fields: ["total", "passed", "failed", "skipped", "command"]
-    - name: "Full Regression Test — ALL PACKAGES"
-      fields: ["total", "passed", "failed", "skipped", "command", "new_failures"]
-    - name: "Baseline Snapshot"
-      fields: ["packages_installed", "total_tests"]
-    - name: "Clean-Room Verification"
-      fields: ["packages_installed", "install_order", "all_tests_pass"]
-    - name: "Issues Encountered"
-      content: "Problems, workarounds, deviations from spec"
-    - name: "Notes for Reviewer"
-      content: "Design decisions made outside spec"
-
-# ═══════════════════════════════════════════
-# SECTION 7: REVIEWER CHECKLIST
-# How results get validated
-# ═══════════════════════════════════════════
-
-reviewer_checklist:
-  items:
-    - "RESULTS file exists at correct location"
-    - "RESULTS file has ALL required sections"
-    - "Clean-Room Verification shows package count, install order, all tests PASS"
-    - "Baseline Snapshot shows package count, total tests"
-    - "Full regression was run (ALL packages, not just this one)"
-    - "No new test failures introduced"
-    - "Manifest hashes use correct format"
-    - "RESULTS file naming follows convention"
-
-# ═══════════════════════════════════════════
-# SECTION 8: LEXICON OF PRECISION
-# Anti-hallucination terminological constraints
-# ═══════════════════════════════════════════
+reviewer_checklist: [results exists, all sections present, clean-room complete, baseline present, full regression run, no new failures, correct hash format, correct naming]
 
 lexicon_of_precision:
-  purpose: "Prevent vague claims in agent output"
-  forbidden_terms:
-    - forbidden: "I updated all files"
-      required: "I modified <N> files (see SHA256 list below)."
-    - forbidden: "We log everything"
-      required: "I implemented logging for <specific state transitions>."
-    - forbidden: "It's fully tested"
-      required: "The test result shows <N> Passes / 0 Fails."
-    - forbidden: "The code is optimized"
-      required: "The logic was refactored to reduce <Specific Metric>."
-    - forbidden: "Integrated successfully"
-      required: "All tests pass and no undeclared files exist in the package."
-
-# ═══════════════════════════════════════════
-# SECTION 9: PROMPT ROUTING
-# Maps handoff type → prompt contract
-# ═══════════════════════════════════════════
+  - { forbidden: "I updated all files", required: "I modified N files (SHA256 list below)" }
+  - { forbidden: "We log everything", required: "I implemented logging for <specific transitions>" }
+  - { forbidden: "It's fully tested", required: "N Passes / 0 Fails" }
+  - { forbidden: "The code is optimized", required: "Refactored to reduce <metric>" }
+  - { forbidden: "Integrated successfully", required: "All tests pass, no undeclared files" }
 
 prompt_routing:
-  description: "Match handoff type to prompt contract, fill template variables, dispatch"
-  routes:
-    - type: "build"
-      prompt_contract: "BUILDER_PROMPT_CONTRACT.md"
-      version: "[current version]"
-      when: "New package, follow-up fix, cleanup, or upgrade"
-      status: "ACTIVE"
-
-    - type: "review"
-      prompt_contract: "REVIEWER_PROMPT_CONTRACT.md"
-      version: null
-      when: "Validating a completed handoff"
-      status: "NOT YET CREATED"
-
-    - type: "integration"
-      prompt_contract: "INTEGRATION_PROMPT_CONTRACT.md"
-      version: null
-      when: "Wiring packages into the system after a parallel wave"
-      status: "NOT YET CREATED"
-
-    - type: "conformance"
-      prompt_contract: "CONFORMANCE_PROMPT_CONTRACT.md"
-      version: null
-      when: "Checking built code against design intent"
-      status: "NOT YET CREATED"
+  - { type: build, contract: BUILDER_PROMPT_CONTRACT.md, status: ACTIVE }
+  - { type: review, contract: REVIEWER_PROMPT_CONTRACT.md, status: NOT_CREATED }
+  - { type: integration, contract: INTEGRATION_PROMPT_CONTRACT.md, status: NOT_CREATED }
+  - { type: conformance, contract: CONFORMANCE_PROMPT_CONTRACT.md, status: NOT_CREATED }

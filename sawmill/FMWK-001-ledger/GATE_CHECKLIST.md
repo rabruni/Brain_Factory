@@ -23,7 +23,7 @@ Open D1 "What the Ledger Does NOT Own." Must match SOURCE_MATERIAL.md exactly:
 If the agent added or removed items, it's reinterpreting boundaries.
 
 ## 5. Gap honesty
-Open D6 (Gap Analysis). There MUST be at least one OPEN item: snapshot format is explicitly OPEN in SOURCE_MATERIAL.md. If D6 says zero gaps, the agent is papering over unknowns.
+Open D6 (Gap Analysis). Snapshot format is explicitly OPEN in SOURCE_MATERIAL.md, but the packet may resolve or assume it if that resolution is documented. D6 should still end with zero OPEN items. If the snapshot question disappeared without a documented resolution or assumption, the agent is papering over unknowns.
 
 ## Recovery
 

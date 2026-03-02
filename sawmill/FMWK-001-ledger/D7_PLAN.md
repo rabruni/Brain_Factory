@@ -6,13 +6,13 @@ Meta: v:1.0.0 (matches D2) | status:Draft | constitution:D1 v1.0.0 | gap_analysi
 ## Summary
 
 FMWK-001-ledger is the append-only, hash-chained event store for DoPeJarMo. It wraps immudb
-behind a stable six-method interface (`connect`, `append`, `read`, `read_range`, `read_since`,
+behind a stable seven-method interface (`connect`, `append`, `read`, `read_range`, `read_since`,
 `get_tip`, `verify_chain`), assigns sequence numbers and hash-chain links internally so callers
 cannot corrupt the ordering invariant, and guarantees that any tool connecting directly to immudb
 on :3322 can verify the full chain without a running kernel. The first consumer after GENESIS is
 FMWK-002 (write-path), which calls `append()` for every state mutation and `read_since()` to
 replay events after a snapshot load. The build adds an immudb adapter to platform_sdk (satisfying
-D1 Article 7), implements the Ledger class in the FMWK-001 staging package, and produces 45+
+D1 Article 7), implements the Ledger class in the FMWK-001 staging package, and produces 50
 tests spanning unit (MockProvider), integration (Docker immudb), and cold-storage verification
 (SC-005: kernel stopped, CLI connects directly).
 
@@ -160,7 +160,9 @@ Caller → verify_chain(start=0, end=N)
 - Depends On: `errors.py`, `json` (stdlib), `hashlib` (stdlib)
 - Exposes: `compute_hash(event: dict) -> str`, `check_no_floats(obj: Any) -> None`, `canonical_bytes(event: dict) -> bytes`, `GENESIS_SENTINEL: str`
 
-**`platform_sdk/tier0_core/data/immudb_adapter.py`** (added to platform_sdk)
+**`platform_sdk/tier0_core/data/__init__.py` + `platform_sdk/tier0_core/data/immudb_adapter.py`** (added in staging)
+- Staging creates a `data/` package even though the live SDK currently has a single-file `data.py`.
+- The staging package is independent of the live SDK layout and re-exports the existing `data.py` functionality needed by the packet, plus the new immudb adapter.
 - Responsibility: immudb gRPC adapter following platform_sdk Protocol + MockProvider + RealProvider pattern. MockProvider is a dict-backed in-memory KV store. RealProvider wraps immudb SDK.
 - Implements: D4 SIDE-001, IN-007 (connect contract), SIDE-003 (reconnect)
 - Depends On: `platform_sdk.tier0_core.{config, secrets}`, immudb SDK (RealProvider only — isolated inside adapter)
@@ -192,21 +194,21 @@ staging/FMWK-001-ledger/
 ├── ledger/                         # FMWK-001 package
 │   ├── __init__.py                 # Exports: Ledger, LedgerConfig, LedgerEvent, VerifyChainResult, LedgerTip, errors
 │   ├── errors.py                   # Phase 0: ERR-001..004 error classes
-│   ├── schemas.py                  # Phase 0: E-001..E-009 dataclasses + EventTypeCatalog
+│   ├── schemas.py                  # Phase 0: E-001..E-009 dataclasses + EventTypeCatalog + LedgerConfig.from_env()
 │   ├── serializer.py               # Phase 0: canonical JSON + hash + float detection
 │   └── ledger.py                   # Phase 2: Ledger class (connect + all 6 methods)
 │
 ├── platform_sdk/                   # SDK additions (contributed to platform_sdk)
 │   └── tier0_core/
 │       └── data/
-│           ├── __init__.py         # Phase 1: add immudb exports
+│           ├── __init__.py         # Phase 1: staging-only re-export shim
 │           └── immudb_adapter.py   # Phase 1: Protocol + MockProvider + RealProvider
 │
 └── tests/
     ├── unit/
     │   ├── __init__.py
     │   ├── test_serializer.py      # Phase 0: 12 tests — serializer contract
-    │   └── test_ledger_unit.py     # Phase 2: 25 tests — all scenarios via MockProvider
+    │   └── test_ledger_unit.py     # Phase 2: 33 tests — all scenarios via MockProvider
     └── integration/
         ├── __init__.py
         ├── test_ledger_integration.py  # Phase 3: 6 tests — real Docker immudb
@@ -223,7 +225,7 @@ staging/FMWK-001-ledger/
 - What: canonical JSON output format, float detection at all nesting depths, null field inclusion, integer no-decimal, unicode literal output, genesis sentinel exact string, hash regex.
 - Mocking: None — pure functions.
 
-`test_ledger_unit.py` (25 tests):
+`test_ledger_unit.py` (33 tests):
 - What: all P0 and P1 scenarios against MockProvider. connect/append/read/get_tip/verify_chain error and success paths.
 - Mocking: `MockImmudbAdapter` (dict-backed in-memory KV, admin-call tracking, failure injection via pytest monkeypatch or mock failure flag).
 
@@ -242,8 +244,8 @@ staging/FMWK-001-ledger/
 
 ```bash
 cd staging/FMWK-001-ledger
-python -m pytest tests/unit/ -v --tb=short
-# Expected final line: "37 passed in <Xs>"
+python3 -m pytest tests/unit/ -v --tb=short
+# Expected final line: "45 passed in <Xs>"
 ```
 
 ---
@@ -259,7 +261,7 @@ python -m pytest tests/unit/ -v --tb=short
 | `ledger.py` | ~280 | High | append() mutex + atomicity; reconnect logic; verify_chain walk; all error paths |
 | `__init__.py` files | ~30 | Low | Exports only |
 | `test_serializer.py` | ~150 | Low | Pure function tests |
-| `test_ledger_unit.py` | ~450 | Medium | 25 tests; MockProvider failure injection |
+| `test_ledger_unit.py` | ~500 | Medium | 33 tests; MockProvider failure injection |
 | `test_ledger_integration.py` | ~200 | Medium | Requires Docker; test isolation |
 | `test_cold_storage.py` | ~100 | Medium | Subprocess kernel stop/start |
 | **Source total** | **~810** | | |
@@ -271,4 +273,4 @@ python -m pytest tests/unit/ -v --tb=short
 
 Greenfield — no prior FMWK-001 implementation exists. No migration path required.
 
-The immudb adapter contributed to `platform_sdk.tier0_core.data` is additive — existing platform_sdk modules are not modified, only extended with the new adapter file.
+The immudb adapter contributed in staging is additive — existing live platform_sdk modules are not modified. The live SDK's `platform_sdk/tier0_core/ledger.py` may be used as a structural Protocol example only; its `CreateDatabaseV2` connection behavior is prohibited by this packet.
