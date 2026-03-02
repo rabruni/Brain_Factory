@@ -78,7 +78,7 @@ TechDocs (MkDocs) serves the architecture docs through Backstage. This is the di
 
 2. **Catalog entity**: `catalog-info.yaml` registers Brain Factory as a Backstage component. This means the project is discoverable, its docs are browsable, and its lifecycle is tracked.
 
-3. **Sync hook**: `hooks/sync_docs.py` ensures `docs/architecture/` mirrors `architecture/` and `docs/sawmill-templates/` mirrors `Templates/`. One source, one rendering.
+3. **Sync hook**: `.githooks/pre-commit` ensures `docs/architecture/` mirrors `architecture/` and `docs/sawmill-templates/` mirrors `Templates/`. One source, one rendering.
 
 ---
 

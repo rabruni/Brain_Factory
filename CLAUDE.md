@@ -61,13 +61,9 @@ LLM structures at write time. HO2 retrieves mechanically at read time. Never rev
 | FMWK-005 | graph | In-memory directed graph, query interface |
 | FMWK-006 | package-lifecycle | Gates, install/uninstall, CLI tools, composition registry |
 
-## Template Compression Standard
+## Templates
 
-Templates exist in two formats:
-- `Templates/` — full human-readable versions. Humans author and review these.
-- `Templates/compressed/` — 73% fewer tokens, same information. Agents read ONLY these.
-
-Rules: `Templates/compressed/COMPRESSION_STANDARD.md`. When a full template changes, re-compress using those rules and verify by generating output from the compressed version.
+Two formats: `Templates/` (full, for humans) and `Templates/compressed/` (for agents). When a full template changes, re-compress per `Templates/compressed/COMPRESSION_STANDARD.md`.
 
 ## Build Process (Sawmill)
 

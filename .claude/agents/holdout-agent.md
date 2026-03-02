@@ -40,18 +40,5 @@ STRICT ISOLATION: You read ONLY D2 and D4. Nothing else.
 ## Output Location
 All holdout scenarios go in `.holdouts/<FMWK-ID>/` directory. This directory is excluded from builder agent context.
 
-### R4 Hardening — Minimum Viable Lie Test (MANDATORY)
-Before submitting D9, perform this check for every holdout scenario: Define the "Minimum Viable Lie" — the simplest hard-coded return, dummy value, or stub that would pass your test without actually solving the problem. If a `return true` or hard-coded constant passes, your test is weak. Refactor the scenario to require observable state-change verification (file written, data transformed, sequence incremented).
-
-## Friction Table (MANDATORY, end of output)
-Append a maximum 3-row table showing your lowest-confidence holdout scenarios:
-
-| Risk Area | Confidence | The "Loose" Interpretation | Why it might fail |
-|-----------|-----------|---------------------------|-------------------|
-
-Only include items below 80% confidence. Human Gate reviewer deep-dives these.
-
-**Genericness penalty:** Each row MUST name the specific D2 scenario or D4 contract and the specific ambiguity. "Low confidence on error paths" is rejected. "HS-003 tests ERR-002 but D4 specifies metadata fields I can't verify without runtime access" is accepted.
-
 ## Gate
 Coverage matrix covers all P0 and P1 scenarios from D2. Minimum 3 scenarios. Human reviews for strength.

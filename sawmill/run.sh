@@ -186,12 +186,13 @@ READING ORDER — read these files in this exact sequence:
 5. architecture/FWK-0-DRAFT.md — framework rules, decomposition standard
 6. architecture/BUILD-PLAN.md — what gets built, in what order
 7. ${SAWMILL_DIR}/TASK.md — YOUR ASSIGNMENT (which framework to spec)
-8. Templates/D1_CONSTITUTION.md — output template
-9. Templates/D2_SPECIFICATION.md — output template
-10. Templates/D3_DATA_MODEL.md — output template
-11. Templates/D4_CONTRACTS.md — output template
-12. Templates/D5_RESEARCH.md — output template
-13. Templates/D6_GAP_ANALYSIS.md — output template
+8. ${SAWMILL_DIR}/SOURCE_MATERIAL.md — detailed spec material (if it exists)
+9. Templates/compressed/D1_CONSTITUTION.md — output template
+10. Templates/compressed/D2_SPECIFICATION.md — output template
+11. Templates/compressed/D3_DATA_MODEL.md — output template
+12. Templates/compressed/D4_CONTRACTS.md — output template
+13. Templates/compressed/D5_RESEARCH.md — output template
+14. Templates/compressed/D6_GAP_ANALYSIS.md — output template
 
 OUTPUT: Write D1_CONSTITUTION.md, D2_SPECIFICATION.md, D3_DATA_MODEL.md,
 D4_CONTRACTS.md, D5_RESEARCH.md, D6_GAP_ANALYSIS.md to ${SAWMILL_DIR}/
@@ -227,11 +228,11 @@ READING ORDER — read these files in this exact sequence:
 5. ${SAWMILL_DIR}/D4_CONTRACTS.md
 6. ${SAWMILL_DIR}/D5_RESEARCH.md
 7. ${SAWMILL_DIR}/D6_GAP_ANALYSIS.md
-8. Templates/D7_PLAN.md — output template
-9. Templates/D8_TASKS.md — output template
-10. Templates/D10_AGENT_CONTEXT.md — output template
-11. Templates/BUILDER_HANDOFF_STANDARD.md — handoff format
-12. Templates/BUILDER_PROMPT_CONTRACT.md — prompt contract
+8. Templates/compressed/D7_PLAN.md — output template
+9. Templates/compressed/D8_TASKS.md — output template
+10. Templates/compressed/D10_AGENT_CONTEXT.md — output template
+11. Templates/compressed/BUILDER_HANDOFF_STANDARD.md — handoff format
+12. Templates/compressed/BUILDER_PROMPT_CONTRACT.md — prompt contract
 
 OUTPUT: Write D7_PLAN.md, D8_TASKS.md, D10_AGENT_CONTEXT.md,
 and BUILDER_HANDOFF.md to ${SAWMILL_DIR}/" &
@@ -246,7 +247,7 @@ YOU ARE THE HOLDOUT AGENT. You have STRICT ISOLATION.
 READING ORDER — read ONLY these files:
 1. ${SAWMILL_DIR}/D2_SPECIFICATION.md — behavioral spec
 2. ${SAWMILL_DIR}/D4_CONTRACTS.md — interface contracts
-3. Templates/D9_HOLDOUT_SCENARIOS.md — output template
+3. Templates/compressed/D9_HOLDOUT_SCENARIOS.md — output template
 
 DO NOT READ any other files. Not D1, D3, D5, D6, D7, D8, D10.
 Not BUILDER_HANDOFF. Not architecture/. Not src/.

@@ -145,6 +145,7 @@ Reads (in order):
   architecture/FWK-0-DRAFT.md        ← framework rules
   architecture/BUILD-PLAN.md          ← current plan
   sawmill/<FMWK>/TASK.md              ← which framework to spec
+  sawmill/<FMWK>/SOURCE_MATERIAL.md   ← detailed spec material (if it exists)
   Templates/compressed/D1-D6          ← output format (compressed for agents)
 
 Writes:

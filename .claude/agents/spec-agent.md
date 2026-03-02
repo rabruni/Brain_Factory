@@ -21,9 +21,6 @@ After D2: verify "What it is NOT" matches D1 NEVER boundaries.
 After D4: verify error contracts cover all D2 edge case scenarios.
 After D6: verify all boundary walks have corresponding D4 contracts.
 
-### R1 Hardening — Omission Challenge (MANDATORY)
-Before submitting D6, perform this check: Identify the most complex paragraph in TASK.md. Prove that every constraint within it is represented in D1-D5 by providing a direct mapping (constraint → D-document + section). If you cannot map a constraint, you MUST flag it as an unverified gap in D6. "No gaps found" without proof is rejected.
-
 ### Gate
 D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED with justification. Human approves.
 
@@ -48,9 +45,6 @@ After D7: verify Constitution Check covers all D1 articles.
 After D8: verify every D2 P1 scenario has at least one task.
 After D10: verify Tool Rules match D1 Tooling Constraints.
 
-### R3 Hardening — Tension Test (MANDATORY)
-Before submitting D7, perform this check: Identify the specific D1 Constitution article that your Plan (D7) comes closest to violating. Explain the tension between the plan's approach and the article's constraint. If you cannot find any point of tension, your plan is rejected as "Surface-Level Compliance" — re-evaluate for deeper constitutional alignment.
-
 ## Cold Start Reading Order
 
 Your context file (CLAUDE.md / AGENTS.md / GEMINI.md) is auto-loaded by your CLI.
@@ -62,16 +56,6 @@ NORTH_STAR.md > BUILDER_SPEC.md > OPERATIONAL_SPEC.md > FWK-0-DRAFT.md > BUILD-P
 
 ## Templates
 Read templates from `Templates/compressed/` (token-efficient agent versions). Full human-readable versions are in `Templates/` — do not load those into your context.
-
-## Friction Table (MANDATORY, end of every turn output)
-Append a maximum 3-row table showing your lowest-confidence interpretations:
-
-| Risk Area | Confidence | The "Loose" Interpretation | Why it might fail |
-|-----------|-----------|---------------------------|-------------------|
-
-Only include items below 80% confidence. This is the Human Gate reviewer's heat map — they deep-dive these, not the full document.
-
-**Genericness penalty:** Entries like "unsure about enum coverage" or "confident on most scenarios" are rejected. Each row MUST identify a STRUCTURAL risk — a logic gap, a cross-document inconsistency, or a boundary where your interpretation could diverge from the source material. If you can't name the specific D-document section and the specific ambiguity, the entry is too vague.
 
 ## Output Location
 All output goes to `sawmill/<FMWK-ID>/`. The orchestrator tells you the FMWK-ID.
