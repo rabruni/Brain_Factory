@@ -3,8 +3,8 @@
 # Sawmill Orchestrator — DoPeJarMo Build Pipeline
 # ============================================================================
 #
-# Usage:  ./sawmill/run.sh <FMWK-ID>
-# Example: ./sawmill/run.sh FMWK-001-ledger
+# Usage:  ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E]
+# Example: ./sawmill/run.sh FMWK-001-ledger --from-turn D
 #
 # This script orchestrates the five Sawmill turns (A-E) for a single
 # framework. It invokes agents, enforces gates, and manages retries.
@@ -26,7 +26,60 @@ set -euo pipefail
 
 # --- Configuration ---------------------------------------------------------
 
-FMWK="${1:?Usage: ./sawmill/run.sh <FMWK-ID> (e.g., FMWK-001-ledger)}"
+usage() {
+    echo "Usage: ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E]"
+    echo "Example: ./sawmill/run.sh FMWK-001-ledger --from-turn D"
+}
+
+FMWK=""
+FROM_TURN="A"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from-turn)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "Missing value for --from-turn" >&2
+                usage
+                exit 1
+            fi
+            FROM_TURN="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+        *)
+            if [ -n "$FMWK" ]; then
+                echo "Unexpected extra argument: $1" >&2
+                usage
+                exit 1
+            fi
+            FMWK="$1"
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$FMWK" ]; then
+    usage
+    exit 1
+fi
+
+case "$FROM_TURN" in
+    A|B|C|D|E) ;;
+    *)
+        echo "Invalid --from-turn value: ${FROM_TURN} (expected A, B, C, D, or E)" >&2
+        usage
+        exit 1
+        ;;
+esac
+
 SAWMILL_DIR="sawmill/${FMWK}"
 HOLDOUT_DIR=".holdouts/${FMWK}"
 STAGING_DIR="staging/${FMWK}"
@@ -46,12 +99,46 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+turn_rank() {
+    case "$1" in
+        A) echo 1 ;;
+        B) echo 2 ;;
+        C) echo 3 ;;
+        D) echo 4 ;;
+        E) echo 5 ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+FROM_TURN_RANK="$(turn_rank "$FROM_TURN")"
+
 # --- Helpers ----------------------------------------------------------------
 
 log() { echo -e "${BLUE}[sawmill]${NC} $1"; }
 gate() { echo -e "\n${YELLOW}>>> GATE: $1${NC}"; echo -e "${YELLOW}>>> Review the output, then press Enter to continue (or Ctrl+C to abort)${NC}"; read -r; }
 pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; }
+
+should_run_turn() {
+    local turn="$1"
+    local turn_rank_value
+    turn_rank_value="$(turn_rank "$turn")" || return 1
+    [ "$turn_rank_value" -ge "$FROM_TURN_RANK" ]
+}
+
+require_files() {
+    local label="$1"
+    shift
+
+    for f in "$@"; do
+        if [ ! -f "$f" ]; then
+            fail "Missing required ${label}: $f"
+            exit 1
+        fi
+    done
+}
 
 # --- Agent Invocation -------------------------------------------------------
 #
@@ -120,6 +207,7 @@ ${prompt}" \
 # --- Preflight --------------------------------------------------------------
 
 log "Sawmill run: ${FMWK}"
+log "From turn:     ${FROM_TURN}"
 log "Spec agent:    ${SPEC_AGENT}"
 log "Build agent:   ${BUILD_AGENT}"
 log "Holdout agent: ${HOLDOUT_AGENT}"
@@ -156,6 +244,10 @@ for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT; do
     esac
 done
 
+if [ "$BUILD_AGENT" = "claude" ]; then
+    command -v jq >/dev/null 2>&1 || { fail "BUILD_AGENT=claude but 'jq' is required and was not found"; exit 1; }
+fi
+
 # Create working directories
 mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
 
@@ -173,9 +265,10 @@ echo ""
 
 # --- Turn A: Spec Agent (D1-D6) --------------------------------------------
 
-log "═══ TURN A: Specification (D1-D6) ═══"
+if should_run_turn A; then
+    log "═══ TURN A: Specification (D1-D6) ═══"
 
-invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
+    invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
 "YOUR TASK: Generate D1-D6 specification documents for a framework.
 
 READING ORDER — read these files in this exact sequence:
@@ -199,23 +292,41 @@ D4_CONTRACTS.md, D5_RESEARCH.md, D6_GAP_ANALYSIS.md to ${SAWMILL_DIR}/
 
 GATE: D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED."
 
-# Verify D1-D6 exist
-for d in D1_CONSTITUTION D2_SPECIFICATION D3_DATA_MODEL D4_CONTRACTS D5_RESEARCH D6_GAP_ANALYSIS; do
-    if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
-        fail "Turn A did not produce ${SAWMILL_DIR}/${d}.md"
-        exit 1
-    fi
-done
-pass "Turn A produced D1-D6"
+    # Verify D1-D6 exist
+    for d in D1_CONSTITUTION D2_SPECIFICATION D3_DATA_MODEL D4_CONTRACTS D5_RESEARCH D6_GAP_ANALYSIS; do
+        if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
+            fail "Turn A did not produce ${SAWMILL_DIR}/${d}.md"
+            exit 1
+        fi
+    done
+    pass "Turn A produced D1-D6"
 
-gate "Review ${SAWMILL_DIR}/D1-D6 for completeness and accuracy"
+    gate "Review ${SAWMILL_DIR}/D1-D6 for completeness and accuracy"
+else
+    log "Skipping Turn A (--from-turn ${FROM_TURN})"
+fi
 
 # --- Turn B + C: Plan + Holdouts (parallel) ---------------------------------
 
-log "═══ TURN B + C: Plan (D7-D8-D10) + Holdouts (D9) — parallel ═══"
+if should_run_turn B || should_run_turn C; then
+    log "═══ TURN B + C: Plan (D7-D8-D10) + Holdouts (D9) — parallel ═══"
 
-# Turn B (background)
-invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
+    PID_B=""
+    PID_C=""
+
+    if should_run_turn B; then
+        if [ "$FROM_TURN" = "B" ]; then
+            require_files "Turn A output" \
+                "${SAWMILL_DIR}/D1_CONSTITUTION.md" \
+                "${SAWMILL_DIR}/D2_SPECIFICATION.md" \
+                "${SAWMILL_DIR}/D3_DATA_MODEL.md" \
+                "${SAWMILL_DIR}/D4_CONTRACTS.md" \
+                "${SAWMILL_DIR}/D5_RESEARCH.md" \
+                "${SAWMILL_DIR}/D6_GAP_ANALYSIS.md"
+        fi
+
+        # Turn B (background)
+        invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
 "YOUR TASK: Generate D7, D8, D10, and BUILDER_HANDOFF from approved D1-D6.
 
 YOU ARE IN TURN B. Your Turn A output has been approved by the operator.
@@ -236,10 +347,20 @@ READING ORDER — read these files in this exact sequence:
 
 OUTPUT: Write D7_PLAN.md, D8_TASKS.md, D10_AGENT_CONTEXT.md,
 and BUILDER_HANDOFF.md to ${SAWMILL_DIR}/" &
-PID_B=$!
+        PID_B=$!
+    else
+        log "Skipping Turn B (--from-turn ${FROM_TURN})"
+    fi
 
-# Turn C (background)
-invoke_agent "$HOLDOUT_AGENT" ".claude/agents/holdout-agent.md" \
+    if should_run_turn C; then
+        if [ "$FROM_TURN" = "C" ]; then
+            require_files "Turn A output" \
+                "${SAWMILL_DIR}/D2_SPECIFICATION.md" \
+                "${SAWMILL_DIR}/D4_CONTRACTS.md"
+        fi
+
+        # Turn C (background)
+        invoke_agent "$HOLDOUT_AGENT" ".claude/agents/holdout-agent.md" \
 "YOUR TASK: Write holdout test scenarios from D2 and D4 ONLY.
 
 YOU ARE THE HOLDOUT AGENT. You have STRICT ISOLATION.
@@ -253,66 +374,92 @@ DO NOT READ any other files. Not D1, D3, D5, D6, D7, D8, D10.
 Not BUILDER_HANDOFF. Not architecture/. Not src/.
 
 OUTPUT: Write D9_HOLDOUT_SCENARIOS.md to ${HOLDOUT_DIR}/" &
-PID_C=$!
-
-# Wait for both
-wait $PID_B || { fail "Turn B failed"; exit 1; }
-wait $PID_C || { fail "Turn C failed"; exit 1; }
-
-# Verify outputs
-for d in D7_PLAN D8_TASKS D10_AGENT_CONTEXT BUILDER_HANDOFF; do
-    if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
-        fail "Turn B did not produce ${SAWMILL_DIR}/${d}.md"
-        exit 1
+        PID_C=$!
+    else
+        log "Skipping Turn C (--from-turn ${FROM_TURN})"
     fi
-done
-pass "Turn B produced D7, D8, D10, BUILDER_HANDOFF"
 
-if [ ! -f "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md" ]; then
-    fail "Turn C did not produce ${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
-    exit 1
+    if [ -n "$PID_B" ]; then
+        wait "$PID_B" || { fail "Turn B failed"; exit 1; }
+
+        for d in D7_PLAN D8_TASKS D10_AGENT_CONTEXT BUILDER_HANDOFF; do
+            if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
+                fail "Turn B did not produce ${SAWMILL_DIR}/${d}.md"
+                exit 1
+            fi
+        done
+        pass "Turn B produced D7, D8, D10, BUILDER_HANDOFF"
+    fi
+
+    if [ -n "$PID_C" ]; then
+        wait "$PID_C" || { fail "Turn C failed"; exit 1; }
+
+        if [ ! -f "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md" ]; then
+            fail "Turn C did not produce ${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
+            exit 1
+        fi
+        pass "Turn C produced D9 holdout scenarios"
+    fi
+else
+    log "Skipping Turn B + C (--from-turn ${FROM_TURN})"
 fi
-pass "Turn C produced D9 holdout scenarios"
+
+if should_run_turn D && [ "$FROM_TURN_RANK" -le "$(turn_rank C)" ]; then
+    require_files "Turn B/C outputs" \
+        "${SAWMILL_DIR}/D7_PLAN.md" \
+        "${SAWMILL_DIR}/D8_TASKS.md" \
+        "${SAWMILL_DIR}/D10_AGENT_CONTEXT.md" \
+        "${SAWMILL_DIR}/BUILDER_HANDOFF.md" \
+        "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
+
+    gate "Review D7/D8/D10/D9 for completeness"
+fi
 
 # --- Turn D: Builder (up to 3 attempts) ------------------------------------
 
-log "═══ TURN D: Build ═══"
-
-ATTEMPT=0
 BUILD_PASSED=false
 
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    ATTEMPT=$((ATTEMPT + 1))
-    log "Build attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+if should_run_turn D; then
+    require_files "Turn D input" \
+        "${SAWMILL_DIR}/D10_AGENT_CONTEXT.md" \
+        "${SAWMILL_DIR}/BUILDER_HANDOFF.md"
 
-    # Compose retry context
-    RETRY_CONTEXT=""
-    if [ -f "${SAWMILL_DIR}/EVALUATION_ERRORS.md" ]; then
-        RETRY_CONTEXT="
+    log "═══ TURN D: Build ═══"
+
+    ATTEMPT=0
+
+    while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+        ATTEMPT=$((ATTEMPT + 1))
+        log "Build attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+
+        # Compose retry context
+        RETRY_CONTEXT=""
+        if [ -f "${SAWMILL_DIR}/EVALUATION_ERRORS.md" ]; then
+            RETRY_CONTEXT="
 RETRY CONTEXT (attempt ${ATTEMPT}):
 Read ${SAWMILL_DIR}/EVALUATION_ERRORS.md for one-line failure descriptions from the evaluator.
 Fix ONLY what failed. Do not rewrite passing code."
-    fi
+        fi
 
-    # --- Turn D is TWO invocations: 13Q gate, then build ---
-    #
-    # Problem: `claude -p` is atomic — the agent answers, the process exits.
-    # We cannot tell a dead process "now continue building."
-    #
-    # Solution: Split into two calls.
-    #   Call 1: Answer 13Q, write answers to file, exit.
-    #   Call 2: After human approval, resume session and build.
-    #
-    # For Claude: use --output-format json to capture session_id, then --resume.
-    # For Codex/Gemini: two separate invocations (no session resume).
+        # --- Turn D is TWO invocations: 13Q gate, then build ---
+        #
+        # Problem: `claude -p` is atomic — the agent answers, the process exits.
+        # We cannot tell a dead process "now continue building."
+        #
+        # Solution: Split into two calls.
+        #   Call 1: Answer 13Q, write answers to file, exit.
+        #   Call 2: After human approval, resume session and build.
+        #
+        # For Claude: use --output-format json to capture session_id, then --resume.
+        # For Codex/Gemini: two separate invocations (no session resume).
 
-    log "Turn D — Step 1: 13Q Gate"
+        log "Turn D — Step 1: 13Q Gate"
 
-    # Step 1: Builder answers 13 questions and writes them to a file
-    BUILDER_SESSION=""
-    case "$BUILD_AGENT" in
-        claude)
-            BUILDER_SESSION=$(claude -p "YOUR TASK: Answer the 13-question comprehension gate.
+        # Step 1: Builder answers 13 questions and writes them to a file
+        BUILDER_SESSION=""
+        case "$BUILD_AGENT" in
+            claude)
+                BUILDER_SESSION=$(claude -p "YOUR TASK: Answer the 13-question comprehension gate.
 
 READING ORDER — read these files in this EXACT sequence:
 1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
@@ -326,12 +473,12 @@ ${RETRY_CONTEXT}
 Answer all 13 questions (10 verification + 3 adversarial) per your role file.
 Write your answers to ${SAWMILL_DIR}/13Q_ANSWERS.md.
 Then STOP. Do NOT write any code, create any directories, or make any plans." \
-                --append-system-prompt "$(cat .claude/agents/builder.md)" \
-                --allowedTools "Read,Edit,Write,Glob,Grep,Bash" \
-                --output-format json | jq -r '.session_id')
-            ;;
-        *)
-            invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
+                    --append-system-prompt "$(cat .claude/agents/builder.md)" \
+                    --allowedTools "Read,Edit,Write,Glob,Grep,Bash" \
+                    --output-format json | jq -r '.session_id')
+                ;;
+            *)
+                invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
 "YOUR TASK: Answer the 13-question comprehension gate.
 
 READING ORDER — read these files in this EXACT sequence:
@@ -346,41 +493,58 @@ ${RETRY_CONTEXT}
 Answer all 13 questions (10 verification + 3 adversarial) per your role file.
 Write your answers to ${SAWMILL_DIR}/13Q_ANSWERS.md.
 Then STOP. Do NOT write any code."
-            ;;
-    esac
+                ;;
+        esac
 
-    # Verify 13Q answers were produced
-    if [ ! -f "${SAWMILL_DIR}/13Q_ANSWERS.md" ]; then
-        fail "Builder did not produce ${SAWMILL_DIR}/13Q_ANSWERS.md"
-        if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-            log "Will retry..."
-            continue
-        else
-            fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
-            exit 1
+        # Verify 13Q answers were produced
+        if [ ! -f "${SAWMILL_DIR}/13Q_ANSWERS.md" ]; then
+            fail "Builder did not produce ${SAWMILL_DIR}/13Q_ANSWERS.md"
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                log "Will retry..."
+                continue
+            else
+                fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                exit 1
+            fi
         fi
-    fi
-    pass "Builder produced 13Q answers"
+        pass "Builder produced 13Q answers"
 
-    gate "Review ${SAWMILL_DIR}/13Q_ANSWERS.md — approve or reject"
+        gate "Review ${SAWMILL_DIR}/13Q_ANSWERS.md — approve or reject"
 
-    # Step 2: Builder proceeds to DTT (resume session if Claude, new call otherwise)
-    log "Turn D — Step 2: DTT Build"
+        # Step 2: Builder proceeds to DTT (resume session if Claude, new call otherwise)
+        log "Turn D — Step 2: DTT Build"
 
-    case "$BUILD_AGENT" in
-        claude)
-            if [ -n "$BUILDER_SESSION" ]; then
-                # Resume the same session — builder retains full context
-                claude -p "Your 13Q answers have been APPROVED. Proceed to implementation.
+        case "$BUILD_AGENT" in
+            claude)
+                if [ -n "$BUILDER_SESSION" ]; then
+                    # Resume the same session — builder retains full context
+                    claude -p "Your 13Q answers have been APPROVED. Proceed to implementation.
 
 STEP 2: DTT (Design-Test-Then-implement) per behavior in the Test Plan.
 STEP 3: Run full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}.
 
 DO NOT re-read the spec. You already have it from Step 1." \
-                    --resume "$BUILDER_SESSION" \
-                    --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
-            else
-                # Fallback: new session with full context
+                        --resume "$BUILDER_SESSION" \
+                        --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+                else
+                    # Fallback: new session with full context
+                    invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
+"YOUR TASK: Build code. Your 13Q answers were approved.
+
+READING ORDER:
+1. AGENT_BOOTSTRAP.md
+2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md
+3. ${SAWMILL_DIR}/BUILDER_HANDOFF.md
+4. ${SAWMILL_DIR}/13Q_ANSWERS.md — your approved answers for reference
+
+DO NOT READ: .holdouts/*, EVALUATION_REPORT.md
+${RETRY_CONTEXT}
+
+Proceed directly to DTT. Do NOT re-answer the 13 questions.
+STEP 2: DTT per behavior. STEP 3: Full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}."
+                fi
+                ;;
+            *)
                 invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
 "YOUR TASK: Build code. Your 13Q answers were approved.
 
@@ -395,51 +559,39 @@ ${RETRY_CONTEXT}
 
 Proceed directly to DTT. Do NOT re-answer the 13 questions.
 STEP 2: DTT per behavior. STEP 3: Full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}."
+                ;;
+        esac
+
+        # Verify builder outputs
+        if [ ! -f "${SAWMILL_DIR}/RESULTS.md" ]; then
+            fail "Builder did not produce RESULTS.md"
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                log "Will retry..."
+                continue
+            else
+                fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                exit 1
             fi
-            ;;
-        *)
-            invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
-"YOUR TASK: Build code. Your 13Q answers were approved.
-
-READING ORDER:
-1. AGENT_BOOTSTRAP.md
-2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md
-3. ${SAWMILL_DIR}/BUILDER_HANDOFF.md
-4. ${SAWMILL_DIR}/13Q_ANSWERS.md — your approved answers for reference
-
-DO NOT READ: .holdouts/*, EVALUATION_REPORT.md
-${RETRY_CONTEXT}
-
-Proceed directly to DTT. Do NOT re-answer the 13 questions.
-STEP 2: DTT per behavior. STEP 3: Full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}."
-            ;;
-    esac
-
-    # Verify builder outputs
-    if [ ! -f "${SAWMILL_DIR}/RESULTS.md" ]; then
-        fail "Builder did not produce RESULTS.md"
-        if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-            log "Will retry..."
-            continue
-        else
-            fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
-            exit 1
         fi
-    fi
 
-    pass "Builder produced code and RESULTS.md"
+        pass "Builder produced code and RESULTS.md"
 
-    # --- Turn E: Evaluator --------------------------------------------------
+        if ! should_run_turn E; then
+            BUILD_PASSED=true
+            break
+        fi
 
-    log "═══ TURN E: Evaluation ═══"
+        # --- Turn E: Evaluator --------------------------------------------------
 
-    invoke_agent "$EVAL_AGENT" ".claude/agents/evaluator.md" \
+        log "═══ TURN E: Evaluation ═══"
+
+        invoke_agent "$EVAL_AGENT" ".claude/agents/evaluator.md" \
 "YOUR TASK: Run holdout test scenarios against the built code.
 
 YOU ARE THE EVALUATOR. You have STRICT ISOLATION.
 
 READING ORDER — read ONLY these:
-1. ${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md — the test scenarios
+1. $(pwd)/${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md — the test scenarios from the MAIN worktree path (not the build branch worktree)
 2. Check out branch ${BRANCH} in a clean worktree — the code to test
 
 DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
@@ -456,27 +608,71 @@ OUTPUT:
   Write full report to ${SAWMILL_DIR}/EVALUATION_REPORT.md
   Write one-line failure descriptions to ${SAWMILL_DIR}/EVALUATION_ERRORS.md"
 
-    # Check verdict — look for explicit verdict line, not just "PASS" anywhere
-    if [ -f "${SAWMILL_DIR}/EVALUATION_REPORT.md" ]; then
-        if grep -qE "^(##\s*)?Final [Vv]erdict:\s*PASS" "${SAWMILL_DIR}/EVALUATION_REPORT.md"; then
-            BUILD_PASSED=true
-            pass "Evaluation: PASS"
-            break
+        # Check verdict — allow markdown formatting around the verdict line
+        if [ -f "${SAWMILL_DIR}/EVALUATION_REPORT.md" ]; then
+            if grep -qiE "Final\s*[Vv]erdict.*PASS" "${SAWMILL_DIR}/EVALUATION_REPORT.md"; then
+                BUILD_PASSED=true
+                pass "Evaluation: PASS"
+                break
+            else
+                fail "Evaluation: FAIL (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                    fail "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                    exit 1
+                fi
+            fi
         else
-            fail "Evaluation: FAIL (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+            fail "Evaluator did not produce EVALUATION_REPORT.md"
             if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                fail "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                fail "Build failed after ${MAX_ATTEMPTS} attempts."
                 exit 1
             fi
         fi
-    else
-        fail "Evaluator did not produce EVALUATION_REPORT.md"
-        if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-            fail "Build failed after ${MAX_ATTEMPTS} attempts."
+    done
+elif should_run_turn E; then
+    require_files "Turn E input" "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
+
+    log "═══ TURN E: Evaluation ═══"
+
+    invoke_agent "$EVAL_AGENT" ".claude/agents/evaluator.md" \
+"YOUR TASK: Run holdout test scenarios against the built code.
+
+YOU ARE THE EVALUATOR. You have STRICT ISOLATION.
+
+READING ORDER — read ONLY these:
+1. $(pwd)/${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md — the test scenarios from the MAIN worktree path (not the build branch worktree)
+2. Check out branch ${BRANCH} in a clean worktree — the code to test
+
+DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
+             builder commit messages, architecture/*, sawmill/* specs
+
+PROCESS:
+  For each scenario: run Setup → Execute → Verify → Cleanup, 3 times.
+  2/3 pass = scenario PASS.
+  Run P0 first — if any P0 FAIL, STOP immediately.
+  Then P1, then P2.
+  90% overall required.
+
+OUTPUT:
+  Write full report to ${SAWMILL_DIR}/EVALUATION_REPORT.md
+  Write one-line failure descriptions to ${SAWMILL_DIR}/EVALUATION_ERRORS.md"
+
+    if [ -f "${SAWMILL_DIR}/EVALUATION_REPORT.md" ]; then
+        if grep -qiE "Final\s*[Vv]erdict.*PASS" "${SAWMILL_DIR}/EVALUATION_REPORT.md"; then
+            BUILD_PASSED=true
+            pass "Evaluation: PASS"
+        else
+            fail "Evaluation: FAIL"
             exit 1
         fi
+    else
+        fail "Evaluator did not produce EVALUATION_REPORT.md"
+        exit 1
     fi
-done
+else
+    fail "Nothing to do: --from-turn ${FROM_TURN} skips all pipeline turns"
+    exit 1
+fi
 
 # --- Final ------------------------------------------------------------------
 
