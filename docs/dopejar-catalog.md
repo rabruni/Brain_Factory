@@ -27,8 +27,7 @@ kernel ──dependsOn──→ ledger-immudb
                    ──→ ollama-inference
        ──providesApis──→ kernel-websocket-api
 
-brain-factory ──consumesApis──→ platform-sdk-mcp-api
-              ──dependsOn──→ platform-sdk
+brain-factory ──dependsOn──→ platform-sdk
               ──dependsOn──→ kernel
 ```
 

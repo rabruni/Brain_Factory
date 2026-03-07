@@ -91,7 +91,22 @@ This repo uses the Sawmill L3 dark factory process. Five turns:
 - **Turn D** (Builder): D10 + Handoff → Code + Tests. Gate: 13Q + all tests pass.
 - **Turn E** (Evaluator): D9 + PR code ONLY → Evaluation. Gate: 2/3 per scenario, 90% overall.
 
-Agent definitions: `.claude/agents/`
+Agent role files: `.claude/agents/`
+
+| Role | File | What it does |
+|------|------|-------------|
+| Orchestrator | `orchestrator.md` | Dispatch-only HO2. Reads state, decides next turn, emits work orders, invokes agents, tracks gates/retries, reports verdict. |
+| Spec Agent | `spec-agent.md` | Writes D1-D6 (Turn A), then D7-D10 + handoff (Turn B). |
+| Holdout Agent | `holdout-agent.md` | Writes D9 holdout scenarios from D2+D4 only (Turn C). |
+| Builder | `builder.md` | Implements code from handoff. 13Q gate, then DTT (Turn D). |
+| Evaluator | `evaluator.md` | Runs holdout scenarios against built code (Turn E). |
+| Auditor | `auditor.md` | Audits portal coherence — finds contradictions, gaps, stale content across all files. |
+| Portal Steward | `portal-steward.md` | Maintains docs/, mkdocs.yml, catalog-info.yaml alignment with source truth. Fixes portal drift. |
+
+To become any role, read its file: e.g., "you are the orchestrator" → read `.claude/agents/orchestrator.md`, follow its instructions.
+
+To invoke another role from within a session, use the Agent tool (subagent) with the role file content as instructions. A subagent call is a work-order dispatch.
+
 Templates: `Templates/`
 Holdouts: `.holdouts/` (NEVER shown to builder agents)
 
@@ -106,7 +121,7 @@ Holdouts: `.holdouts/` (NEVER shown to builder agents)
 
 ```
 sawmill/<FMWK-ID>/          <- Spec packs, handoffs, results per framework
-  TASK.md                   <- Orchestrator assigns work here
+  TASK.md                   <- Orchestrator work-order / dispatch artifact
   D1-D6                     <- Spec agent output (Turn A)
   D7, D8, D10               <- Plan agent output (Turn B)
   BUILDER_HANDOFF.md         <- Builder's task (Turn B output)

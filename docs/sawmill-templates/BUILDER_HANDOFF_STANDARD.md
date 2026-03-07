@@ -9,9 +9,9 @@
 ```
 IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)
 
-## Required Sections (ALL 10, in this exact order, no exceptions)
+## Required Sections (ALL 13, in this exact order, no exceptions)
 1. **Mission** — one paragraph: what + why + package ID(s)
-2. **Critical Constraints** — numbered non-negotiable rules. ALWAYS includes ALL of: staging-only, DTT, package everything, E2E verify, no hardcoding, no file replacement, deterministic archives, results file, full regression of ALL packages, baseline snapshot.
+2. **Critical Constraints** — numbered non-negotiable rules. ALWAYS includes ALL of: staging-only, DTT, package everything, E2E verify, no hardcoding, no file replacement, deterministic archives, results file, full regression of ALL packages, baseline snapshot, TDD discipline (`Templates/TDD_AND_DEBUGGING.md` — delete code written before tests).
 3. **Architecture/Design** — diagrams, data flows, every interface and boundary
 4. **Implementation Steps** — numbered, strictly ordered, with file paths + function signatures. Every step that enforces a safety or architectural constraint MUST include a one-line "Why" (e.g., "Step 4: Implement mutex around append — WHY: immudb gRPC is not thread-safe for sequence increments"). Without the Why, builders implement the letter but not the spirit.
 5. **Package Plan** — per package: ID, layer, every asset, all dependencies, manifest
@@ -20,6 +20,9 @@ IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)
 8. **E2E Verification** — exact copy-paste commands + expected output, no exceptions
 9. **Files Summary** — | File | Location | Action (CREATE/MODIFY) | for every file, no omissions
 10. **Design Principles** — 4-6 non-negotiable design rules
+11. **Verification Discipline** — EVERY "tests pass" claim requires pasted output from THIS session. RESULTS.md MUST include full test command + output, not just counts. Red flags: "should work," "probably passes," "I'm confident" without evidence. Reference: `Templates/TDD_AND_DEBUGGING.md`
+12. **Mid-Build Checkpoint** — after ALL unit tests pass: report (count + pasted output + files created + spec deviations) → WAIT for human greenlight → THEN proceed to integration tests. No exceptions.
+13. **Self-Reflection** — before reporting ANY step complete: code matches spec (D2/D4)? Edge cases from D8 covered? Code understandable in 6 months? TDD followed for EVERY behavior (check commit history)? Code written before test? DELETE and redo.
 
 ## Results File (MANDATORY — every handoff agent MUST write this when finished, no exceptions)
 Required sections, ALL mandatory: Status (PASS|FAIL|PARTIAL) | Files Created (path + SHA256 for every file) | Files Modified (SHA256 before + after) | Archives Built (SHA256) | Test Results THIS PACKAGE (total/passed/failed/skipped/command) | Full Regression ALL PACKAGES (same + new_failures list or NONE) | Baseline Snapshot (packages installed, total tests) | Clean-Room Verification (packages, install order, all tests pass after each install) | Issues Encountered | Notes for Reviewer | Session Log (key decisions, blockers resolved, architectural choices not in spec, retry context)

@@ -50,6 +50,7 @@ Numbered list of non-negotiable rules. Always includes:
 8. **Results file.** When finished, write a results file following the template below.
 9. **Full regression test.** Run ALL package tests (not just yours) and report results.
 10. **Baseline snapshot.** Include a baseline snapshot so the next agent can diff against it.
+11. **TDD and debugging discipline.** Follow `Templates/TDD_AND_DEBUGGING.md` for all coding. Delete code written before tests.
 
 Add task-specific constraints as needed.
 
@@ -89,6 +90,37 @@ Table of every file created or modified:
 
 ### 10. Design Principles
 Non-negotiable design rules for this specific component. Usually 4-6 items.
+
+### 11. Verification Discipline
+
+Every claim of "tests pass" or "build succeeds" MUST include evidence from THIS session:
+
+- Every test-run claim must include actual output (e.g., "45 passed in 2.3s")
+- Every "tests pass" must be from THIS session — not assumed, not cached, not recalled from a previous run
+- RESULTS.md must include pasted final test output (not just counts — include the command and its full output)
+- Red flags for the evaluator: "should work," "probably passes," "I'm confident" without pasted evidence
+
+Builder reference: `Templates/TDD_AND_DEBUGGING.md`
+
+### 12. Mid-Build Checkpoint
+
+After all unit tests pass, the builder reports status before proceeding to integration tests:
+
+1. **Report**: tests run (count + pasted output), files created, deviations from spec
+2. **Wait**: Human reviews and greenlights integration phase
+3. **Proceed**: Only after explicit greenlight
+
+This is a natural pause point. It catches cascading errors early without adding overhead. If the builder has misunderstood the spec, it's cheaper to catch it here than after integration tests fail.
+
+### 13. Self-Reflection
+
+Before reporting any implementation step complete, the builder reviews own work:
+
+- Does the code match the spec? Check D2/D4 contracts against actual implementation.
+- Are there edge cases I missed? Check D8 scenarios — are they all covered?
+- Would I understand this code in 6 months? If not, simplify.
+- Did I follow TDD for every behavior? Check commit history — one behavior per commit.
+- Is there code I wrote before its test? Delete it and start over.
 
 ---
 

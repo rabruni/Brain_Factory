@@ -1,0 +1,233 @@
+# Portal Map — source-to-surface mapping
+# Maintained by: portal-steward
+# Validated by: docs/validate_portal_map.py
+#
+# ─── Schema ───
+#
+# Each entry is a dict with these keys:
+#
+#   sync       REQUIRED  One of: mirror, narrative, status
+#   source     Path to origin file (relative to repo root)
+#   mirror     Path to docs/ copy that tracks source
+#   narrative  Path to steward-authored or status page
+#
+# ─── Constraints ───
+#
+#   1. Every entry MUST have exactly one of: source, narrative
+#   2. source and narrative are mutually exclusive
+#   3. sync: mirror  → source REQUIRED; mirror OPTIONAL (absent = portal infra, no docs/ copy)
+#   4. sync: narrative or status → narrative REQUIRED; source and mirror FORBIDDEN
+#   5. All declared paths must exist on disk
+#   6. No key other than source, mirror, narrative, sync is allowed
+
+entries:
+  # ─── Architecture (mirrors) ───
+  - source: architecture/NORTH_STAR.md
+    mirror: docs/architecture/NORTH_STAR.md
+    sync: mirror
+
+  - source: architecture/BUILDER_SPEC.md
+    mirror: docs/architecture/BUILDER_SPEC.md
+    sync: mirror
+
+  - source: architecture/OPERATIONAL_SPEC.md
+    mirror: docs/architecture/OPERATIONAL_SPEC.md
+    sync: mirror
+
+  - source: architecture/BUILD-PLAN.md
+    mirror: docs/architecture/BUILD-PLAN.md
+    sync: mirror
+
+  - source: architecture/FRAMEWORK_REGISTRY.md
+    mirror: docs/architecture/FRAMEWORK_REGISTRY.md
+    sync: mirror
+
+  - source: architecture/AGENT_CONSTRAINTS.md
+    mirror: docs/architecture/AGENT_CONSTRAINTS.md
+    sync: mirror
+
+  - source: architecture/SAWMILL_ANALYSIS.md
+    mirror: docs/architecture/SAWMILL_ANALYSIS.md
+    sync: mirror
+
+  - source: architecture/FWK-0-DRAFT.md
+    mirror: docs/architecture/FWK-0-DRAFT.md
+    sync: mirror
+
+  - source: architecture/FWK-0-OPEN-QUESTIONS.md
+    mirror: docs/architecture/FWK-0-OPEN-QUESTIONS.md
+    sync: mirror
+
+  - source: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
+    mirror: docs/architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
+    sync: mirror
+
+  # ─── Agent roles (mirrors) ───
+  - source: .claude/agents/orchestrator.md
+    mirror: docs/agents/orchestrator.md
+    sync: mirror
+
+  - source: .claude/agents/spec-agent.md
+    mirror: docs/agents/spec-agent.md
+    sync: mirror
+
+  - source: .claude/agents/holdout-agent.md
+    mirror: docs/agents/holdout-agent.md
+    sync: mirror
+
+  - source: .claude/agents/builder.md
+    mirror: docs/agents/builder.md
+    sync: mirror
+
+  - source: .claude/agents/evaluator.md
+    mirror: docs/agents/evaluator.md
+    sync: mirror
+
+  - source: .claude/agents/auditor.md
+    mirror: docs/agents/auditor.md
+    sync: mirror
+
+  - source: .claude/agents/portal-steward.md
+    mirror: docs/agents/portal-steward.md
+    sync: mirror
+
+  # ─── Templates (mirrors) ───
+  - source: Templates/GUIDE.md
+    mirror: docs/sawmill-templates/GUIDE.md
+    sync: mirror
+
+  - source: Templates/D1_CONSTITUTION.md
+    mirror: docs/sawmill-templates/D1_CONSTITUTION.md
+    sync: mirror
+
+  - source: Templates/D2_SPECIFICATION.md
+    mirror: docs/sawmill-templates/D2_SPECIFICATION.md
+    sync: mirror
+
+  - source: Templates/D3_DATA_MODEL.md
+    mirror: docs/sawmill-templates/D3_DATA_MODEL.md
+    sync: mirror
+
+  - source: Templates/D4_CONTRACTS.md
+    mirror: docs/sawmill-templates/D4_CONTRACTS.md
+    sync: mirror
+
+  - source: Templates/D5_RESEARCH.md
+    mirror: docs/sawmill-templates/D5_RESEARCH.md
+    sync: mirror
+
+  - source: Templates/D6_GAP_ANALYSIS.md
+    mirror: docs/sawmill-templates/D6_GAP_ANALYSIS.md
+    sync: mirror
+
+  - source: Templates/D7_PLAN.md
+    mirror: docs/sawmill-templates/D7_PLAN.md
+    sync: mirror
+
+  - source: Templates/D8_TASKS.md
+    mirror: docs/sawmill-templates/D8_TASKS.md
+    sync: mirror
+
+  - source: Templates/D9_HOLDOUT_SCENARIOS.md
+    mirror: docs/sawmill-templates/D9_HOLDOUT_SCENARIOS.md
+    sync: mirror
+
+  - source: Templates/D10_AGENT_CONTEXT.md
+    mirror: docs/sawmill-templates/D10_AGENT_CONTEXT.md
+    sync: mirror
+
+  - source: Templates/BUILDER_HANDOFF_STANDARD.md
+    mirror: docs/sawmill-templates/BUILDER_HANDOFF_STANDARD.md
+    sync: mirror
+
+  - source: Templates/TDD_AND_DEBUGGING.md
+    mirror: docs/sawmill-templates/TDD_AND_DEBUGGING.md
+    sync: mirror
+
+  - source: Templates/BUILDER_PROMPT_CONTRACT.md
+    mirror: docs/sawmill-templates/BUILDER_PROMPT_CONTRACT.md
+    sync: mirror
+
+  - source: Templates/PRODUCT_SPEC_FRAMEWORK.md
+    mirror: docs/sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
+    sync: mirror
+
+  - source: Templates/AGENT_BUILD_PROCESS.yaml
+    mirror: docs/sawmill-templates/AGENT_BUILD_PROCESS.yaml
+    sync: mirror
+
+  - source: Templates/compressed/COMPRESSION_STANDARD.md
+    mirror: docs/compressed/COMPRESSION_STANDARD.md
+    sync: mirror
+
+  # ─── Sawmill (mirrors) ───
+  - source: sawmill/COLD_START.md
+    mirror: docs/sawmill/COLD_START.md
+    sync: mirror
+
+  - source: sawmill/DEPENDENCIES.yaml
+    sync: mirror
+
+  # ─── Narrative pages (steward-authored) ───
+  - narrative: docs/index.md
+    sync: narrative
+
+  - narrative: docs/agent-onboarding.md
+    sync: narrative
+
+  - source: CLAUDE.md
+    mirror: docs/institutional-context.md
+    sync: mirror
+
+  - narrative: docs/dopejar-catalog.md
+    sync: narrative
+
+  - narrative: docs/sawmill/PIPELINE_VISUAL.md
+    sync: narrative
+
+  - narrative: docs/PORTAL_CONSTITUTION.md
+    sync: narrative
+
+  - source: PORTAL_TRUTH_MODEL.md
+    mirror: docs/PORTAL_TRUTH_MODEL.md
+    sync: mirror
+
+  - source: SYSTEM_EXECUTION_PLAN.md
+    mirror: docs/SYSTEM_EXECUTION_PLAN.md
+    sync: mirror
+
+  # ─── Framework build pages (status) ───
+  - narrative: docs/sawmill/FMWK-001-ledger.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-002-write-path.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-003-orchestration.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-004-execution.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-005-graph.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-006-package-lifecycle.md
+    sync: status
+
+  - narrative: docs/sawmill/FMWK-900-sawmill-smoke.md
+    sync: status
+
+  # ─── Status / audit ───
+  - narrative: docs/status.md
+    sync: status
+
+  - narrative: docs/PORTAL_STATUS.md
+    sync: status
+
+  # ─── Portal infrastructure ───
+  - source: catalog-info.yaml
+    sync: mirror
+
+  - source: mkdocs.yml
+    sync: mirror

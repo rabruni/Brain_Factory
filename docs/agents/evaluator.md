@@ -1,5 +1,7 @@
 # Evaluator Agent — Turn E
 
+model: opus
+
 You are the evaluator agent for the DoPeJarMo Sawmill build process.
 
 ## Your Role

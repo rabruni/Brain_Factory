@@ -6,20 +6,33 @@ docs_dir: docs
 site_dir: /tmp/brain_factory_site
 nav:
   - Home: index.md
-  - Institutional Context: institutional-context.md
+  - Status and Gaps: status.md
+  - How It Works:
+      - Pipeline Overview: sawmill/PIPELINE_VISUAL.md
+      - Agent Onboarding: agent-onboarding.md
+      - Cold Start Protocol: sawmill/COLD_START.md
+      - Institutional Context: institutional-context.md
   - Architecture:
-      - NORTH STAR — Read This First: architecture/NORTH_STAR.md
-      - BUILDER SPEC — Assembly Instructions: architecture/BUILDER_SPEC.md
-      - OPERATIONAL SPEC — How DoPeJarMo Runs: architecture/OPERATIONAL_SPEC.md
-      - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
+      - NORTH STAR — Why: architecture/NORTH_STAR.md
+      - BUILDER SPEC — What: architecture/BUILDER_SPEC.md
+      - OPERATIONAL SPEC — How: architecture/OPERATIONAL_SPEC.md
       - Build Plan: architecture/BUILD-PLAN.md
-      - Fwk 0 Draft: architecture/FWK-0-DRAFT.md
-      - Fwk 0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
-      - Fwk 0 Pragmatic Resolutions: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
-      - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
       - Framework Registry: architecture/FRAMEWORK_REGISTRY.md
+      - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
+      - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
+      - FWK-0 Draft: architecture/FWK-0-DRAFT.md
+      - FWK-0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
+      - FWK-0 Pragmatic Resolutions: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
+  - Agent Roles:
+      - Orchestrator (Pipeline Manager): agents/orchestrator.md
+      - Spec Agent (A — Spec Writing + B — Build Planning): agents/spec-agent.md
+      - Holdout Agent (C — Acceptance Test Writing): agents/holdout-agent.md
+      - Builder (D — Code Building): agents/builder.md
+      - Evaluator (E — Evaluation): agents/evaluator.md
+      - Auditor (Portal Coherence): agents/auditor.md
+      - Portal Steward (Documentation Alignment): agents/portal-steward.md
   - Templates:
-      - Guide: sawmill-templates/GUIDE.md
+      - Guide — How to Use D1-D10: sawmill-templates/GUIDE.md
       - D1 — Constitution: sawmill-templates/D1_CONSTITUTION.md
       - D2 — Specification: sawmill-templates/D2_SPECIFICATION.md
       - D3 — Data Model: sawmill-templates/D3_DATA_MODEL.md
@@ -30,19 +43,28 @@ nav:
       - D8 — Tasks: sawmill-templates/D8_TASKS.md
       - D9 — Holdout Scenarios: sawmill-templates/D9_HOLDOUT_SCENARIOS.md
       - D10 — Agent Context: sawmill-templates/D10_AGENT_CONTEXT.md
-      - Agent Build Process: sawmill-templates/AGENT_BUILD_PROCESS.yaml
+  - Build Standards:
       - Builder Handoff Standard: sawmill-templates/BUILDER_HANDOFF_STANDARD.md
+      - TDD and Debugging: sawmill-templates/TDD_AND_DEBUGGING.md
       - Builder Prompt Contract: sawmill-templates/BUILDER_PROMPT_CONTRACT.md
+      - Agent Build Process: sawmill-templates/AGENT_BUILD_PROCESS.yaml
       - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
-  - Sawmill Pipeline:
-      - Cold Start Protocol: sawmill/COLD_START.md
-  - Agent Roles:
-      - Spec Agent (Turn A + B): agents/spec-agent.md
-      - Holdout Agent (Turn C): agents/holdout-agent.md
-      - Builder (Turn D): agents/builder.md
-      - Evaluator (Turn E): agents/evaluator.md
+      - Compression Standard: compressed/COMPRESSION_STANDARD.md
+  - Framework Builds:
+      - FMWK-001 Ledger: sawmill/FMWK-001-ledger.md
+      - FMWK-002 Write-Path: sawmill/FMWK-002-write-path.md
+      - FMWK-003 Orchestration: sawmill/FMWK-003-orchestration.md
+      - FMWK-004 Execution: sawmill/FMWK-004-execution.md
+      - FMWK-005 Graph: sawmill/FMWK-005-graph.md
+      - FMWK-006 Package-Lifecycle: sawmill/FMWK-006-package-lifecycle.md
+      - FMWK-900 Sawmill Smoke: sawmill/FMWK-900-sawmill-smoke.md
+  - Portal Governance:
+      - Portal Truth Model: PORTAL_TRUTH_MODEL.md
+      - System Execution Plan: SYSTEM_EXECUTION_PLAN.md
+      - Portal Constitution: PORTAL_CONSTITUTION.md
+      - Portal Status: PORTAL_STATUS.md
   - System Topology:
       - DoPeJarMo Catalog: dopejar-catalog.md
-  - Compression Standard: compressed/COMPRESSION_STANDARD.md
 plugins:
   - techdocs-core
+  - mermaid2

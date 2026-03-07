@@ -1,0 +1,19 @@
+# Sawmill Framework Dependencies
+# Source of truth: architecture/BUILD-PLAN.md
+# An orchestrator reads this to determine what to build next.
+# A framework is "ready" when all its dependencies have
+# EVALUATION_REPORT.md with "Final verdict: PASS"
+
+kernel:
+  FMWK-001-ledger: []
+  FMWK-002-write-path: [FMWK-001-ledger]
+  FMWK-003-orchestration: [FMWK-001-ledger, FMWK-002-write-path]
+  FMWK-004-execution: [FMWK-003-orchestration, FMWK-002-write-path]
+  FMWK-005-graph: [FMWK-001-ledger, FMWK-002-write-path]
+  FMWK-006-package-lifecycle: [FMWK-001-ledger]
+
+# Parallelizable: FMWK-003 + FMWK-005 (after FMWK-002)
+# Parallelizable: FMWK-006 (after FMWK-001, independent of FMWK-002)
+
+system-test:
+  FMWK-900-sawmill-smoke: []

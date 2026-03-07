@@ -125,7 +125,7 @@ The orchestrator sends the agent's role file content in the prompt:
 Orchestrator passes → .claude/agents/<role>.md content
 ```
 
-This gives the agent: its role (spec/holdout/builder/evaluator), what it can read,
+This gives the agent: its role (orchestrator/spec/holdout/builder/evaluator/auditor), what it can read,
 what it CANNOT read, its process steps, its gate requirements,
 and its Cold Start Reading Order (the exact files to read next).
 
@@ -181,8 +181,10 @@ Writes:
 **Builder Agent (Turn D)**:
 ```
 Reads (in this exact order):
-  sawmill/<FMWK>/D10_AGENT_CONTEXT.md     ← orientation FIRST
-  sawmill/<FMWK>/BUILDER_HANDOFF.md       ← task SECOND
+  AGENT_BOOTSTRAP.md                      ← orientation and invariants FIRST
+  sawmill/<FMWK>/D10_AGENT_CONTEXT.md     ← framework orientation SECOND
+  Templates/TDD_AND_DEBUGGING.md          ← HOW to code THIRD
+  sawmill/<FMWK>/BUILDER_HANDOFF.md       ← task FOURTH
   Files from BUILDER_HANDOFF Section 7    ← referenced code
 
 On retry, also reads:
@@ -214,29 +216,31 @@ Writes:
 
 ---
 
-## The TASK.md File (Orchestrator → Spec Agent)
+## The TASK.md Dispatch Artifact (Orchestrator → Spec Agent)
 
-The orchestrator creates a `TASK.md` in each framework's sawmill directory before invoking the spec agent. This is the "work order" that tells the agent which framework to spec:
+The orchestrator emits `TASK.md` in each framework's sawmill directory before invoking the spec agent. This file is a dispatch artifact, not spec work:
 
-```markdown
-# Task: <FMWK-ID>
-
-## Framework
-- ID: <FMWK-NNN>
-- Name: <name>
-- Layer: KERNEL | Layer 1 | Layer 2
-
-## What to Spec
-<one paragraph from BUILD-PLAN.md describing this framework>
-
-## Owns
-<from KERNEL frameworks table — what data/behavior this framework exclusively owns>
-
-## Dependencies
-<which frameworks must exist before this one>
-
-## Constraints
-<any framework-specific constraints from BUILD-PLAN.md or FWK-0-DRAFT.md>
+```text
+WORK_ORDER
+framework: <FMWK-NNN-name>
+turn: A
+target_role: spec-agent
+action: generate D1-D6
+summary: <one paragraph from BUILD-PLAN.md describing this framework>
+owns: <exclusive ownership from the KERNEL frameworks table>
+dependencies:
+  - <framework dependencies>
+constraints:
+  - <framework-specific constraints from BUILD-PLAN.md or FWK-0-DRAFT.md>
+expected_outputs:
+  - sawmill/<FMWK-NNN-name>/D1_CONSTITUTION.md
+  - sawmill/<FMWK-NNN-name>/D2_SPECIFICATION.md
+  - sawmill/<FMWK-NNN-name>/D3_DATA_MODEL.md
+  - sawmill/<FMWK-NNN-name>/D4_CONTRACTS.md
+  - sawmill/<FMWK-NNN-name>/D5_RESEARCH.md
+  - sawmill/<FMWK-NNN-name>/D6_GAP_ANALYSIS.md
+gate: D6 zero OPEN items + human approval
+retry: 0
 ```
 
 ---
@@ -245,7 +249,7 @@ The orchestrator creates a `TASK.md` in each framework's sawmill directory befor
 
 ```
                     ┌──────────────┐
-                    │  TASK.md     │ ← orchestrator writes
+                    │  TASK.md     │ ← orchestrator emits dispatch
                     └──────┬───────┘
                            │
                     ┌──────▼───────┐
@@ -288,21 +292,21 @@ The orchestrator creates a `TASK.md` in each framework's sawmill directory befor
 
 ## Cross-Agent File Visibility Matrix
 
-| File | Spec (A) | Spec (B) | Holdout (C) | Builder (D) | Evaluator (E) |
-|------|----------|----------|-------------|-------------|----------------|
-| Context file* | AUTO | AUTO | AUTO | AUTO | AUTO |
-| AGENT_BOOTSTRAP.md | READ | READ | READ | READ | - |
-| architecture/* | READ | - | - | - | - |
-| Templates/compressed/* | READ | READ | READ | - | - |
-| TASK.md | READ | - | - | - | - |
-| D1-D6 | WRITE | READ | D2+D4 only | - | - |
-| D7-D8-D10 | - | WRITE | - | READ | - |
-| BUILDER_HANDOFF | - | WRITE | - | READ | - |
-| D9 (holdouts) | - | - | WRITE | NEVER | READ |
-| staging/ code | - | - | - | WRITE | READ (PR) |
-| RESULTS.md | - | - | - | WRITE | NEVER |
-| EVALUATION_REPORT | - | - | - | NEVER | WRITE |
-| EVALUATION_ERRORS | - | - | - | READ (retry) | WRITE |
+| File | Orchestrator | Spec (A) | Spec (B) | Holdout (C) | Builder (D) | Evaluator (E) |
+|------|--------------|----------|----------|-------------|-------------|----------------|
+| Context file* | AUTO | AUTO | AUTO | AUTO | AUTO | AUTO |
+| AGENT_BOOTSTRAP.md | READ | READ | READ | READ | READ | - |
+| architecture/* | READ | READ | - | - | - | - |
+| Templates/compressed/* | - | READ | READ | READ | - | - |
+| TASK.md | WRITE | READ | - | - | - | - |
+| D1-D6 | READ | WRITE | READ | D2+D4 only | - | - |
+| D7-D8-D10 | READ | - | WRITE | - | READ | - |
+| BUILDER_HANDOFF | READ | - | WRITE | - | READ | - |
+| D9 (holdouts) | NEVER | - | - | WRITE | NEVER | READ |
+| staging/ code | - | - | - | - | WRITE | READ (PR) |
+| RESULTS.md | READ | - | - | - | WRITE | NEVER |
+| EVALUATION_REPORT | READ | - | - | - | NEVER | WRITE |
+| EVALUATION_ERRORS | READ | - | - | - | READ (retry) | WRITE |
 
 *Context file = CLAUDE.md / AGENTS.md / GEMINI.md (same content via symlinks)
 
@@ -310,21 +314,34 @@ The orchestrator creates a `TASK.md` in each framework's sawmill directory befor
 
 ## What the Orchestrator Does
 
-The orchestrator's only job is to invoke agents in the right order with the right file paths. It does NOT:
+The orchestrator is HO2. It reads state and dispatches work. Worker agents are HO1 executions reached through `run.sh` or a subagent/tool call.
+
+It does NOT:
 - Interpret specs
 - Make design decisions
 - Modify agent outputs
+- Fix specs directly
+- Implement code directly
+- Evaluate deliverables directly except for routing/reporting evaluator outcomes
+- Create standalone plans beyond dispatch/work-order artifacts
 - Skip gates
 
 It DOES:
-- Create TASK.md before Turn A
+- Read dependencies, blocker status, and framework artifacts to derive state
+- Emit `TASK.md` as a `WORK_ORDER` artifact before Turn A
 - Create symlinks (AGENTS.md, GEMINI.md → CLAUDE.md) if they don't exist
 - Invoke each agent with its role file content in the prompt
 - List the explicit files to read in the prompt (reinforces the Cold Start order)
 - Wait for human gates where required
-- Pass EVALUATION_ERRORS.md to builder on retry
+- Pass `EVALUATION_ERRORS.md` to builder on retry
 - Track attempt count (max 3)
-- Report final verdict
+- Report `STATUS` / `VERDICT`
+
+The orchestrator emits only:
+- `WORK_ORDER` / `DISPATCH` blocks (including `TASK.md`)
+- `STATUS` / `VERDICT` blocks
+
+No freeform spec edits, code edits, or evaluation content.
 
 ---
 
