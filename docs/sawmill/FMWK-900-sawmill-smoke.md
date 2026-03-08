@@ -1,7 +1,7 @@
 <!-- sawmill:auto-status -->
 # FMWK-900-sawmill-smoke — Build Status
 
-**Status:** Not started
+**Status:** Evaluation PASS
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Stage | Status |
 |-------|--------|
-| Turn A (Spec) | PENDING |
-| Turn B (Plan) | PENDING |
-| Turn C (Holdout) | PENDING |
-| Turn D (Build) | PENDING |
-| Turn E (Eval) | PENDING |
+| Turn A (Spec) | DONE |
+| Turn B (Plan) | DONE |
+| Turn C (Holdout) | DONE |
+| Turn D (Build) | DONE |
+| Turn E (Eval) | PASS |
 
 ---
 
-*Updated by sawmill/run.sh at 2026-03-07T22:47:35Z*
+*Updated by sawmill/run.sh at 2026-03-08T00:11:25Z*

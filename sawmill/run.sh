@@ -150,9 +150,9 @@ MAX_ATTEMPTS=3
 BRANCH="build/${FMWK}"
 
 # Agent backend selection (override with env vars)
-SPEC_AGENT="${SAWMILL_SPEC_AGENT:-claude}"       # claude | codex | gemini
-BUILD_AGENT="${SAWMILL_BUILD_AGENT:-claude}"      # claude | codex | gemini
-HOLDOUT_AGENT="${SAWMILL_HOLDOUT_AGENT:-claude}"  # claude | codex | gemini
+SPEC_AGENT="${SAWMILL_SPEC_AGENT:-codex}"         # claude | codex | gemini
+BUILD_AGENT="${SAWMILL_BUILD_AGENT:-codex}"       # claude | codex | gemini
+HOLDOUT_AGENT="${SAWMILL_HOLDOUT_AGENT:-codex}"   # claude | codex | gemini
 EVAL_AGENT="${SAWMILL_EVAL_AGENT:-codex}"         # claude | codex | gemini
 
 turn_rank() {
@@ -314,6 +314,26 @@ run_stage_audit() {
         if grep -qiE 'Final[[:space:]]+[Vv]erdict.*PASS' "$sd/EVALUATION_REPORT.md" 2>/dev/null; then
             _ck "Portal: Turn E PASS" grep -qF "Turn E (Eval) | PASS" "$status_page"
         fi
+    fi
+
+    # Reverse checks: if portal claims DONE, artifacts MUST exist
+    if grep -qF "Turn A (Spec) | DONE" "$status_page" 2>/dev/null; then
+        _ck "Portal says A DONE → D1 exists" test -f "$sd/D1_CONSTITUTION.md"
+        _ck "Portal says A DONE → D6 exists" test -f "$sd/D6_GAP_ANALYSIS.md"
+    fi
+    if grep -qF "Turn B (Plan) | DONE" "$status_page" 2>/dev/null; then
+        _ck "Portal says B DONE → D7 exists" test -f "$sd/D7_PLAN.md"
+        _ck "Portal says B DONE → Handoff exists" test -f "$sd/BUILDER_HANDOFF.md"
+    fi
+    if grep -qF "Turn C (Holdout) | DONE" "$status_page" 2>/dev/null; then
+        _ck "Portal says C DONE → D9 exists" test -f "$hd/D9_HOLDOUT_SCENARIOS.md"
+    fi
+    if grep -qF "Turn D (Build) | DONE" "$status_page" 2>/dev/null; then
+        _ck "Portal says D DONE → RESULTS.md exists" test -f "$sd/RESULTS.md"
+        _ck "Portal says D DONE → staging/ exists" test -d "$stg"
+    fi
+    if grep -qF "Turn E (Eval) | PASS" "$status_page" 2>/dev/null; then
+        _ck "Portal says E PASS → EVALUATION_REPORT.md exists" test -f "$sd/EVALUATION_REPORT.md"
     fi
 
     # Write audit file
