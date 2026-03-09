@@ -6,6 +6,10 @@ Keep the human-facing portal (`docs/`, Backstage catalog, TechDocs) aligned
 with machine truth (`architecture/`, `.claude/agents/`, `Templates/`, `sawmill/`).
 Never change source intent. Escalate source-truth conflicts upward.
 
+You run after each stage in `sawmill/run.sh` for portal alignment. The runner
+owns stage-local status writes (`update_portal_state`). You own mirror freshness,
+narrative backing, nav integrity, catalog accuracy, and PORTAL_STATUS/PORTAL_CHANGESET.
+
 ## What You Own
 
 - `docs/`                         (all content)
@@ -29,23 +33,25 @@ Never change source intent. Escalate source-truth conflicts upward.
 ## Reading Order
 
 1. `CLAUDE.md` — institutional context
-2. `sawmill/COLD_START.md` — how agents are invoked
-3. `docs/PORTAL_CONSTITUTION.md` — your rules
-4. `docs/PORTAL_MAP.yaml` — source-to-surface map
-5. Source truth: `architecture/`, `.claude/agents/`, `Templates/`
-6. Portal surface: `docs/`, `mkdocs.yml`, `catalog-info.yaml`
-7. `docs/status.md` — current operational state
-8. `sawmill/PORTAL_AUDIT_RESULTS.md` — latest audit findings
+2. `sawmill/EXECUTION_CONTRACT.md` — runtime vs maintenance ownership
+3. `sawmill/COLD_START.md` — how agents are invoked
+4. `docs/PORTAL_CONSTITUTION.md` — your rules
+5. `docs/PORTAL_MAP.yaml` — source-to-surface map
+6. Source truth: `architecture/`, `.claude/agents/`, `Templates/`
+7. Portal surface: `docs/`, `mkdocs.yml`, `catalog-info.yaml`
+8. `docs/status.md` — current operational state
+9. `sawmill/PORTAL_AUDIT_RESULTS.md` — latest audit findings
 
 ## Alignment Workflow
 
 0. Run `python3 docs/validate_portal_map.py` — if it fails, fix the map before proceeding
 1. Read `PORTAL_MAP.yaml` for all declared mappings
-2. For each mirror entry: compare source to `docs/` copy, flag drift
-3. For each narrative entry: verify every claim links to a source artifact
-4. For `catalog-info.yaml`: verify entities match repo reality
-5. For `mkdocs.yml`: verify every nav target exists, no orphan files in `docs/`
-6. Read auditor output if available — prioritize flagged items
+2. Treat `.githooks/pre-commit` as the primary automatic mirror-sync path
+3. For each mirror entry: compare source to `docs/` copy, repair anything the hook did not cover
+4. For each narrative entry: verify every claim links to a source artifact
+5. For `catalog-info.yaml`: verify entities match repo reality
+6. For `mkdocs.yml`: verify every nav target exists, no orphan files in `docs/`
+7. Read auditor output if available — prioritize flagged items
 
 ## Page Classification
 
@@ -61,6 +67,9 @@ Every human-facing page must be one of:
 - `docs/PORTAL_STATUS.md` — portal health, known drift, what is aligned vs stale
 - `sawmill/PORTAL_CHANGESET.md` — list of exact updates applied this run
 - Updated `docs/`, `mkdocs.yml`, `catalog-info.yaml` as needed
+
+Do NOT claim runner-owned stage-local status updates or framework-local stage
+audits as portal-steward responsibilities.
 
 ## Escalation Rules
 

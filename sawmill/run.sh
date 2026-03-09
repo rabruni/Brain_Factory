@@ -7,17 +7,27 @@
 # Example: ./sawmill/run.sh FMWK-001-ledger --from-turn D
 #
 # This script orchestrates the five Sawmill turns (A-E) for a single
-# framework. It invokes agents, enforces gates, and manages retries.
+# framework. It dispatches worker agents, enforces gates, and manages retries.
+#
+# Operational source of truth:
+#   sawmill/EXECUTION_CONTRACT.md defines the runtime execution model.
+#   This script remains the runtime authority for actual stage execution.
+#
+# Expected execution contract:
+#   Human  -> approves explicit gates
+#   Claude -> orchestrates invocation and supervises progress
+#   Codex  -> default worker backend for turns A-E
 #
 # Prerequisites:
 #   - At least one agent CLI installed: claude, codex, or gemini
 #   - Repository is the working directory
 #
 # Agent selection (override with env vars):
-#   SAWMILL_SPEC_AGENT=claude|codex|gemini     (default: claude)
-#   SAWMILL_BUILD_AGENT=claude|codex|gemini    (default: claude)
-#   SAWMILL_HOLDOUT_AGENT=claude|codex|gemini  (default: claude)
+#   SAWMILL_SPEC_AGENT=claude|codex|gemini     (default: codex)
+#   SAWMILL_BUILD_AGENT=claude|codex|gemini    (default: codex)
+#   SAWMILL_HOLDOUT_AGENT=claude|codex|gemini  (default: codex)
 #   SAWMILL_EVAL_AGENT=claude|codex|gemini     (default: codex)
+#   SAWMILL_AUDIT_AGENT=claude|codex|gemini    (default: claude)
 #
 # Human gates pause for confirmation. The operator reviews and presses Enter.
 # ============================================================================
@@ -154,6 +164,7 @@ SPEC_AGENT="${SAWMILL_SPEC_AGENT:-codex}"         # claude | codex | gemini
 BUILD_AGENT="${SAWMILL_BUILD_AGENT:-codex}"       # claude | codex | gemini
 HOLDOUT_AGENT="${SAWMILL_HOLDOUT_AGENT:-codex}"   # claude | codex | gemini
 EVAL_AGENT="${SAWMILL_EVAL_AGENT:-codex}"         # claude | codex | gemini
+PORTAL_AGENT="${SAWMILL_PORTAL_AGENT:-codex}"     # claude | codex | gemini
 
 turn_rank() {
     case "$1" in
@@ -336,6 +347,51 @@ run_stage_audit() {
         _ck "Portal says E PASS → EVALUATION_REPORT.md exists" test -f "$sd/EVALUATION_REPORT.md"
     fi
 
+    # Portal-steward output checks
+    _ck "PORTAL_STATUS.md exists" test -f "docs/PORTAL_STATUS.md"
+    _ck "PORTAL_CHANGESET.md exists" test -f "sawmill/PORTAL_CHANGESET.md"
+    _ck "validate_portal_map.py passes" python3 docs/validate_portal_map.py
+    _ck "catalog-info.yaml exists" test -f "catalog-info.yaml"
+
+    # Mirror sync check — driven by PORTAL_MAP.yaml, not handpicked
+    local mirror_total=0 mirror_pass=0 mirror_fail=0
+    local mirror_failures=""
+    if [ -f "docs/PORTAL_MAP.yaml" ] && command -v python3 >/dev/null 2>&1; then
+        while IFS='|' read -r src mir; do
+            [ -z "$src" ] || [ -z "$mir" ] && continue
+            mirror_total=$((mirror_total + 1))
+            if [ -f "$src" ] && [ -f "$mir" ] && diff -q "$src" "$mir" >/dev/null 2>&1; then
+                mirror_pass=$((mirror_pass + 1))
+            else
+                mirror_fail=$((mirror_fail + 1))
+                mirror_failures="${mirror_failures}  ${src} != ${mir}\n"
+            fi
+        done < <(python3 -c "
+import yaml, sys
+with open('docs/PORTAL_MAP.yaml') as f:
+    data = yaml.safe_load(f)
+for e in data.get('entries', []):
+    if e.get('sync') == 'mirror' and 'source' in e and 'mirror' in e:
+        print(e['source'] + '|' + e['mirror'])
+")
+
+        if [ "$mirror_total" -gt 0 ]; then
+            _ck "Mirrors synced: ${mirror_pass}/${mirror_total}" test "$mirror_fail" -eq 0
+            if [ "$mirror_fail" -gt 0 ]; then
+                results="${results}| **INFO** | Drifted mirrors: $(echo -e "$mirror_failures") |
+"
+            fi
+        fi
+    fi
+
+    # Freshness: PORTAL_STATUS.md and PORTAL_CHANGESET.md were touched this run
+    if [ -n "${_POST_STATUS_HASH:-}" ]; then
+        _ck "PORTAL_STATUS.md was updated this run" test "$_POST_STATUS_HASH" != "none"
+    fi
+    if [ -n "${_POST_CHANGESET_HASH:-}" ]; then
+        _ck "PORTAL_CHANGESET.md was updated this run" test "$_POST_CHANGESET_HASH" != "none"
+    fi
+
     # Write audit file
     cat > "$audit_file" << AUDIT_EOF
 # Canary Audit — ${fmwk}
@@ -360,6 +416,50 @@ AUDIT_EOF
         return 1
     fi
     pass "Stage audit PASSED (${pc} checks)"
+}
+
+run_portal_steward() {
+    local fmwk="$1"
+    local stage="$2"
+    local status_page="docs/sawmill/${fmwk}.md"
+
+    log "Running portal-steward for ${fmwk} after ${stage}"
+
+    # Snapshot portal outputs before steward runs (for freshness check)
+    local pre_status_hash pre_changeset_hash
+    pre_status_hash=$(shasum -a 256 docs/PORTAL_STATUS.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+    pre_changeset_hash=$(shasum -a 256 sawmill/PORTAL_CHANGESET.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+
+    invoke_agent "$PORTAL_AGENT" ".claude/agents/portal-steward.md" \
+"Framework ${fmwk} just completed ${stage}.
+
+YOUR TASK — stage-scoped portal alignment:
+
+1. Verify docs/sawmill/${fmwk}.md reflects ${stage} completion.
+2. Run python3 docs/validate_portal_map.py — fix any failures.
+3. Check mirrors for files that changed in ${stage}. Sync any that drifted.
+4. Verify mkdocs.yml nav targets exist. Fix broken references.
+5. Verify catalog-info.yaml is consistent with repo state.
+
+OUTPUT (required):
+- Update docs/PORTAL_STATUS.md with current portal health.
+- Write sawmill/PORTAL_CHANGESET.md with changes applied this run.
+
+SCOPE: Focus on what ${stage} changed. Do not do a full repo audit."
+
+    # Store hashes for audit freshness checks
+    export _POST_STATUS_HASH _POST_CHANGESET_HASH
+    _POST_STATUS_HASH=$(shasum -a 256 docs/PORTAL_STATUS.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+    _POST_CHANGESET_HASH=$(shasum -a 256 sawmill/PORTAL_CHANGESET.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+
+    # Steward produced outputs?
+    if [ -f "docs/PORTAL_STATUS.md" ] && [ "$_POST_STATUS_HASH" != "$pre_status_hash" ]; then
+        pass "Portal-steward updated PORTAL_STATUS.md"
+    elif [ -f "docs/PORTAL_STATUS.md" ]; then
+        log "Portal-steward ran but PORTAL_STATUS.md unchanged (may be already current)"
+    else
+        fail "Portal-steward did not produce PORTAL_STATUS.md"
+    fi
 }
 
 # --- Agent Invocation -------------------------------------------------------
@@ -445,12 +545,13 @@ log "Spec agent:    ${SPEC_AGENT}"
 log "Build agent:   ${BUILD_AGENT}"
 log "Holdout agent: ${HOLDOUT_AGENT}"
 log "Eval agent:    ${EVAL_AGENT}"
+log "Portal agent:  ${PORTAL_AGENT}"
 echo ""
 
 # Verify required files exist
 for f in CLAUDE.md AGENT_BOOTSTRAP.md .claude/agents/spec-agent.md \
          .claude/agents/holdout-agent.md .claude/agents/builder.md \
-         .claude/agents/evaluator.md; do
+         .claude/agents/evaluator.md .claude/agents/portal-steward.md; do
     if [ ! -f "$f" ]; then
         fail "Missing required file: $f"
         exit 1
@@ -468,7 +569,7 @@ if [ ! -e "GEMINI.md" ]; then
 fi
 
 # Verify the selected agent CLI is installed
-for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT; do
+for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT PORTAL_AGENT; do
     agent_val="${!agent_var}"
     case "$agent_val" in
         claude) command -v claude >/dev/null 2>&1 || { fail "${agent_var}=${agent_val} but 'claude' CLI not found"; exit 1; } ;;
@@ -478,7 +579,7 @@ for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT; do
 done
 
 needs_jq=false
-for _agent_val in "$SPEC_AGENT" "$BUILD_AGENT" "$HOLDOUT_AGENT" "$EVAL_AGENT"; do
+for _agent_val in "$SPEC_AGENT" "$BUILD_AGENT" "$HOLDOUT_AGENT" "$EVAL_AGENT" "$PORTAL_AGENT"; do
     if [ "$_agent_val" = "claude" ]; then needs_jq=true; break; fi
 done
 if [ "$needs_jq" = true ]; then
@@ -542,6 +643,7 @@ GATE: D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED."
     pass "Turn A produced D1-D6"
 
     update_portal_state "$FMWK"
+    run_portal_steward "$FMWK" "Turn A"
     run_stage_audit "$FMWK" "Turn A"
 
     gate "Review ${SAWMILL_DIR}/D1-D6 for completeness and accuracy"
@@ -645,6 +747,7 @@ OUTPUT: Write D9_HOLDOUT_SCENARIOS.md to ${HOLDOUT_DIR}/" &
     fi
 
     update_portal_state "$FMWK"
+    run_portal_steward "$FMWK" "Turn BC"
     run_stage_audit "$FMWK" "Turn BC"
 
 else
@@ -833,6 +936,7 @@ STEP 2: DTT per behavior (red-green-refactor). STEP 3: Full test suite. Write ${
         pass "Builder produced code and RESULTS.md"
 
         update_portal_state "$FMWK"
+        run_portal_steward "$FMWK" "Turn D"
         run_stage_audit "$FMWK" "Turn D"
 
         if ! should_run_turn E; then
@@ -873,6 +977,7 @@ OUTPUT:
                 BUILD_PASSED=true
                 pass "Evaluation: PASS"
                 update_portal_state "$FMWK"
+                run_portal_steward "$FMWK" "Turn E"
                 run_stage_audit "$FMWK" "Turn E"
                 break
             else
@@ -923,6 +1028,7 @@ OUTPUT:
             BUILD_PASSED=true
             pass "Evaluation: PASS"
             update_portal_state "$FMWK"
+            run_portal_steward "$FMWK" "Turn E"
             run_stage_audit "$FMWK" "Turn E"
         else
             fail "Evaluation: FAIL"
