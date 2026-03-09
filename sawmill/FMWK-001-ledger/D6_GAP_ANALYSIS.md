@@ -204,6 +204,7 @@ Gaps found: None (DEF-002 covers the memory partial)
   - B: platform_sdk wraps a generic KV store interface — immudb is one implementation; builder adds immudb adapter
   - C: platform_sdk does not yet support immudb — builder adds immudb adapter following SDK patterns (Protocol + MockProvider + RealProvider)
 - Status: RESOLVED — ASSUMED: The builder adds an immudb adapter to platform_sdk.tier0_core.data as part of the FMWK-001 implementation work, following platform_sdk patterns (Protocol interface + MockProvider + RealProvider selected via environment variable). FMWK-001 then imports from platform_sdk. FMWK-001 never imports immudb directly regardless of which option is true.
+- Note (2026-03-09): The live SDK currently implements `tier0_core.data` as a flat module (`data.py`), not a package (`data/`). The staging build will create a `data/` package with `immudb_adapter.py` inside it. This is independent of the live SDK layout — the staging package is installed alongside, not replacing, the existing `data.py`.
 - Blocks: D7 (builder needs to know the import path and whether adapter work is in scope)
 
 **CLR-003: Decimal representation for signal delta values**

@@ -1,6 +1,6 @@
 # FMWK-001 Ledger — Build Status
 
-**Status:** Spec Writing (A) through Acceptance Test Writing (C) complete. Code Building (D) next.
+**Status:** Spec Writing (A) through Acceptance Test Writing (C) complete. All blockers resolved. Code Building (D) ready.
 **What it is:** Append-only, hash-chained event store. The sole source of truth for everything that happens in DoPeJarMo.
 **First consumer:** FMWK-002 Write-Path (calls `append()` for every mutation, `read_since()` for replay).
 
@@ -410,18 +410,18 @@ Also tracked on the [global Status and Gaps page](../status.md).
 | GAP-3: Authorization for append() callers | Architectural (Docker network) | No code-level auth needed |
 | GAP-4: Metric names, health probe | Builder follows SDK conventions | Acceptable for KERNEL |
 
-### Open Issues (from evidence extraction)
+### Resolved Issues (from evidence extraction — 2026-03-09)
 
-These were found by comparing specs against the live SDK code. They must be resolved before Code Building (D):
+These were found by comparing specs against the live SDK code. All resolved.
 
-| Issue | Type | Detail |
-|-------|------|--------|
-| `PlatformConfig` has no immudb fields | CONTRADICTION | Live `config.py` has no `immudb_host`/`immudb_port`/`immudb_database` — spec says use `LedgerConfig.from_env()` with direct env vars instead |
-| Live SDK has `data.py` not `data/` | CONTRADICTION | Staging creates a `data/` package; this is independent of live SDK layout |
-| Live SDK calls `createDatabaseV2` | CONTRADICTION | `ledger.py#L190` — spec says NEVER. Ledger must fail on missing DB, not create it |
-| IN-002 edge case (read out of range) | MISSING test | No explicit test for reading beyond tip |
-| IN-005 error (verify when immudb down) | UNSPECIFIED | Behavior when immudb drops mid-verify not covered |
-| IN-006 error (get_tip when immudb down) | UNSPECIFIED | Behavior when immudb drops during get_tip not covered |
+| Issue | Resolution |
+|-------|-----------|
+| `PlatformConfig` has no immudb fields | FIXED — `immudb_host`/`port`/`database`/`username`/`password` added to `config.py` (dopejar `d2a769c`) |
+| Live SDK has `data.py` not `data/` | CLARIFIED — `tier0_core.data` is a flat module (`data.py`); staging adds `data/` package independently (see D6 CLR-002) |
+| Live SDK calls `createDatabaseV2` | FIXED — removed from `ImmudbProvider.__init__`; fails closed with `LedgerConnectionError` (dopejar `d2a769c`) |
+| IN-002 edge case (read out of range) | COVERED — D4 IN-002 specifies `LedgerConnectionError` for out-of-range reads |
+| IN-005 error (verify when immudb down) | COVERED — D4 IN-005 specifies `LedgerConnectionError` when immudb unreachable |
+| IN-006 error (get_tip when immudb down) | COVERED — D4 IN-006 specifies `LedgerConnectionError` when immudb unreachable |
 
 ---
 
