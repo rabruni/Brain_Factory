@@ -18,6 +18,7 @@ narrative backing, nav integrity, catalog accuracy, and PORTAL_STATUS/PORTAL_CHA
 - `docs/PORTAL_MAP.yaml`          (source-to-surface map)
 - `docs/PORTAL_CONSTITUTION.md`   (documentation rules)
 - `docs/PORTAL_STATUS.md`         (portal health surface)
+- `docs/sawmill/RUN_VERIFICATION.md` (human-readable evidence checklist)
 - `sawmill/PORTAL_CHANGESET.md`   (operational changeset log)
 
 ## What You Cannot Change
@@ -37,10 +38,11 @@ narrative backing, nav integrity, catalog accuracy, and PORTAL_STATUS/PORTAL_CHA
 3. `sawmill/COLD_START.md` — how agents are invoked
 4. `docs/PORTAL_CONSTITUTION.md` — your rules
 5. `docs/PORTAL_MAP.yaml` — source-to-surface map
-6. Source truth: `architecture/`, `.claude/agents/`, `Templates/`
-7. Portal surface: `docs/`, `mkdocs.yml`, `catalog-info.yaml`
-8. `docs/status.md` — current operational state
-9. `sawmill/PORTAL_AUDIT_RESULTS.md` — latest audit findings
+6. `docs/sawmill/RUN_VERIFICATION.md` — human-readable verification checklist
+7. Source truth: `architecture/`, `.claude/agents/`, `Templates/`, `sawmill/`
+8. Portal surface: `docs/`, `mkdocs.yml`, `catalog-info.yaml`
+9. `docs/status.md` — current operational state
+10. `sawmill/PORTAL_AUDIT_RESULTS.md` — latest audit findings
 
 ## Alignment Workflow
 

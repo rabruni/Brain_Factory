@@ -21,7 +21,7 @@ IDs: H-<N> (new) | H-<N><letter> (follow-up) | CLEANUP-<N> (cleanup)
 9. **Files Summary** — | File | Location | Action (CREATE/MODIFY) | for every file, no omissions
 10. **Design Principles** — 4-6 non-negotiable design rules
 11. **Verification Discipline** — EVERY "tests pass" claim requires pasted output from THIS session. RESULTS.md MUST include full test command + output, not just counts. Red flags: "should work," "probably passes," "I'm confident" without evidence. Reference: `Templates/TDD_AND_DEBUGGING.md`
-12. **Mid-Build Checkpoint** — after ALL unit tests pass: report (count + pasted output + files created + spec deviations) → WAIT for human greenlight → THEN proceed to integration tests. No exceptions.
+12. **Mid-Build Checkpoint** — after ALL unit tests pass: record checkpoint evidence (count + pasted output + files created + spec deviations) → continue unless orchestrator escalates.
 13. **Self-Reflection** — before reporting ANY step complete: code matches spec (D2/D4)? Edge cases from D8 covered? Code understandable in 6 months? TDD followed for EVERY behavior (check commit history)? Code written before test? DELETE and redo.
 
 ## Results File (MANDATORY — every handoff agent MUST write this when finished, no exceptions)

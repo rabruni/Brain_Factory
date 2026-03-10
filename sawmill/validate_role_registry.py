@@ -18,15 +18,18 @@ REQUIRED_FIELDS = {
     "role_file",
     "execution_scope",
     "default_backend",
+    "model_policy",
     "allowed_backends",
     "env_override",
 }
 SUPPORTED_BACKENDS = {"claude", "codex", "gemini"}
 VALID_EXECUTION_SCOPES = {"orchestrator", "worker"}
+VALID_MODEL_POLICIES = {"default", "max_capability"}
 REQUIRED_RUNTIME_ROLES = (
     "spec-agent",
     "holdout-agent",
     "builder",
+    "reviewer",
     "evaluator",
     "auditor",
     "portal-steward",
@@ -36,6 +39,7 @@ SHELL_PREFIXES = {
     "spec-agent": "SPEC",
     "holdout-agent": "HOLDOUT",
     "builder": "BUILD",
+    "reviewer": "REVIEW",
     "evaluator": "EVAL",
     "auditor": "AUDIT",
     "portal-steward": "PORTAL",
@@ -111,12 +115,17 @@ def validate_registry(data: dict, registry_path: Path) -> None:
         role_file = metadata["role_file"]
         execution_scope = metadata["execution_scope"]
         default_backend = metadata["default_backend"]
+        model_policy = metadata["model_policy"]
         allowed_backends = metadata["allowed_backends"]
         env_override = metadata["env_override"]
 
         if execution_scope not in VALID_EXECUTION_SCOPES:
             errors.append(
                 f"Role '{role_name}' has invalid execution_scope '{execution_scope}'"
+            )
+        if model_policy not in VALID_MODEL_POLICIES:
+            errors.append(
+                f"Role '{role_name}' has invalid model_policy '{model_policy}'"
             )
 
         if not isinstance(allowed_backends, list) or not allowed_backends:
@@ -177,6 +186,9 @@ def build_shell_exports(data: dict) -> str:
         )
         lines.append(
             f"{prefix}_DEFAULT_BACKEND={shlex.quote(str(metadata['default_backend']))}"
+        )
+        lines.append(
+            f"{prefix}_MODEL_POLICY={shlex.quote(str(metadata['model_policy']))}"
         )
         lines.append(
             f"{prefix}_ALLOWED_BACKENDS={shlex.quote(' '.join(metadata['allowed_backends']))}"

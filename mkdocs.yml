@@ -13,6 +13,7 @@ nav:
       - Cold Start Protocol: sawmill/COLD_START.md
       - Execution Contract: sawmill/EXECUTION_CONTRACT.md
       - Sawmill Role Registry: sawmill/ROLE_REGISTRY.md
+      - Run Verification: sawmill/RUN_VERIFICATION.md
       - Institutional Context: institutional-context.md
   - Architecture:
       - NORTH STAR — Why: architecture/NORTH_STAR.md
@@ -30,6 +31,7 @@ nav:
       - Spec Agent (A — Spec Writing + B — Build Planning): agents/spec-agent.md
       - Holdout Agent (C — Acceptance Test Writing): agents/holdout-agent.md
       - Builder (D — Code Building): agents/builder.md
+      - Reviewer (D — 13Q Review): agents/reviewer.md
       - Evaluator (E — Evaluation): agents/evaluator.md
       - Auditor (Portal Coherence): agents/auditor.md
       - Portal Steward (Documentation Alignment): agents/portal-steward.md
@@ -49,6 +51,7 @@ nav:
       - Builder Handoff Standard: sawmill-templates/BUILDER_HANDOFF_STANDARD.md
       - TDD and Debugging: sawmill-templates/TDD_AND_DEBUGGING.md
       - Builder Prompt Contract: sawmill-templates/BUILDER_PROMPT_CONTRACT.md
+      - Reviewer Prompt Contract: sawmill-templates/REVIEWER_PROMPT_CONTRACT.md
       - Agent Build Process: sawmill-templates/AGENT_BUILD_PROCESS.yaml
       - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
       - Compression Standard: compressed/COMPRESSION_STANDARD.md

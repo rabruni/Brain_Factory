@@ -1,44 +1,41 @@
-# Portal Changeset — 2026-03-07 (run 2)
+# Portal Changeset — 2026-03-09 (run 3)
 
 > Written by the **portal-steward** role after alignment workflow.
 
 ## Changes Applied
 
-### 1. Synced mirror: `docs/agents/builder.md`
+### 1. Added source-truth execution contract
 
-**What:** Updated mirror to match source `.claude/agents/builder.md`.
+**What:** Created `sawmill/EXECUTION_CONTRACT.md` and added the mirrored TechDocs page `docs/sawmill/EXECUTION_CONTRACT.md`.
 
-**Why:** Source added `model: sonnet` header, expanded Inputs list from 3 to 5 items (added `AGENT_BOOTSTRAP.md` as #1 and `Templates/TDD_AND_DEBUGGING.md` as #3). Mirror was stale.
+**Why:** The runtime execution chain and ownership split needed a single operational source of truth.
 
-**Lines changed:** Lines 1-15 — added model line, expanded reading order.
+### 2. Updated runtime and orchestration source docs
 
-### 2. Synced mirror: `docs/sawmill/COLD_START.md`
+**What:** Updated `AGENTS.md`, `sawmill/COLD_START.md`, `.claude/agents/orchestrator.md`, `architecture/BUILD-PLAN.md`, and the `sawmill/run.sh` header to point back to the new execution-contract source.
 
-**What:** Updated mirror to match source `sawmill/COLD_START.md`.
+**Why:** These files were restating the execution model independently. They now summarize and link back instead of competing.
 
-**Why:** Source expanded Builder Agent (Turn D) reading order to 5 items (added AGENT_BOOTSTRAP.md, TDD_AND_DEBUGGING.md, renumbered). Source added Orchestrator column to Cross-Agent File Visibility Matrix. Mirror was stale.
+### 3. Reconciled portal ownership docs
 
-**Lines changed:** Lines 184-187 (builder reading order), lines 295-309 (visibility matrix).
+**What:** Updated `PORTAL_TRUTH_MODEL.md`, `docs/PORTAL_CONSTITUTION.md`, `.claude/agents/portal-steward.md`, and `SYSTEM_EXECUTION_PLAN.md` to split ownership correctly:
 
-### 3. Updated narrative: `docs/agent-onboarding.md`
+- `run.sh` owns stage-local status updates and framework-local stage audits
+- `portal-steward` owns portal maintenance only
+- `auditor` owns diagnosis only
+- `.githooks/pre-commit` is the primary mirror-sync path
 
-**What:** Added `AGENT_BOOTSTRAP.md` node to builder reading order Mermaid diagram. Updated flow chain from `CTX → D10 → TDD → HO → REF` to `CTX → BOOT → D10 → TDD → HO → REF`.
+**Why:** The docs were still implying `portal-steward` was part of the per-stage runtime loop, which is false in the current system.
 
-**Why:** Builder source now reads AGENT_BOOTSTRAP.md first. Narrative diagram was missing this step.
+### 4. Extended mirror-sync and portal map coverage
 
-**Lines changed:** Lines 204-221 — Mermaid graph updated.
+**What:** Updated `.githooks/pre-commit`, `docs/PORTAL_MAP.yaml`, and `mkdocs.yml` so the new execution-contract source is mirrored and rendered automatically.
 
-### 4. Added to portal map: `sawmill/DEPENDENCIES.yaml`
+**Why:** Pre-commit remains the primary mirror-sync mechanism, so the new source-truth file had to be included there.
 
-**What:** Added new entry to `docs/PORTAL_MAP.yaml` as infrastructure mirror (source only, no docs/ copy).
+### 5. Refreshed portal health status
 
-**Why:** New source-truth file for framework dependency graph. Already referenced by narrative pages (agent-onboarding.md, orchestrator.md, auditor.md) but was not tracked in the portal map.
-
-**Entry added:** `source: sawmill/DEPENDENCIES.yaml`, `sync: mirror` (no mirror path — infrastructure, not rendered content).
-
-### 5. Updated `docs/PORTAL_STATUS.md`
-
-**What:** Refreshed portal health report. Mirror count 36 → 37. Documented all drift fixes.
+**What:** Updated `docs/PORTAL_STATUS.md` to reflect the new mirror count, nav count, and execution-contract alignment work.
 
 ## Source-Truth Conflicts
 

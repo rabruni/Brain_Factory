@@ -3,33 +3,39 @@
 # Sawmill Orchestrator — DoPeJarMo Build Pipeline
 # ============================================================================
 #
-# Usage:  ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E]
+# Usage:  ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E] [--interactive]
 # Example: ./sawmill/run.sh FMWK-001-ledger --from-turn D
+#          ./sawmill/run.sh FMWK-900-sawmill-smoke
+#          ./sawmill/run.sh FMWK-900-sawmill-smoke --interactive
 #
 # This script orchestrates the five Sawmill turns (A-E) for a single
-# framework. It dispatches worker agents, enforces gates, and manages retries.
+# framework. It dispatches worker agents, records checkpoints, and manages
+# retry/review loops.
 #
 # Operational source of truth:
 #   sawmill/EXECUTION_CONTRACT.md defines the runtime execution model.
 #   This script remains the runtime authority for actual stage execution.
 #
 # Expected execution contract:
-#   Human  -> approves explicit gates
+#   Human  -> authorizes the run and handles escalations
 #   Claude -> orchestrates invocation and supervises progress
-#   Codex  -> default worker backend for turns A-E
+#   Workers -> resolved by sawmill/ROLE_REGISTRY.yaml
 #
 # Prerequisites:
 #   - At least one agent CLI installed: claude, codex, or gemini
 #   - Repository is the working directory
 #
-# Agent selection (override with env vars):
-#   SAWMILL_SPEC_AGENT=claude|codex|gemini     (default: codex)
-#   SAWMILL_BUILD_AGENT=claude|codex|gemini    (default: codex)
-#   SAWMILL_HOLDOUT_AGENT=claude|codex|gemini  (default: codex)
-#   SAWMILL_EVAL_AGENT=claude|codex|gemini     (default: codex)
-#   SAWMILL_AUDIT_AGENT=claude|codex|gemini    (default: claude)
+# Role/backend defaults come from sawmill/ROLE_REGISTRY.yaml.
+# Environment overrides still win at runtime:
+#   SAWMILL_SPEC_AGENT=claude|codex|gemini
+#   SAWMILL_BUILD_AGENT=claude|codex|gemini
+#   SAWMILL_HOLDOUT_AGENT=claude|codex|gemini
+#   SAWMILL_EVAL_AGENT=claude|codex|gemini
+#   SAWMILL_AUDIT_AGENT=claude|codex|gemini
+#   SAWMILL_PORTAL_AGENT=claude|codex|gemini
 #
-# Human gates pause for confirmation. The operator reviews and presses Enter.
+# Runtime defaults to unattended, exception-driven execution. Use
+# --interactive to pause at checkpoints for human review.
 # ============================================================================
 
 set -euo pipefail
@@ -37,9 +43,11 @@ set -euo pipefail
 # --- Configuration ---------------------------------------------------------
 
 usage() {
-    echo "Usage: ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E]"
+    echo "Usage: ./sawmill/run.sh <FMWK-ID> [--from-turn A|B|C|D|E] [--interactive]"
     echo "       ./sawmill/run.sh --audit"
     echo "Example: ./sawmill/run.sh FMWK-001-ledger --from-turn D"
+    echo "         ./sawmill/run.sh FMWK-900-sawmill-smoke"
+    echo "         ./sawmill/run.sh FMWK-900-sawmill-smoke --interactive"
     echo "         ./sawmill/run.sh --audit"
 }
 
@@ -52,18 +60,377 @@ NC='\033[0m' # No Color
 
 # Helpers used by both audit mode and the normal pipeline.
 log() { echo -e "${BLUE}[sawmill]${NC} $1"; }
-gate() { echo -e "\n${YELLOW}>>> GATE: $1${NC}"; echo -e "${YELLOW}>>> Review the output, then press Enter to continue (or Ctrl+C to abort)${NC}"; read -r; }
+checkpoint() {
+    echo -e "\n${YELLOW}>>> CHECKPOINT: $1${NC}"
+    if [ "${INTERACTIVE:-false}" != true ]; then
+        log "Unattended mode: checkpoint recorded, continuing"
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        fail "Interactive checkpoints require a live TTY. Re-run with --interactive in a terminal or use the default unattended path."
+        exit 1
+    fi
+    echo -e "${YELLOW}>>> Review the output, then press Enter to continue (or Ctrl+C to abort)${NC}"
+    read -r
+}
+escalate() {
+    fail "$1"
+    exit 1
+}
 pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; }
+
+ROLE_REGISTRY="sawmill/ROLE_REGISTRY.yaml"
+ROLE_REGISTRY_VALIDATOR="sawmill/validate_role_registry.py"
+ARTIFACT_REGISTRY="sawmill/ARTIFACT_REGISTRY.yaml"
+ARTIFACT_REGISTRY_VALIDATOR="sawmill/validate_artifact_registry.py"
+PROMPT_REGISTRY="sawmill/PROMPT_REGISTRY.yaml"
+PROMPT_REGISTRY_VALIDATOR="sawmill/validate_prompt_registry.py"
+PROMPT_RENDERER="sawmill/render_prompt.py"
+TIMEOUT_RUNNER="sawmill/run_with_timeout.py"
+AGENT_TIMEOUT_SECONDS="${SAWMILL_AGENT_TIMEOUT_SECONDS:-1800}"
+
+resolve_registry_backend() {
+    local override_var="$1"
+    local default_backend="$2"
+
+    if [ -n "${!override_var:-}" ]; then
+        printf '%s\n' "${!override_var}"
+    else
+        printf '%s\n' "$default_backend"
+    fi
+}
+
+validate_selected_backend() {
+    local selected_backend="$1"
+    local allowed_backends="$2"
+    local role_name="$3"
+    local override_var="$4"
+
+    case " ${allowed_backends} " in
+        *" ${selected_backend} "*) ;;
+        *)
+            fail "Role '${role_name}' resolved backend '${selected_backend}' via ${override_var} is not allowed (${allowed_backends})"
+            exit 1
+            ;;
+    esac
+}
+
+require_backend_cli() {
+    local agent_label="$1"
+    local backend="$2"
+
+    case "$backend" in
+        claude) command -v claude >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'claude' CLI not found"; exit 1; } ;;
+        codex)  command -v codex  >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'codex' CLI not found"; exit 1; } ;;
+        gemini) command -v gemini >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'gemini' CLI not found"; exit 1; } ;;
+        *)
+            fail "Unknown agent backend: ${backend}"
+            exit 1
+            ;;
+    esac
+}
+
+load_role_registry() {
+    if [ ! -f "$ROLE_REGISTRY_VALIDATOR" ]; then
+        fail "Missing role registry validator: ${ROLE_REGISTRY_VALIDATOR}"
+        exit 1
+    fi
+
+    python3 "$ROLE_REGISTRY_VALIDATOR" --registry "$ROLE_REGISTRY" >/dev/null
+    eval "$(
+        python3 "$ROLE_REGISTRY_VALIDATOR" --registry "$ROLE_REGISTRY" --shell-exports
+    )"
+
+    SPEC_AGENT="$(resolve_registry_backend "$SPEC_ENV_OVERRIDE" "$SPEC_DEFAULT_BACKEND")"
+    BUILD_AGENT="$(resolve_registry_backend "$BUILD_ENV_OVERRIDE" "$BUILD_DEFAULT_BACKEND")"
+    HOLDOUT_AGENT="$(resolve_registry_backend "$HOLDOUT_ENV_OVERRIDE" "$HOLDOUT_DEFAULT_BACKEND")"
+    REVIEW_AGENT="$(resolve_registry_backend "$REVIEW_ENV_OVERRIDE" "$REVIEW_DEFAULT_BACKEND")"
+    EVAL_AGENT="$(resolve_registry_backend "$EVAL_ENV_OVERRIDE" "$EVAL_DEFAULT_BACKEND")"
+    AUDIT_AGENT="$(resolve_registry_backend "$AUDIT_ENV_OVERRIDE" "$AUDIT_DEFAULT_BACKEND")"
+    PORTAL_AGENT="$(resolve_registry_backend "$PORTAL_ENV_OVERRIDE" "$PORTAL_DEFAULT_BACKEND")"
+
+    validate_selected_backend "$SPEC_AGENT" "$SPEC_ALLOWED_BACKENDS" "spec-agent" "$SPEC_ENV_OVERRIDE"
+    validate_selected_backend "$BUILD_AGENT" "$BUILD_ALLOWED_BACKENDS" "builder" "$BUILD_ENV_OVERRIDE"
+    validate_selected_backend "$HOLDOUT_AGENT" "$HOLDOUT_ALLOWED_BACKENDS" "holdout-agent" "$HOLDOUT_ENV_OVERRIDE"
+    validate_selected_backend "$REVIEW_AGENT" "$REVIEW_ALLOWED_BACKENDS" "reviewer" "$REVIEW_ENV_OVERRIDE"
+    validate_selected_backend "$EVAL_AGENT" "$EVAL_ALLOWED_BACKENDS" "evaluator" "$EVAL_ENV_OVERRIDE"
+    validate_selected_backend "$AUDIT_AGENT" "$AUDIT_ALLOWED_BACKENDS" "auditor" "$AUDIT_ENV_OVERRIDE"
+    validate_selected_backend "$PORTAL_AGENT" "$PORTAL_ALLOWED_BACKENDS" "portal-steward" "$PORTAL_ENV_OVERRIDE"
+}
+
+load_artifact_registry() {
+    if [ ! -f "$ARTIFACT_REGISTRY_VALIDATOR" ]; then
+        fail "Missing artifact registry validator: ${ARTIFACT_REGISTRY_VALIDATOR}"
+        exit 1
+    fi
+
+    python3 "$ARTIFACT_REGISTRY_VALIDATOR" \
+        --registry "$ARTIFACT_REGISTRY" \
+        --roles "$ROLE_REGISTRY" >/dev/null
+    eval "$(
+        python3 "$ARTIFACT_REGISTRY_VALIDATOR" \
+            --registry "$ARTIFACT_REGISTRY" \
+            --roles "$ROLE_REGISTRY" \
+            --shell-exports
+    )"
+}
+
+load_prompt_registry() {
+    if [ ! -f "$PROMPT_REGISTRY_VALIDATOR" ]; then
+        fail "Missing prompt registry validator: ${PROMPT_REGISTRY_VALIDATOR}"
+        exit 1
+    fi
+
+    python3 "$PROMPT_REGISTRY_VALIDATOR" \
+        --registry "$PROMPT_REGISTRY" \
+        --roles "$ROLE_REGISTRY" \
+        --artifacts "$ARTIFACT_REGISTRY" >/dev/null
+    eval "$(
+        python3 "$PROMPT_REGISTRY_VALIDATOR" \
+            --registry "$PROMPT_REGISTRY" \
+            --roles "$ROLE_REGISTRY" \
+            --artifacts "$ARTIFACT_REGISTRY" \
+            --shell-exports
+    )"
+}
+
+key_to_env() {
+    printf '%s' "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+artifact_path() {
+    local key prefix template_var template
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    template_var="ARTIFACT_${prefix}_PATH_TEMPLATE"
+    template="${!template_var}"
+    printf '%s\n' "${template//\{FMWK\}/$FMWK}"
+}
+
+artifact_kind() {
+    local key prefix kind_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    kind_var="ARTIFACT_${prefix}_KIND"
+    printf '%s\n' "${!kind_var}"
+}
+
+prompt_file() {
+    local key prefix file_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    file_var="PROMPT_${prefix}_PROMPT_FILE"
+    printf '%s\n' "${!file_var}"
+}
+
+prompt_expected_artifacts() {
+    local key prefix expected_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    expected_var="PROMPT_${prefix}_EXPECTED_ARTIFACTS"
+    printf '%s\n' "${!expected_var}"
+}
+
+prompt_required_artifacts() {
+    local key prefix required_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    required_var="PROMPT_${prefix}_REQUIRED_ARTIFACTS"
+    printf '%s\n' "${!required_var}"
+}
+
+prompt_role() {
+    local key prefix role_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    role_var="PROMPT_${prefix}_ROLE"
+    printf '%s\n' "${!role_var}"
+}
+
+export_artifact_paths() {
+    local artifact_id upper
+    for artifact_id in $ALL_ARTIFACT_IDS; do
+        upper="$(key_to_env "$artifact_id")"
+        export "${upper}_PATH=$(artifact_path "$artifact_id")"
+    done
+}
+
+render_prompt_output() {
+    local key template_path
+    key="$1"
+    template_path="$(prompt_file "$key")"
+    python3 "$PROMPT_RENDERER" "$template_path"
+}
+
+prompt_sentinel_var() {
+    local key="$1"
+    printf 'PROMPT_%s_SENTINEL' "$(key_to_env "$key")"
+}
+
+prompt_sentinel_path() {
+    local key="$1"
+    local sentinel_var
+    sentinel_var="$(prompt_sentinel_var "$key")"
+    printf '%s\n' "${!sentinel_var:-}"
+}
+
+snapshot_prompt_outputs() {
+    local prompt_key="$1"
+    local sentinel_var sentinel_path
+    sentinel_path="$(mktemp "/tmp/sawmill-${prompt_key}.XXXXXX")"
+    sentinel_var="$(prompt_sentinel_var "$prompt_key")"
+    printf -v "$sentinel_var" '%s' "$sentinel_path"
+}
+
+cleanup_prompt_sentinel() {
+    local prompt_key="$1"
+    local sentinel_var sentinel_path
+    sentinel_var="$(prompt_sentinel_var "$prompt_key")"
+    sentinel_path="${!sentinel_var:-}"
+    if [ -n "$sentinel_path" ] && [ -f "$sentinel_path" ]; then
+        rm -f "$sentinel_path"
+    fi
+    printf -v "$sentinel_var" '%s' ""
+}
+
+ensure_artifact_exists() {
+    local artifact_id label path kind
+    artifact_id="$1"
+    label="${2:-artifact}"
+    path="$(artifact_path "$artifact_id")"
+    kind="$(artifact_kind "$artifact_id")"
+    if [ "$kind" = "dir" ]; then
+        [ -d "$path" ] || escalate "Missing required ${label}: ${path}"
+    else
+        [ -f "$path" ] || escalate "Missing required ${label}: ${path}"
+    fi
+}
+
+ensure_artifact_ids() {
+    local label="$1"
+    shift
+    local artifact_id
+    for artifact_id in "$@"; do
+        ensure_artifact_exists "$artifact_id" "$label"
+    done
+}
+
+ensure_prompt_inputs() {
+    local prompt_key="$1"
+    local artifact_id
+    for artifact_id in $(prompt_required_artifacts "$prompt_key"); do
+        ensure_artifact_exists "$artifact_id" "input for ${prompt_key}"
+    done
+}
+
+artifact_newer_than() {
+    local artifact_id="$1"
+    local reference_path="$2"
+    local path kind
+    path="$(artifact_path "$artifact_id")"
+    kind="$(artifact_kind "$artifact_id")"
+    if [ "$kind" = "dir" ]; then
+        find "$path" -mindepth 1 -newer "$reference_path" -print -quit 2>/dev/null | grep -q .
+    else
+        [ "$path" -nt "$reference_path" ]
+    fi
+}
+
+verify_prompt_outputs() {
+    local prompt_key="$1"
+    local artifact_id sentinel_path
+    sentinel_path="$(prompt_sentinel_path "$prompt_key")"
+    for artifact_id in $(prompt_expected_artifacts "$prompt_key"); do
+        ensure_artifact_exists "$artifact_id" "output for ${prompt_key}"
+        if [ -n "$sentinel_path" ] && ! artifact_newer_than "$artifact_id" "$sentinel_path"; then
+            cleanup_prompt_sentinel "$prompt_key"
+            escalate "Output for ${prompt_key} was not refreshed this run: $(artifact_path "$artifact_id")"
+        fi
+    done
+    cleanup_prompt_sentinel "$prompt_key"
+}
+
+invoke_prompt() {
+    local backend="$1"
+    local role_file="$2"
+    local prompt_key="$3"
+    local expected_role prompt_owner rendered_prompt
+
+    expected_role="$(basename "$role_file" .md)"
+    prompt_owner="$(prompt_role "$prompt_key")"
+    if [ "$prompt_owner" != "$expected_role" ]; then
+        escalate "Prompt '${prompt_key}' is owned by '${prompt_owner}', but runtime tried to invoke role '${expected_role}'"
+    fi
+
+    ensure_prompt_inputs "$prompt_key"
+    snapshot_prompt_outputs "$prompt_key"
+    if ! rendered_prompt="$(render_prompt_output "$prompt_key")"; then
+        cleanup_prompt_sentinel "$prompt_key"
+        escalate "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")"
+    fi
+
+    invoke_agent "$backend" "$role_file" "$rendered_prompt"
+}
+
+launch_prompt_background() {
+    local backend="$1"
+    local role_file="$2"
+    local prompt_key="$3"
+    local expected_role prompt_owner rendered_prompt
+
+    expected_role="$(basename "$role_file" .md)"
+    prompt_owner="$(prompt_role "$prompt_key")"
+    if [ "$prompt_owner" != "$expected_role" ]; then
+        escalate "Prompt '${prompt_key}' is owned by '${prompt_owner}', but runtime tried to invoke role '${expected_role}'"
+    fi
+
+    ensure_prompt_inputs "$prompt_key"
+    snapshot_prompt_outputs "$prompt_key"
+    if ! rendered_prompt="$(render_prompt_output "$prompt_key")"; then
+        cleanup_prompt_sentinel "$prompt_key"
+        escalate "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")"
+    fi
+
+    invoke_agent "$backend" "$role_file" "$rendered_prompt" &
+}
+
+append_retry_context() {
+    local artifact_id="$1"
+    local title="$2"
+    local path
+    path="$(artifact_path "$artifact_id")"
+    if [ -f "$path" ] && [ -s "$path" ]; then
+        RETRY_CONTEXT="${RETRY_CONTEXT}
+
+${title}:
+Read ${path} for the latest failures. Fix ONLY what failed. Do not rewrite passing work."
+    fi
+}
+
+stop_background_pid() {
+    local pid="${1:-}"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+}
 
 FMWK=""
 FROM_TURN="A"
 RUN_AUDIT=false
+INTERACTIVE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --audit)
             RUN_AUDIT=true
+            ;;
+        --interactive|--require-human-gates)
+            INTERACTIVE=true
+            ;;
+        --unattended|--auto-approve-gates)
+            INTERACTIVE=false
             ;;
         --from-turn)
             shift
@@ -97,45 +464,18 @@ done
 
 # --- Audit mode --------------------------------------------------------------
 if [ "$RUN_AUDIT" = true ]; then
-    AUDIT_AGENT="${SAWMILL_AUDIT_AGENT:-claude}"
+    load_role_registry
+    load_artifact_registry
+    load_prompt_registry
     log "═══ PORTAL AUDIT ═══"
 
-    if [ "$AUDIT_AGENT" = "claude" ]; then
-        command -v jq >/dev/null 2>&1 || { fail "'jq' is required when audit agent is 'claude'"; exit 1; }
-    fi
-
-    case "$AUDIT_AGENT" in
-        claude)
-            env -u CLAUDECODE \
-                SAWMILL_ACTIVE_ROLE=auditor SAWMILL_ACTIVE_FMWK="" \
-                claude -p "You are the auditor. Read your role file, then execute every check. Write results to sawmill/PORTAL_AUDIT_RESULTS.md." \
-                    --append-system-prompt "$(cat .claude/agents/auditor.md)" \
-                    --allowedTools "Read,Glob,Grep,Bash,Write"
-            ;;
-        codex)
-            codex exec --full-auto \
-                "$(cat .claude/agents/auditor.md)
-
-You are the auditor. Read your role file above, then execute every check. Write results to sawmill/PORTAL_AUDIT_RESULTS.md."
-            ;;
-        gemini)
-            gemini -p "$(cat .claude/agents/auditor.md)
-
-You are the auditor. Read your role file above, then execute every check. Write results to sawmill/PORTAL_AUDIT_RESULTS.md." \
-                --yolo
-            ;;
-        *)
-            fail "Unknown audit agent: ${AUDIT_AGENT}"
-            exit 1
-            ;;
-    esac
-
-    if [ -f "sawmill/PORTAL_AUDIT_RESULTS.md" ]; then
-        pass "Audit complete. Results: sawmill/PORTAL_AUDIT_RESULTS.md"
-    else
-        fail "Auditor did not produce sawmill/PORTAL_AUDIT_RESULTS.md"
-        exit 1
-    fi
+    require_backend_cli "AUDIT_AGENT" "$AUDIT_AGENT"
+    export FMWK=""
+    export PORTAL_AUDIT_RESULTS_PATH
+    PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
+    invoke_prompt "$AUDIT_AGENT" "$AUDIT_ROLE_FILE" audit_run
+    verify_prompt_outputs audit_run
+    pass "Audit complete. Results: ${PORTAL_AUDIT_RESULTS_PATH}"
     exit 0
 fi
 
@@ -158,13 +498,6 @@ HOLDOUT_DIR=".holdouts/${FMWK}"
 STAGING_DIR="staging/${FMWK}"
 MAX_ATTEMPTS=3
 BRANCH="build/${FMWK}"
-
-# Agent backend selection (override with env vars)
-SPEC_AGENT="${SAWMILL_SPEC_AGENT:-codex}"         # claude | codex | gemini
-BUILD_AGENT="${SAWMILL_BUILD_AGENT:-codex}"       # claude | codex | gemini
-HOLDOUT_AGENT="${SAWMILL_HOLDOUT_AGENT:-codex}"   # claude | codex | gemini
-EVAL_AGENT="${SAWMILL_EVAL_AGENT:-codex}"         # claude | codex | gemini
-PORTAL_AGENT="${SAWMILL_PORTAL_AGENT:-codex}"     # claude | codex | gemini
 
 turn_rank() {
     case "$1" in
@@ -204,31 +537,31 @@ require_files() {
 
 update_portal_state() {
     local fmwk="$1"
-    local status_page="docs/sawmill/${fmwk}.md"
+    local status_page
+    status_page="$(artifact_path status_page)"
 
     # Only update auto-managed status pages (marker on first line)
     if [ ! -f "$status_page" ] || ! head -1 "$status_page" | grep -qF '<!-- sawmill:auto-status -->'; then
         return 0
     fi
 
-    local sd="sawmill/${fmwk}" hd=".holdouts/${fmwk}"
     local spec="PENDING" plan="PENDING" holdout="PENDING" build="PENDING" eval_s="PENDING"
     local summary="Not started"
 
-    if [ -f "$sd/D1_CONSTITUTION.md" ] && [ -f "$sd/D6_GAP_ANALYSIS.md" ]; then
+    if [ -f "$(artifact_path d1_constitution)" ] && [ -f "$(artifact_path d6_gap_analysis)" ]; then
         spec="DONE"; summary="Spec complete"
     fi
-    if [ -f "$sd/D7_PLAN.md" ] && [ -f "$sd/BUILDER_HANDOFF.md" ]; then
+    if [ -f "$(artifact_path d7_plan)" ] && [ -f "$(artifact_path builder_handoff)" ]; then
         plan="DONE"; summary="Plan complete"
     fi
-    if [ -f "$hd/D9_HOLDOUT_SCENARIOS.md" ]; then
+    if [ -f "$(artifact_path d9_holdout_scenarios)" ]; then
         holdout="DONE"; summary="Holdouts complete"
     fi
-    if [ -f "$sd/RESULTS.md" ]; then
+    if [ -f "$(artifact_path results)" ]; then
         build="DONE"; summary="Build complete"
     fi
-    if [ -f "$sd/EVALUATION_REPORT.md" ]; then
-        if grep -qiE 'Final[[:space:]]+[Vv]erdict.*PASS' "$sd/EVALUATION_REPORT.md" 2>/dev/null; then
+    if [ -f "$(artifact_path evaluation_report)" ]; then
+        if [ "$(evaluation_verdict)" = "PASS" ]; then
             eval_s="PASS"; summary="Evaluation PASS"
         else
             eval_s="FAIL"; summary="Evaluation FAIL"
@@ -265,10 +598,8 @@ run_stage_audit() {
     local fmwk="$1"
     local stage="$2"
     local audit_file="sawmill/${fmwk}/CANARY_AUDIT.md"
-    local status_page="docs/sawmill/${fmwk}.md"
-    local sd="sawmill/${fmwk}"
-    local hd=".holdouts/${fmwk}"
-    local stg="staging/${fmwk}"
+    local status_page
+    status_page="$(artifact_path status_page)"
     local pc=0 fc=0
     local results=""
 
@@ -291,65 +622,89 @@ run_stage_audit() {
     _ck "PORTAL_MAP.yaml references ${fmwk}" grep -qF "${fmwk}" docs/PORTAL_MAP.yaml
 
     # Artifact-to-portal consistency: if artifacts exist, portal must reflect them
-    if [ -f "$sd/D1_CONSTITUTION.md" ]; then
-        _ck "D1 exists" test -f "$sd/D1_CONSTITUTION.md"
-        _ck "D2 exists" test -f "$sd/D2_SPECIFICATION.md"
-        _ck "D3 exists" test -f "$sd/D3_DATA_MODEL.md"
-        _ck "D4 exists" test -f "$sd/D4_CONTRACTS.md"
-        _ck "D5 exists" test -f "$sd/D5_RESEARCH.md"
-        _ck "D6 exists" test -f "$sd/D6_GAP_ANALYSIS.md"
+    if [ -f "$(artifact_path d1_constitution)" ]; then
+        _ck "D1 exists" test -f "$(artifact_path d1_constitution)"
+        _ck "D2 exists" test -f "$(artifact_path d2_specification)"
+        _ck "D3 exists" test -f "$(artifact_path d3_data_model)"
+        _ck "D4 exists" test -f "$(artifact_path d4_contracts)"
+        _ck "D5 exists" test -f "$(artifact_path d5_research)"
+        _ck "D6 exists" test -f "$(artifact_path d6_gap_analysis)"
         _ck "Portal: Turn A DONE" grep -qF "Turn A (Spec) | DONE" "$status_page"
     fi
 
-    if [ -f "$sd/D7_PLAN.md" ]; then
-        _ck "D7 exists" test -f "$sd/D7_PLAN.md"
-        _ck "D8 exists" test -f "$sd/D8_TASKS.md"
-        _ck "D10 exists" test -f "$sd/D10_AGENT_CONTEXT.md"
-        _ck "Handoff exists" test -f "$sd/BUILDER_HANDOFF.md"
+    if [ -f "$(artifact_path d7_plan)" ]; then
+        _ck "D7 exists" test -f "$(artifact_path d7_plan)"
+        _ck "D8 exists" test -f "$(artifact_path d8_tasks)"
+        _ck "D10 exists" test -f "$(artifact_path d10_agent_context)"
+        _ck "Handoff exists" test -f "$(artifact_path builder_handoff)"
         _ck "Portal: Turn B DONE" grep -qF "Turn B (Plan) | DONE" "$status_page"
     fi
 
-    if [ -f "$hd/D9_HOLDOUT_SCENARIOS.md" ]; then
-        _ck "D9 exists" test -f "$hd/D9_HOLDOUT_SCENARIOS.md"
+    if [ -f "$(artifact_path d9_holdout_scenarios)" ]; then
+        _ck "D9 exists" test -f "$(artifact_path d9_holdout_scenarios)"
         _ck "Portal: Turn C DONE" grep -qF "Turn C (Holdout) | DONE" "$status_page"
     fi
 
-    if [ -f "$sd/RESULTS.md" ]; then
-        _ck "RESULTS.md exists" test -f "$sd/RESULTS.md"
-        _ck "staging/ has content" test -d "$stg"
+    if [ -f "$(artifact_path q13_answers)" ]; then
+        _ck "13Q answers exist" test -f "$(artifact_path q13_answers)"
+    fi
+
+    if [ -f "$(artifact_path review_report)" ]; then
+        _ck "REVIEW_REPORT.md exists" test -f "$(artifact_path review_report)"
+        _ck "REVIEW_ERRORS.md exists" test -f "$(artifact_path review_errors)"
+        _ck "Review verdict parseable" test "$(review_verdict)" != "UNKNOWN"
+    fi
+
+    if [ -f "$(artifact_path results)" ]; then
+        _ck "RESULTS.md exists" test -f "$(artifact_path results)"
+        _ck "13Q answers exist before build" test -f "$(artifact_path q13_answers)"
+        _ck "REVIEW_REPORT.md exists before build" test -f "$(artifact_path review_report)"
+        _ck "staging/ has content" test -d "$(artifact_path staging_root)"
         _ck "Portal: Turn D DONE" grep -qF "Turn D (Build) | DONE" "$status_page"
     fi
 
-    if [ -f "$sd/EVALUATION_REPORT.md" ]; then
-        _ck "EVALUATION_REPORT.md exists" test -f "$sd/EVALUATION_REPORT.md"
-        if grep -qiE 'Final[[:space:]]+[Vv]erdict.*PASS' "$sd/EVALUATION_REPORT.md" 2>/dev/null; then
-            _ck "Portal: Turn E PASS" grep -qF "Turn E (Eval) | PASS" "$status_page"
-        fi
+    if [ -f "$(artifact_path evaluation_report)" ]; then
+        _ck "EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
+        case "$(evaluation_verdict)" in
+            PASS)
+                _ck "Portal: Turn E PASS" grep -qF "Turn E (Eval) | PASS" "$status_page"
+                ;;
+            FAIL)
+                _ck "Portal: Turn E FAIL" grep -qF "Turn E (Eval) | FAIL" "$status_page"
+                ;;
+            *)
+                _ck "Evaluation verdict parseable" false
+                ;;
+        esac
     fi
 
     # Reverse checks: if portal claims DONE, artifacts MUST exist
     if grep -qF "Turn A (Spec) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says A DONE → D1 exists" test -f "$sd/D1_CONSTITUTION.md"
-        _ck "Portal says A DONE → D6 exists" test -f "$sd/D6_GAP_ANALYSIS.md"
+        _ck "Portal says A DONE → D1 exists" test -f "$(artifact_path d1_constitution)"
+        _ck "Portal says A DONE → D6 exists" test -f "$(artifact_path d6_gap_analysis)"
     fi
     if grep -qF "Turn B (Plan) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says B DONE → D7 exists" test -f "$sd/D7_PLAN.md"
-        _ck "Portal says B DONE → Handoff exists" test -f "$sd/BUILDER_HANDOFF.md"
+        _ck "Portal says B DONE → D7 exists" test -f "$(artifact_path d7_plan)"
+        _ck "Portal says B DONE → Handoff exists" test -f "$(artifact_path builder_handoff)"
     fi
     if grep -qF "Turn C (Holdout) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says C DONE → D9 exists" test -f "$hd/D9_HOLDOUT_SCENARIOS.md"
+        _ck "Portal says C DONE → D9 exists" test -f "$(artifact_path d9_holdout_scenarios)"
     fi
     if grep -qF "Turn D (Build) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says D DONE → RESULTS.md exists" test -f "$sd/RESULTS.md"
-        _ck "Portal says D DONE → staging/ exists" test -d "$stg"
+        _ck "Portal says D DONE → RESULTS.md exists" test -f "$(artifact_path results)"
+        _ck "Portal says D DONE → REVIEW_REPORT.md exists" test -f "$(artifact_path review_report)"
+        _ck "Portal says D DONE → staging/ exists" test -d "$(artifact_path staging_root)"
     fi
     if grep -qF "Turn E (Eval) | PASS" "$status_page" 2>/dev/null; then
-        _ck "Portal says E PASS → EVALUATION_REPORT.md exists" test -f "$sd/EVALUATION_REPORT.md"
+        _ck "Portal says E PASS → EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
+    fi
+    if grep -qF "Turn E (Eval) | FAIL" "$status_page" 2>/dev/null; then
+        _ck "Portal says E FAIL → EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
     fi
 
     # Portal-steward output checks
-    _ck "PORTAL_STATUS.md exists" test -f "docs/PORTAL_STATUS.md"
-    _ck "PORTAL_CHANGESET.md exists" test -f "sawmill/PORTAL_CHANGESET.md"
+    _ck "PORTAL_STATUS.md exists" test -f "$(artifact_path portal_status)"
+    _ck "PORTAL_CHANGESET.md exists" test -f "$(artifact_path portal_changeset)"
     _ck "validate_portal_map.py passes" python3 docs/validate_portal_map.py
     _ck "catalog-info.yaml exists" test -f "catalog-info.yaml"
 
@@ -384,12 +739,12 @@ for e in data.get('entries', []):
         fi
     fi
 
-    # Freshness: PORTAL_STATUS.md and PORTAL_CHANGESET.md were touched this run
-    if [ -n "${_POST_STATUS_HASH:-}" ]; then
-        _ck "PORTAL_STATUS.md was updated this run" test "$_POST_STATUS_HASH" != "none"
+    # Freshness: PORTAL_STATUS.md and PORTAL_CHANGESET.md changed during this stage
+    if [ -n "${_PRE_STATUS_HASH:-}" ] && [ -n "${_POST_STATUS_HASH:-}" ]; then
+        _ck "PORTAL_STATUS.md changed this run" test "$_POST_STATUS_HASH" != "$_PRE_STATUS_HASH"
     fi
-    if [ -n "${_POST_CHANGESET_HASH:-}" ]; then
-        _ck "PORTAL_CHANGESET.md was updated this run" test "$_POST_CHANGESET_HASH" != "none"
+    if [ -n "${_PRE_CHANGESET_HASH:-}" ] && [ -n "${_POST_CHANGESET_HASH:-}" ]; then
+        _ck "PORTAL_CHANGESET.md changed this run" test "$_POST_CHANGESET_HASH" != "$_PRE_CHANGESET_HASH"
     fi
 
     # Write audit file
@@ -421,44 +776,47 @@ AUDIT_EOF
 run_portal_steward() {
     local fmwk="$1"
     local stage="$2"
-    local status_page="docs/sawmill/${fmwk}.md"
 
     log "Running portal-steward for ${fmwk} after ${stage}"
 
     # Snapshot portal outputs before steward runs (for freshness check)
     local pre_status_hash pre_changeset_hash
-    pre_status_hash=$(shasum -a 256 docs/PORTAL_STATUS.md 2>/dev/null | cut -d' ' -f1 || echo "none")
-    pre_changeset_hash=$(shasum -a 256 sawmill/PORTAL_CHANGESET.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+    pre_status_hash=$(shasum -a 256 "$(artifact_path portal_status)" 2>/dev/null | cut -d' ' -f1 || echo "none")
+    pre_changeset_hash=$(shasum -a 256 "$(artifact_path portal_changeset)" 2>/dev/null | cut -d' ' -f1 || echo "none")
+    export _PRE_STATUS_HASH="$pre_status_hash" _PRE_CHANGESET_HASH="$pre_changeset_hash"
 
-    invoke_agent "$PORTAL_AGENT" ".claude/agents/portal-steward.md" \
-"Framework ${fmwk} just completed ${stage}.
-
-YOUR TASK — stage-scoped portal alignment:
-
-1. Verify docs/sawmill/${fmwk}.md reflects ${stage} completion.
-2. Run python3 docs/validate_portal_map.py — fix any failures.
-3. Check mirrors for files that changed in ${stage}. Sync any that drifted.
-4. Verify mkdocs.yml nav targets exist. Fix broken references.
-5. Verify catalog-info.yaml is consistent with repo state.
-
-OUTPUT (required):
-- Update docs/PORTAL_STATUS.md with current portal health.
-- Write sawmill/PORTAL_CHANGESET.md with changes applied this run.
-
-SCOPE: Focus on what ${stage} changed. Do not do a full repo audit."
+    export STAGE="$stage"
+    invoke_prompt "$PORTAL_AGENT" "$PORTAL_ROLE_FILE" portal_stage
+    verify_prompt_outputs portal_stage
 
     # Store hashes for audit freshness checks
     export _POST_STATUS_HASH _POST_CHANGESET_HASH
-    _POST_STATUS_HASH=$(shasum -a 256 docs/PORTAL_STATUS.md 2>/dev/null | cut -d' ' -f1 || echo "none")
-    _POST_CHANGESET_HASH=$(shasum -a 256 sawmill/PORTAL_CHANGESET.md 2>/dev/null | cut -d' ' -f1 || echo "none")
+    _POST_STATUS_HASH=$(shasum -a 256 "$(artifact_path portal_status)" 2>/dev/null | cut -d' ' -f1 || echo "none")
+    _POST_CHANGESET_HASH=$(shasum -a 256 "$(artifact_path portal_changeset)" 2>/dev/null | cut -d' ' -f1 || echo "none")
 
     # Steward produced outputs?
-    if [ -f "docs/PORTAL_STATUS.md" ] && [ "$_POST_STATUS_HASH" != "$pre_status_hash" ]; then
+    if [ -f "$(artifact_path portal_status)" ] && [ "$_POST_STATUS_HASH" != "$pre_status_hash" ]; then
         pass "Portal-steward updated PORTAL_STATUS.md"
-    elif [ -f "docs/PORTAL_STATUS.md" ]; then
+    elif [ -f "$(artifact_path portal_status)" ]; then
         log "Portal-steward ran but PORTAL_STATUS.md unchanged (may be already current)"
     else
         fail "Portal-steward did not produce PORTAL_STATUS.md"
+    fi
+}
+
+run_with_timeout() {
+    local label="$1"
+    shift
+
+    if [ ! -f "$TIMEOUT_RUNNER" ]; then
+        fail "Missing timeout runner: ${TIMEOUT_RUNNER}"
+        exit 1
+    fi
+
+    if [ "${AGENT_TIMEOUT_SECONDS}" -le 0 ]; then
+        "$@"
+    else
+        python3 "$TIMEOUT_RUNNER" --timeout "$AGENT_TIMEOUT_SECONDS" --label "$label" -- "$@"
     fi
 }
 
@@ -501,11 +859,12 @@ invoke_agent() {
             # The task prompt goes as the -p argument.
             # --allowedTools grants file and shell access.
             # SAWMILL_ACTIVE_ROLE + SAWMILL_ACTIVE_FMWK enforce hooks per role.
-            env -u CLAUDECODE \
-                SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
-                claude -p "${prompt}" \
-                    --append-system-prompt "${role_content}" \
-                    --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+            run_with_timeout "${backend}:${role_name}" \
+                env -u CLAUDECODE \
+                    SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
+                    claude -p "${prompt}" \
+                        --append-system-prompt "${role_content}" \
+                        --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
             ;;
         codex)
             # Codex auto-reads AGENTS.md (or CLAUDE.md if symlinked/configured).
@@ -513,9 +872,12 @@ invoke_agent() {
             # --full-auto disables approval prompts.
             # Codex runs in a network-disabled sandbox by default.
             # Env vars set for consistency (Codex does not use Claude Code hooks).
-            SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
-                codex exec --full-auto \
-                    "${role_content}
+            run_with_timeout "${backend}:${role_name}" \
+                env \
+                    SAWMILL_ACTIVE_ROLE="$role_name" \
+                    SAWMILL_ACTIVE_FMWK="$FMWK" \
+                    codex exec --full-auto \
+                        "${role_content}
 
 ${prompt}"
             ;;
@@ -524,11 +886,14 @@ ${prompt}"
             # No --system-prompt flag — everything goes in -p argument.
             # --yolo auto-approves all tool actions.
             # Env vars set for consistency (Gemini does not use Claude Code hooks).
-            SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
-                gemini -p "${role_content}
+            run_with_timeout "${backend}:${role_name}" \
+                env \
+                    SAWMILL_ACTIVE_ROLE="$role_name" \
+                    SAWMILL_ACTIVE_FMWK="$FMWK" \
+                    gemini -p "${role_content}
 
 ${prompt}" \
-                    --yolo
+                        --yolo
             ;;
         *)
             fail "Unknown agent backend: ${backend}"
@@ -537,21 +902,56 @@ ${prompt}" \
     esac
 }
 
+review_verdict() {
+    local report_path
+    local last_line
+    report_path="$(artifact_path review_report)"
+    last_line="$(awk 'NF { line=$0 } END { print line }' "$report_path" 2>/dev/null | sed 's/[[:space:]]*$//')"
+    case "$last_line" in
+        [Rr]eview\ [Vv]erdict:\ PASS) printf '%s\n' "PASS" ;;
+        [Rr]eview\ [Vv]erdict:\ RETRY) printf '%s\n' "RETRY" ;;
+        [Rr]eview\ [Vv]erdict:\ ESCALATE) printf '%s\n' "ESCALATE" ;;
+        *) printf '%s\n' "UNKNOWN" ;;
+    esac
+}
+
+evaluation_verdict() {
+    local report_path
+    local last_line
+    report_path="$(artifact_path evaluation_report)"
+    last_line="$(awk 'NF { line=$0 } END { print line }' "$report_path" 2>/dev/null | sed 's/[[:space:]]*$//')"
+    case "$last_line" in
+        [Ff]inal\ [Vv]erdict:\ PASS) printf '%s\n' "PASS" ;;
+        [Ff]inal\ [Vv]erdict:\ FAIL) printf '%s\n' "FAIL" ;;
+        *) printf '%s\n' "UNKNOWN" ;;
+    esac
+}
+
 # --- Preflight --------------------------------------------------------------
+
+load_role_registry
+load_artifact_registry
+load_prompt_registry
 
 log "Sawmill run: ${FMWK}"
 log "From turn:     ${FROM_TURN}"
+log "Interactive:   ${INTERACTIVE}"
 log "Spec agent:    ${SPEC_AGENT}"
 log "Build agent:   ${BUILD_AGENT}"
 log "Holdout agent: ${HOLDOUT_AGENT}"
+log "Review agent:  ${REVIEW_AGENT}"
 log "Eval agent:    ${EVAL_AGENT}"
+log "Audit agent:   ${AUDIT_AGENT}"
 log "Portal agent:  ${PORTAL_AGENT}"
 echo ""
 
 # Verify required files exist
-for f in CLAUDE.md AGENT_BOOTSTRAP.md .claude/agents/spec-agent.md \
-         .claude/agents/holdout-agent.md .claude/agents/builder.md \
-         .claude/agents/evaluator.md .claude/agents/portal-steward.md; do
+for f in \
+    CLAUDE.md AGENT_BOOTSTRAP.md \
+    "$ROLE_REGISTRY" "$ROLE_REGISTRY_VALIDATOR" \
+    "$ARTIFACT_REGISTRY" "$ARTIFACT_REGISTRY_VALIDATOR" \
+    "$PROMPT_REGISTRY" "$PROMPT_REGISTRY_VALIDATOR" \
+    "$PROMPT_RENDERER"; do
     if [ ! -f "$f" ]; then
         fail "Missing required file: $f"
         exit 1
@@ -569,29 +969,27 @@ if [ ! -e "GEMINI.md" ]; then
 fi
 
 # Verify the selected agent CLI is installed
-for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT EVAL_AGENT PORTAL_AGENT; do
+for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT REVIEW_AGENT EVAL_AGENT PORTAL_AGENT; do
     agent_val="${!agent_var}"
-    case "$agent_val" in
-        claude) command -v claude >/dev/null 2>&1 || { fail "${agent_var}=${agent_val} but 'claude' CLI not found"; exit 1; } ;;
-        codex)  command -v codex  >/dev/null 2>&1 || { fail "${agent_var}=${agent_val} but 'codex' CLI not found"; exit 1; } ;;
-        gemini) command -v gemini >/dev/null 2>&1 || { fail "${agent_var}=${agent_val} but 'gemini' CLI not found"; exit 1; } ;;
-    esac
+    require_backend_cli "$agent_var" "$agent_val"
 done
-
-needs_jq=false
-for _agent_val in "$SPEC_AGENT" "$BUILD_AGENT" "$HOLDOUT_AGENT" "$EVAL_AGENT" "$PORTAL_AGENT"; do
-    if [ "$_agent_val" = "claude" ]; then needs_jq=true; break; fi
-done
-if [ "$needs_jq" = true ]; then
-    command -v jq >/dev/null 2>&1 || { fail "'jq' is required when any agent backend is 'claude'"; exit 1; }
-fi
 
 # Create working directories
 mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
 
+export FMWK SAWMILL_DIR HOLDOUT_DIR STAGING_DIR BRANCH
+export SOURCE_MATERIAL_PATH STATUS_PAGE_PATH PORTAL_STATUS_PATH PORTAL_CHANGESET_PATH PORTAL_AUDIT_RESULTS_PATH
+export STAGE="" RETRY_CONTEXT=""
+SOURCE_MATERIAL_PATH="${SAWMILL_DIR}/SOURCE_MATERIAL.md"
+STATUS_PAGE_PATH="$(artifact_path status_page)"
+PORTAL_STATUS_PATH="$(artifact_path portal_status)"
+PORTAL_CHANGESET_PATH="$(artifact_path portal_changeset)"
+PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
+export_artifact_paths
+
 # Verify TASK.md exists
-if [ ! -f "${SAWMILL_DIR}/TASK.md" ]; then
-    fail "Missing ${SAWMILL_DIR}/TASK.md — create it before running the pipeline."
+if [ ! -f "$(artifact_path task)" ]; then
+    fail "Missing $(artifact_path task) — create it before running the pipeline."
     echo ""
     echo "TASK.md tells the spec agent which framework to spec."
     echo "See sawmill/COLD_START.md for the template."
@@ -608,45 +1006,14 @@ update_portal_state "$FMWK"
 
 if should_run_turn A; then
     log "═══ TURN A: Specification (D1-D6) ═══"
-
-    invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
-"YOUR TASK: Generate D1-D6 specification documents for a framework.
-
-READING ORDER — read these files in this exact sequence:
-1. AGENT_BOOTSTRAP.md — full orientation (primitives, invariants, boot order)
-2. architecture/NORTH_STAR.md — WHY (design authority)
-3. architecture/BUILDER_SPEC.md — WHAT (nine primitives, build rules)
-4. architecture/OPERATIONAL_SPEC.md — HOW (runtime behavior)
-5. architecture/FWK-0-DRAFT.md — framework rules, decomposition standard
-6. architecture/BUILD-PLAN.md — what gets built, in what order
-7. ${SAWMILL_DIR}/TASK.md — YOUR ASSIGNMENT (which framework to spec)
-8. ${SAWMILL_DIR}/SOURCE_MATERIAL.md — detailed spec material (if it exists)
-9. Templates/compressed/D1_CONSTITUTION.md — output template
-10. Templates/compressed/D2_SPECIFICATION.md — output template
-11. Templates/compressed/D3_DATA_MODEL.md — output template
-12. Templates/compressed/D4_CONTRACTS.md — output template
-13. Templates/compressed/D5_RESEARCH.md — output template
-14. Templates/compressed/D6_GAP_ANALYSIS.md — output template
-
-OUTPUT: Write D1_CONSTITUTION.md, D2_SPECIFICATION.md, D3_DATA_MODEL.md,
-D4_CONTRACTS.md, D5_RESEARCH.md, D6_GAP_ANALYSIS.md to ${SAWMILL_DIR}/
-
-GATE: D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED."
-
-    # Verify D1-D6 exist
-    for d in D1_CONSTITUTION D2_SPECIFICATION D3_DATA_MODEL D4_CONTRACTS D5_RESEARCH D6_GAP_ANALYSIS; do
-        if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
-            fail "Turn A did not produce ${SAWMILL_DIR}/${d}.md"
-            exit 1
-        fi
-    done
+    invoke_prompt "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_a_spec
+    verify_prompt_outputs turn_a_spec
     pass "Turn A produced D1-D6"
 
     update_portal_state "$FMWK"
     run_portal_steward "$FMWK" "Turn A"
     run_stage_audit "$FMWK" "Turn A"
-
-    gate "Review ${SAWMILL_DIR}/D1-D6 for completeness and accuracy"
+    checkpoint "Turn A outputs ready for optional review"
 else
     log "Skipping Turn A (--from-turn ${FROM_TURN})"
 fi
@@ -661,37 +1028,12 @@ if should_run_turn B || should_run_turn C; then
 
     if should_run_turn B; then
         if [ "$FROM_TURN" = "B" ]; then
-            require_files "Turn A output" \
-                "${SAWMILL_DIR}/D1_CONSTITUTION.md" \
-                "${SAWMILL_DIR}/D2_SPECIFICATION.md" \
-                "${SAWMILL_DIR}/D3_DATA_MODEL.md" \
-                "${SAWMILL_DIR}/D4_CONTRACTS.md" \
-                "${SAWMILL_DIR}/D5_RESEARCH.md" \
-                "${SAWMILL_DIR}/D6_GAP_ANALYSIS.md"
+            ensure_artifact_ids "Turn A output" \
+                d1_constitution d2_specification d3_data_model d4_contracts d5_research d6_gap_analysis
         fi
 
         # Turn B (background)
-        invoke_agent "$SPEC_AGENT" ".claude/agents/spec-agent.md" \
-"YOUR TASK: Generate D7, D8, D10, and BUILDER_HANDOFF from approved D1-D6.
-
-YOU ARE IN TURN B. Your Turn A output has been approved by the operator.
-
-READING ORDER — read these files in this exact sequence:
-1. AGENT_BOOTSTRAP.md — orientation
-2. ${SAWMILL_DIR}/D1_CONSTITUTION.md
-3. ${SAWMILL_DIR}/D2_SPECIFICATION.md
-4. ${SAWMILL_DIR}/D3_DATA_MODEL.md
-5. ${SAWMILL_DIR}/D4_CONTRACTS.md
-6. ${SAWMILL_DIR}/D5_RESEARCH.md
-7. ${SAWMILL_DIR}/D6_GAP_ANALYSIS.md
-8. Templates/compressed/D7_PLAN.md — output template
-9. Templates/compressed/D8_TASKS.md — output template
-10. Templates/compressed/D10_AGENT_CONTEXT.md — output template
-11. Templates/compressed/BUILDER_HANDOFF_STANDARD.md — handoff format
-12. Templates/compressed/BUILDER_PROMPT_CONTRACT.md — prompt contract
-
-OUTPUT: Write D7_PLAN.md, D8_TASKS.md, D10_AGENT_CONTEXT.md,
-and BUILDER_HANDOFF.md to ${SAWMILL_DIR}/" &
+        launch_prompt_background "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_b_plan
         PID_B=$!
     else
         log "Skipping Turn B (--from-turn ${FROM_TURN})"
@@ -699,50 +1041,33 @@ and BUILDER_HANDOFF.md to ${SAWMILL_DIR}/" &
 
     if should_run_turn C; then
         if [ "$FROM_TURN" = "C" ]; then
-            require_files "Turn A output" \
-                "${SAWMILL_DIR}/D2_SPECIFICATION.md" \
-                "${SAWMILL_DIR}/D4_CONTRACTS.md"
+            ensure_artifact_ids "Turn A output" d2_specification d4_contracts
         fi
 
         # Turn C (background)
-        invoke_agent "$HOLDOUT_AGENT" ".claude/agents/holdout-agent.md" \
-"YOUR TASK: Write holdout test scenarios from D2 and D4 ONLY.
-
-YOU ARE THE HOLDOUT AGENT. You have STRICT ISOLATION.
-
-READING ORDER — read ONLY these files:
-1. ${SAWMILL_DIR}/D2_SPECIFICATION.md — behavioral spec
-2. ${SAWMILL_DIR}/D4_CONTRACTS.md — interface contracts
-3. Templates/compressed/D9_HOLDOUT_SCENARIOS.md — output template
-
-DO NOT READ any other files. Not D1, D3, D5, D6, D7, D8, D10.
-Not BUILDER_HANDOFF. Not architecture/. Not src/.
-
-OUTPUT: Write D9_HOLDOUT_SCENARIOS.md to ${HOLDOUT_DIR}/" &
+        launch_prompt_background "$HOLDOUT_AGENT" "$HOLDOUT_ROLE_FILE" turn_c_holdout
         PID_C=$!
     else
         log "Skipping Turn C (--from-turn ${FROM_TURN})"
     fi
 
     if [ -n "$PID_B" ]; then
-        wait "$PID_B" || { fail "Turn B failed"; exit 1; }
-
-        for d in D7_PLAN D8_TASKS D10_AGENT_CONTEXT BUILDER_HANDOFF; do
-            if [ ! -f "${SAWMILL_DIR}/${d}.md" ]; then
-                fail "Turn B did not produce ${SAWMILL_DIR}/${d}.md"
-                exit 1
-            fi
-        done
+        if ! wait "$PID_B"; then
+            stop_background_pid "$PID_C"
+            fail "Turn B failed"
+            exit 1
+        fi
+        verify_prompt_outputs turn_b_plan
         pass "Turn B produced D7, D8, D10, BUILDER_HANDOFF"
     fi
 
     if [ -n "$PID_C" ]; then
-        wait "$PID_C" || { fail "Turn C failed"; exit 1; }
-
-        if [ ! -f "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md" ]; then
-            fail "Turn C did not produce ${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
+        if ! wait "$PID_C"; then
+            stop_background_pid "$PID_B"
+            fail "Turn C failed"
             exit 1
         fi
+        verify_prompt_outputs turn_c_holdout
         pass "Turn C produced D9 holdout scenarios"
     fi
 
@@ -755,14 +1080,9 @@ else
 fi
 
 if should_run_turn D && [ "$FROM_TURN_RANK" -le "$(turn_rank C)" ]; then
-    require_files "Turn B/C outputs" \
-        "${SAWMILL_DIR}/D7_PLAN.md" \
-        "${SAWMILL_DIR}/D8_TASKS.md" \
-        "${SAWMILL_DIR}/D10_AGENT_CONTEXT.md" \
-        "${SAWMILL_DIR}/BUILDER_HANDOFF.md" \
-        "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
-
-    gate "Review D7/D8/D10/D9 for completeness"
+    ensure_artifact_ids "Turn B/C outputs" \
+        d7_plan d8_tasks d10_agent_context builder_handoff d9_holdout_scenarios
+    checkpoint "Turn B/C outputs ready for optional review"
 fi
 
 # --- Turn D: Builder (up to 3 attempts) ------------------------------------
@@ -770,9 +1090,7 @@ fi
 BUILD_PASSED=false
 
 if should_run_turn D; then
-    require_files "Turn D input" \
-        "${SAWMILL_DIR}/D10_AGENT_CONTEXT.md" \
-        "${SAWMILL_DIR}/BUILDER_HANDOFF.md"
+    ensure_artifact_ids "Turn D input" d10_agent_context builder_handoff
 
     log "═══ TURN D: Build ═══"
 
@@ -784,155 +1102,42 @@ if should_run_turn D; then
 
         # Compose retry context
         RETRY_CONTEXT=""
-        if [ -f "${SAWMILL_DIR}/EVALUATION_ERRORS.md" ]; then
-            RETRY_CONTEXT="
-RETRY CONTEXT (attempt ${ATTEMPT}):
-Read ${SAWMILL_DIR}/EVALUATION_ERRORS.md for one-line failure descriptions from the evaluator.
-Fix ONLY what failed. Do not rewrite passing code."
-        fi
-
-        # --- Turn D is TWO invocations: 13Q gate, then build ---
-        #
-        # Problem: `claude -p` is atomic — the agent answers, the process exits.
-        # We cannot tell a dead process "now continue building."
-        #
-        # Solution: Split into two calls.
-        #   Call 1: Answer 13Q, write answers to file, exit.
-        #   Call 2: After human approval, resume session and build.
-        #
-        # For Claude: use --output-format json to capture session_id, then --resume.
-        # For Codex/Gemini: two separate invocations (no session resume).
+        append_retry_context review_errors "REVIEW RETRY CONTEXT (attempt ${ATTEMPT})"
+        append_retry_context evaluation_errors "EVALUATION RETRY CONTEXT (attempt ${ATTEMPT})"
+        export RETRY_CONTEXT
 
         log "Turn D — Step 1: 13Q Gate"
 
-        # Step 1: Builder answers 13 questions and writes them to a file
-        BUILDER_SESSION=""
-        case "$BUILD_AGENT" in
-            claude)
-                BUILDER_SESSION=$(env -u CLAUDECODE \
-                SAWMILL_ACTIVE_ROLE=builder SAWMILL_ACTIVE_FMWK="$FMWK" \
-                claude -p "YOUR TASK: Answer the 13-question comprehension gate.
-
-READING ORDER — read these files in this EXACT sequence:
-1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
-2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md — your orientation FIRST
-3. Templates/TDD_AND_DEBUGGING.md — HOW to code (TDD iron law, debugging protocol)
-4. ${SAWMILL_DIR}/BUILDER_HANDOFF.md — your task
-5. Files listed in BUILDER_HANDOFF Section 7 (Existing Code to Reference)
-
-DO NOT READ: .holdouts/*, EVALUATION_REPORT.md, other builders' work
-${RETRY_CONTEXT}
-
-Answer all 13 questions (10 verification + 3 adversarial) per your role file.
-Write your answers to ${SAWMILL_DIR}/13Q_ANSWERS.md.
-Then STOP. Do NOT write any code, create any directories, or make any plans." \
-                    --append-system-prompt "$(cat .claude/agents/builder.md)" \
-                    --allowedTools "Read,Edit,Write,Glob,Grep,Bash" \
-                    --output-format json | jq -r '.session_id')
-                ;;
-            *)
-                invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
-"YOUR TASK: Answer the 13-question comprehension gate.
-
-READING ORDER — read these files in this EXACT sequence:
-1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
-2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md — your orientation FIRST
-3. Templates/TDD_AND_DEBUGGING.md — HOW to code (TDD iron law, debugging protocol)
-4. ${SAWMILL_DIR}/BUILDER_HANDOFF.md — your task
-5. Files listed in BUILDER_HANDOFF Section 7 (Existing Code to Reference)
-
-DO NOT READ: .holdouts/*, EVALUATION_REPORT.md, other builders' work
-${RETRY_CONTEXT}
-
-Answer all 13 questions (10 verification + 3 adversarial) per your role file.
-Write your answers to ${SAWMILL_DIR}/13Q_ANSWERS.md.
-Then STOP. Do NOT write any code."
-                ;;
-        esac
-
-        # Verify 13Q answers were produced
-        if [ ! -f "${SAWMILL_DIR}/13Q_ANSWERS.md" ]; then
-            fail "Builder did not produce ${SAWMILL_DIR}/13Q_ANSWERS.md"
-            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                log "Will retry..."
-                continue
-            else
-                fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
-                exit 1
-            fi
-        fi
+        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_13q
+        verify_prompt_outputs turn_d_13q
         pass "Builder produced 13Q answers"
 
-        gate "Review ${SAWMILL_DIR}/13Q_ANSWERS.md — approve or reject"
+        log "Turn D — Step 1.5: Review 13Q answers"
+        invoke_prompt "$REVIEW_AGENT" "$REVIEW_ROLE_FILE" turn_d_review
+        verify_prompt_outputs turn_d_review
 
-        # Step 2: Builder proceeds to DTT (resume session if Claude, new call otherwise)
-        log "Turn D — Step 2: DTT Build"
-
-        case "$BUILD_AGENT" in
-            claude)
-                if [ -n "$BUILDER_SESSION" ]; then
-                    # Resume the same session — builder retains full context
-                    env -u CLAUDECODE \
-                        SAWMILL_ACTIVE_ROLE=builder SAWMILL_ACTIVE_FMWK="$FMWK" \
-                        claude -p "Your 13Q answers have been APPROVED. Proceed to implementation.
-
-STEP 2: DTT (Design-Test-Then-implement) per behavior in the Test Plan.
-Follow TDD discipline from Templates/TDD_AND_DEBUGGING.md: red-green-refactor per behavior.
-STEP 3: Run full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}.
-
-DO NOT re-read the spec. You already have it from Step 1." \
-                            --resume "$BUILDER_SESSION" \
-                            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
-                else
-                    # Fallback: new session with full context
-                    invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
-"YOUR TASK: Build code. Your 13Q answers were approved.
-
-READING ORDER:
-1. AGENT_BOOTSTRAP.md
-2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md
-3. Templates/TDD_AND_DEBUGGING.md — TDD discipline
-4. ${SAWMILL_DIR}/BUILDER_HANDOFF.md
-5. ${SAWMILL_DIR}/13Q_ANSWERS.md — your approved answers for reference
-
-DO NOT READ: .holdouts/*, EVALUATION_REPORT.md
-${RETRY_CONTEXT}
-
-Proceed directly to DTT. Do NOT re-answer the 13 questions.
-STEP 2: DTT per behavior (red-green-refactor). STEP 3: Full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}."
+        case "$(review_verdict)" in
+            PASS)
+                pass "Review: PASS"
+                ;;
+            RETRY)
+                fail "Review: RETRY (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                    escalate "Build failed after ${MAX_ATTEMPTS} attempts. Reviewer never approved implementation."
                 fi
+                continue
+                ;;
+            ESCALATE)
+                escalate "Review: ESCALATE. See $(artifact_path review_report) and $(artifact_path review_errors)"
                 ;;
             *)
-                invoke_agent "$BUILD_AGENT" ".claude/agents/builder.md" \
-"YOUR TASK: Build code. Your 13Q answers were approved.
-
-READING ORDER:
-1. AGENT_BOOTSTRAP.md
-2. ${SAWMILL_DIR}/D10_AGENT_CONTEXT.md
-3. Templates/TDD_AND_DEBUGGING.md — TDD discipline
-4. ${SAWMILL_DIR}/BUILDER_HANDOFF.md
-5. ${SAWMILL_DIR}/13Q_ANSWERS.md — your approved answers for reference
-
-DO NOT READ: .holdouts/*, EVALUATION_REPORT.md
-${RETRY_CONTEXT}
-
-Proceed directly to DTT. Do NOT re-answer the 13 questions.
-STEP 2: DTT per behavior (red-green-refactor). STEP 3: Full test suite. Write ${SAWMILL_DIR}/RESULTS.md. Open PR on branch ${BRANCH}."
+                escalate "Reviewer did not produce a parseable verdict in $(artifact_path review_report)"
                 ;;
         esac
 
-        # Verify builder outputs
-        if [ ! -f "${SAWMILL_DIR}/RESULTS.md" ]; then
-            fail "Builder did not produce RESULTS.md"
-            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                log "Will retry..."
-                continue
-            else
-                fail "Builder failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
-                exit 1
-            fi
-        fi
-
+        log "Turn D — Step 2: DTT Build"
+        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_build
+        verify_prompt_outputs turn_d_build
         pass "Builder produced code and RESULTS.md"
 
         update_portal_state "$FMWK"
@@ -948,99 +1153,60 @@ STEP 2: DTT per behavior (red-green-refactor). STEP 3: Full test suite. Write ${
 
         log "═══ TURN E: Evaluation ═══"
 
-        invoke_agent "$EVAL_AGENT" ".claude/agents/evaluator.md" \
-"YOUR TASK: Run holdout test scenarios against the built code.
+        invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval
+        verify_prompt_outputs turn_e_eval
 
-YOU ARE THE EVALUATOR. You have STRICT ISOLATION.
-
-READING ORDER — read ONLY these:
-1. $(pwd)/${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md — the test scenarios from the MAIN worktree path (not the build branch worktree)
-2. Check out branch ${BRANCH} in a clean worktree — the code to test
-
-DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
-             builder commit messages, architecture/*, sawmill/* specs
-
-PROCESS:
-  For each scenario: run Setup → Execute → Verify → Cleanup, 3 times.
-  2/3 pass = scenario PASS.
-  Run P0 first — if any P0 FAIL, STOP immediately.
-  Then P1, then P2.
-  90% overall required.
-
-OUTPUT:
-  Write full report to ${SAWMILL_DIR}/EVALUATION_REPORT.md
-  Write one-line failure descriptions to ${SAWMILL_DIR}/EVALUATION_ERRORS.md"
-
-        # Check verdict — allow markdown formatting around the verdict line
-        if [ -f "${SAWMILL_DIR}/EVALUATION_REPORT.md" ]; then
-            if grep -qiE "Final\s*[Vv]erdict.*PASS" "${SAWMILL_DIR}/EVALUATION_REPORT.md"; then
+        case "$(evaluation_verdict)" in
+            PASS)
                 BUILD_PASSED=true
                 pass "Evaluation: PASS"
                 update_portal_state "$FMWK"
                 run_portal_steward "$FMWK" "Turn E"
                 run_stage_audit "$FMWK" "Turn E"
                 break
-            else
+                ;;
+            FAIL)
+                update_portal_state "$FMWK"
+                run_portal_steward "$FMWK" "Turn E"
+                run_stage_audit "$FMWK" "Turn E"
                 fail "Evaluation: FAIL (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
                 if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                    fail "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
-                    exit 1
+                    escalate "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
                 fi
-            fi
-        else
-            fail "Evaluator did not produce EVALUATION_REPORT.md"
-            if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                fail "Build failed after ${MAX_ATTEMPTS} attempts."
-                exit 1
-            fi
-        fi
+                ;;
+            *)
+                update_portal_state "$FMWK"
+                run_portal_steward "$FMWK" "Turn E"
+                run_stage_audit "$FMWK" "Turn E"
+                if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+                    escalate "Evaluator did not produce a parseable verdict in $(artifact_path evaluation_report)"
+                fi
+                fail "Evaluator produced an unparseable verdict"
+                ;;
+        esac
     done
 elif should_run_turn E; then
-    require_files "Turn E input" "${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md"
+    ensure_artifact_ids "Turn E input" d9_holdout_scenarios staging_root results
 
     log "═══ TURN E: Evaluation ═══"
 
-    invoke_agent "$EVAL_AGENT" ".claude/agents/evaluator.md" \
-"YOUR TASK: Run holdout test scenarios against the built code.
+    invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval
+    verify_prompt_outputs turn_e_eval
 
-YOU ARE THE EVALUATOR. You have STRICT ISOLATION.
-
-READING ORDER — read ONLY these:
-1. $(pwd)/${HOLDOUT_DIR}/D9_HOLDOUT_SCENARIOS.md — the test scenarios from the MAIN worktree path (not the build branch worktree)
-2. Check out branch ${BRANCH} in a clean worktree — the code to test
-
-DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
-             builder commit messages, architecture/*, sawmill/* specs
-
-PROCESS:
-  For each scenario: run Setup → Execute → Verify → Cleanup, 3 times.
-  2/3 pass = scenario PASS.
-  Run P0 first — if any P0 FAIL, STOP immediately.
-  Then P1, then P2.
-  90% overall required.
-
-OUTPUT:
-  Write full report to ${SAWMILL_DIR}/EVALUATION_REPORT.md
-  Write one-line failure descriptions to ${SAWMILL_DIR}/EVALUATION_ERRORS.md"
-
-    if [ -f "${SAWMILL_DIR}/EVALUATION_REPORT.md" ]; then
-        if grep -qiE "Final\s*[Vv]erdict.*PASS" "${SAWMILL_DIR}/EVALUATION_REPORT.md"; then
-            BUILD_PASSED=true
-            pass "Evaluation: PASS"
-            update_portal_state "$FMWK"
-            run_portal_steward "$FMWK" "Turn E"
-            run_stage_audit "$FMWK" "Turn E"
-        else
-            fail "Evaluation: FAIL"
-            exit 1
-        fi
+    if [ "$(evaluation_verdict)" = "PASS" ]; then
+        BUILD_PASSED=true
+        pass "Evaluation: PASS"
+        update_portal_state "$FMWK"
+        run_portal_steward "$FMWK" "Turn E"
+        run_stage_audit "$FMWK" "Turn E"
     else
-        fail "Evaluator did not produce EVALUATION_REPORT.md"
-        exit 1
+        update_portal_state "$FMWK"
+        run_portal_steward "$FMWK" "Turn E"
+        run_stage_audit "$FMWK" "Turn E"
+        escalate "Evaluation: FAIL"
     fi
 else
-    fail "Nothing to do: --from-turn ${FROM_TURN} skips all pipeline turns"
-    exit 1
+    escalate "Nothing to do: --from-turn ${FROM_TURN} skips all pipeline turns"
 fi
 
 # --- Final ------------------------------------------------------------------
@@ -1048,9 +1214,7 @@ fi
 if [ "$BUILD_PASSED" = true ]; then
     echo ""
     pass "═══ ${FMWK} BUILD COMPLETE ═══"
-    gate "Review EVALUATION_REPORT.md and merge PR on branch ${BRANCH}"
-    log "Done. Framework ${FMWK} is built and evaluated."
+    log "Done. Framework ${FMWK} completed the pipeline with a PASS verdict."
 else
-    fail "═══ ${FMWK} BUILD FAILED ═══"
-    exit 1
+    escalate "═══ ${FMWK} BUILD FAILED ═══"
 fi

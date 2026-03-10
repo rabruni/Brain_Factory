@@ -28,8 +28,8 @@ agent_prompt:
     genesis: [Dependency Trap, Scope Creep Check, Semantic Audit]
     infrastructure: [Failure Mode, Shortcut Check, Semantic Audit]
 
-build_phases:
-  1_understand: "Read spec → answer 13Q → STOP"
+  build_phases:
+  1_understand: "Read spec → answer 13Q → STOP for reviewer verdict"
   2_build: "Per-behavior TDD: red (failing test) → green (minimum code) → refactor (tests stay green)"
   3_govern: "SHA256 all files → update manifest → deterministic archive"
   4_verify: "Full regression → E2E smoke test"
@@ -48,6 +48,6 @@ lexicon_of_precision:
 
 prompt_routing:
   - { type: build, contract: BUILDER_PROMPT_CONTRACT.md, status: ACTIVE }
-  - { type: review, contract: REVIEWER_PROMPT_CONTRACT.md, status: NOT_CREATED }
+  - { type: review, contract: REVIEWER_PROMPT_CONTRACT.md, status: ACTIVE }
   - { type: integration, contract: INTEGRATION_PROMPT_CONTRACT.md, status: NOT_CREATED }
   - { type: conformance, contract: CONFORMANCE_PROMPT_CONTRACT.md, status: NOT_CREATED }

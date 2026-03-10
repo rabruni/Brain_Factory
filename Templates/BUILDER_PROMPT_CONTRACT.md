@@ -26,7 +26,7 @@ You are a builder agent for [PROJECT_NAME]. Your task is defined in a handoff do
 **Agent: [HANDOFF_ID]** — [ONE_LINE_MISSION]
 **Prompt Contract Version: [CONTRACT_VERSION]**
 
-Read your specification, answer the 13 questions below (10 verification + 3 adversarial), then STOP and WAIT for approval.
+Read your specification, answer the 13 questions below (10 verification + 3 adversarial), then STOP and WAIT for reviewer verdict.
 
 **Specification:**
 `[PATH_TO_HANDOFF_SPEC]`
@@ -53,7 +53,7 @@ Adversarial (3 — MANDATORY):
 12. [ADVERSARIAL_Q2]
 13. [ADVERSARIAL_Q3]
 
-**STOP AFTER ANSWERING ALL 13.** Do NOT proceed to implementation until the user reviews your answers and explicitly tells you to go ahead.
+**STOP AFTER ANSWERING ALL 13.** Do NOT proceed to implementation until the reviewer/orchestrator returns a PASS verdict.
 ```
 
 ---
@@ -67,20 +67,19 @@ The first line of the prompt IS the identity. The agent does not need to print i
 The verification is a checkpoint, not a warm-up. The agent:
 1. Reads the handoff document and referenced code
 2. Answers all 10 verification questions + 3 adversarial questions
-3. **STOPS and WAITS for user approval**
+3. **STOPS and WAITS for reviewer verdict**
 
 The agent must NOT:
 - Start creating directories after answering questions
 - Begin writing tests or code
 - Create task lists or plans
 
-The user may:
-- Correct a wrong answer and tell the agent to proceed
-- Ask follow-up questions
-- Redirect the agent to a different approach
-- Greenlight: "Go ahead" / "Proceed" / "Looks good, implement"
+The reviewer/orchestrator may:
+- return PASS and allow DTT
+- return RETRY with corrections
+- return ESCALATE for a true blocker
 
-Only after explicit greenlight does the agent begin DTT.
+Only after PASS does the agent begin DTT.
 
 ---
 
@@ -126,7 +125,7 @@ The Semantic Audit (Q13) is universal. Questions 11-12 evolve as the system matu
 | `[ONE_LINE_MISSION]` | Mission section of handoff | `Build the authentication module` |
 | `[CONTRACT_VERSION]` | This document's version header | `1.0.0` |
 | `[PROJECT_NAME]` | Project name | `My Project` |
-| `[STAGING_PATH]` | Build staging directory | `_staging/` |
+| `[STAGING_PATH]` | Build staging directory | `staging/<FMWK-ID>/` |
 | `[PROTECTED_PATH]` | Path that must not be written to | `production/` |
 | `[RESULTS_PATH]` | Results file location | `handoffs/H-32/H-32_RESULTS.md` |
 | `[QUESTION]` | Per-handoff verification questions | See 13-Question Guidelines |

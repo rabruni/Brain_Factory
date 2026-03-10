@@ -1,6 +1,6 @@
 # System Execution Plan
 
-This page mirrors `SYSTEM_EXECUTION_PLAN.md`.
+This plan defines how Brain Factory, Sawmill, Backstage/TechDocs, and runtime constraints must operate as one governed system.
 
 ## Goal
 
@@ -21,6 +21,10 @@ The first real build after the canary passes is:
 ```bash
 ./sawmill/run.sh FMWK-001-ledger --from-turn D
 ```
+
+The authoritative runtime execution model is defined in:
+
+- `sawmill/EXECUTION_CONTRACT.md`
 
 ## One-System Rule
 
@@ -61,14 +65,25 @@ If any of these disagree, the stage fails.
 
 ### Still missing
 
-- One system-owned completion loop
-- A canary framework that proves the whole governed system
-- Automatic portal sync and canary audit as part of stage completion
+- One fully current portal health pass after the ownership split is documented
 - One clean current-state audit after the system loop is wired
+
+## What A Canary Pass Must Prove
+
+The canary only passes if all of these are true for the current stage:
+
+1. expected framework artifacts were created
+2. portal/Backstage reflects those artifacts immediately
+3. runtime constraints still match that stage
+4. stage audit passes
+
+This is not "run first, clean docs later." The step is incomplete until the whole system agrees.
 
 ## Artifact Model
 
 ### Framework artifacts created during a run
+
+These are the outputs that become framework state:
 
 - `sawmill/<FMWK-ID>/TASK.md`
 - `sawmill/<FMWK-ID>/D1_CONSTITUTION.md`
@@ -90,12 +105,25 @@ If any of these disagree, the stage fails.
 
 ### Governing sources read during a run
 
+These constrain behavior but do not become per-framework artifacts:
+
 - `.claude/agents/*`
+- `sawmill/EXECUTION_CONTRACT.md`
 - `Templates/TDD_AND_DEBUGGING.md`
 - `Templates/AGENT_BUILD_PROCESS.yaml`
 - `Templates/BUILDER_PROMPT_CONTRACT.md`
 - `sawmill/COLD_START.md`
 - `sawmill/run.sh`
+
+## Agents Used
+
+- `run.sh` orchestrates Turns A-E
+- `spec-agent` handles Turns A and B
+- `holdout-agent` handles Turn C
+- `builder` handles Turn D
+- `evaluator` handles Turn E
+- `portal-steward` handles portal maintenance outside the runner's stage-local flow
+- `auditor` verifies the current canary stage
 
 ## Execution Roadmap
 
@@ -105,62 +133,73 @@ Create:
 
 - `sawmill/FMWK-900-sawmill-smoke/SOURCE_MATERIAL.md`
 
+This must define a tiny, low-risk framework target. It is a system smoke test, not product work.
+
 ### Phase 1: Turn A
+
+Run:
 
 ```bash
 ./sawmill/run.sh FMWK-900-sawmill-smoke --from-turn A
 ```
 
-Then:
+Then the system must:
 
-1. verify Turn A artifacts
-2. run `portal-steward`
+1. verify Turn A artifacts exist
+2. let `run.sh` update the stage-local portal status
 3. run canary audit
 4. continue only on pass
 
 ### Phase 2: Turns B and C
 
+Run:
+
 ```bash
 ./sawmill/run.sh FMWK-900-sawmill-smoke --from-turn B
 ```
 
-Then:
+Then the system must:
 
-1. verify Turn B and C artifacts
+1. verify Turn B and C artifacts exist
 2. verify holdout isolation
-3. run `portal-steward`
+3. let `run.sh` update the stage-local portal status
 4. run canary audit
 5. continue only on pass
 
 ### Phase 3: Turn D
 
+Run:
+
 ```bash
 ./sawmill/run.sh FMWK-900-sawmill-smoke --from-turn D
 ```
 
-Then:
+Then the system must:
 
-1. verify builder outputs
-2. run `portal-steward`
-3. run canary audit
-4. continue only on pass
+1. verify builder outputs exist
+2. verify 13Q gate and results behavior
+3. let `run.sh` update the stage-local portal status
+4. run canary audit
+5. continue only on pass
 
 ### Phase 4: Turn E
+
+Run:
 
 ```bash
 ./sawmill/run.sh FMWK-900-sawmill-smoke --from-turn E
 ```
 
-Then:
+Then the system must:
 
-1. verify evaluator outputs
-2. run `portal-steward`
+1. verify evaluator outputs exist
+2. let `run.sh` update the stage-local portal status
 3. run canary audit
 4. stop with final pass/fail
 
 ### Phase 5: Real Framework
 
-Only after canary pass:
+Only after the canary passes:
 
 ```bash
 ./sawmill/run.sh FMWK-001-ledger --from-turn D
@@ -175,13 +214,27 @@ A stage is complete only if all of these are true:
 3. hooks, runner behavior, and role contracts do not contradict that stage
 4. current canary audit passes
 
+If any check fails:
+
+- stop
+- report failure
+- consult the human only for the failure or a source conflict
+
 ## Required Audit Artifact
 
 Canary audit output must be framework-local:
 
 - `sawmill/FMWK-900-sawmill-smoke/CANARY_AUDIT.md`
 
+It must check:
+
+1. expected artifacts for the current canary stage
+2. portal/status reflection of those artifacts
+3. source truth, runner behavior, role contracts, and hooks for contradiction
+
 ## Human Interaction Model
+
+The human should not coordinate phases manually.
 
 The human only:
 
@@ -200,6 +253,7 @@ END GOAL
 READ-ONLY GOVERNING SOURCES
   .claude/agents/*
   Templates/*
+  sawmill/EXECUTION_CONTRACT.md
   sawmill/COLD_START.md
   sawmill/run.sh
   hooks
@@ -223,7 +277,7 @@ Phase 1
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -234,13 +288,16 @@ Phase 1
 
 Phase 2
   run.sh -> spec-agent (Turn B)
+    creates D7 D8 D10 BUILDER_HANDOFF
+
   run.sh -> holdout-agent (Turn C)
+    creates .holdouts/<FMWK>/D9
           |
           v
   verify expected artifacts + holdout isolation
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -251,12 +308,14 @@ Phase 2
 
 Phase 3
   run.sh -> builder (Turn D)
+    reads D10 + handoff + process templates
+    creates staging/* + 13Q_ANSWERS.md + RESULTS.md
           |
           v
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -267,12 +326,14 @@ Phase 3
 
 Phase 4
   run.sh -> evaluator (Turn E)
+    reads D9 + built code
+    creates EVALUATION_REPORT.md / EVALUATION_ERRORS.md
           |
           v
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit

@@ -13,25 +13,40 @@ freshness disagrees with this file or with `sawmill/run.sh`, this file and
 ## Authoritative Runtime Chain
 
 ```text
-Human -> Claude orchestrator -> Codex worker -> Sawmill turns A-E
+Human -> Claude orchestrator -> registry-resolved workers -> Sawmill turns A-E
 ```
 
-- **Human** starts the run, approves explicit gates, and resolves true
-  source-truth conflicts.
+- **Human** starts the run, and resolves true source-truth conflicts or explicit escalations.
 - **Claude** is the orchestrator. Claude reads state, invokes `run.sh`,
   supervises retries, and reports verdicts.
-- **Codex** is the default worker backend for Turns A-E. Codex executes the
-  assigned role file and produces turn artifacts.
+- **Workers** are resolved from `sawmill/ROLE_REGISTRY.yaml`. Spec/build/holdout/portal work use the registry defaults, and critical review/evaluation roles may use a max-capability policy.
 - Alternate CLIs may exist, but they are overrides, not the default contract.
 
 ## Runtime Authority
 
 - `sawmill/run.sh` is the runtime authority for stage execution.
+- `sawmill/ROLE_REGISTRY.yaml` is the canonical source for role metadata,
+  role-file paths, default backends, model policies, allowed backends, and env override names.
+- `sawmill/PROMPT_REGISTRY.yaml` is the canonical source for stage/task prompt files.
+- `sawmill/ARTIFACT_REGISTRY.yaml` is the canonical source for runtime artifact paths and standards references.
+- `docs/sawmill/RUN_VERIFICATION.md` is the steward-owned human-readable evidence checklist for verifying runs against the filesystem.
+- `SAWMILL_*_AGENT` environment variables are runtime overrides to registry
+  defaults, not a second source of truth.
 - Agent role files in `.claude/agents/` define role behavior and isolation.
 - `AGENTS.md` / `CLAUDE.md` provide institutional context and summarize this
   contract, but do not replace it.
 - If documentation names a runtime stage step, that step must exist in
   `run.sh`.
+
+## Checkpoint and Escalation Policy
+
+- Default execution is unattended and exception-driven.
+- `./sawmill/run.sh --interactive` is the supported opt-in mode for live human checkpoints.
+- Non-interactive stdin, piped input, `yes ''`, or synthetic newlines are never valid approval mechanisms.
+- Turn A and Turn B/C reviews are automatic checkpoints plus stage validation.
+- Turn D uses automated builder review before implementation and evaluator review after implementation.
+- Final merge or release is outside the runtime path. The pipeline ends in PASS or FAIL.
+- When the requested execution path is `./sawmill/run.sh`, direct worker dispatch is not an equivalent substitute unless the human explicitly changes the request.
 
 ## Portal Ownership Split
 
@@ -89,5 +104,6 @@ If a doc claims:
 
 - a runtime role that `run.sh` never invokes, or
 - a per-stage runtime step that `run.sh` does not perform,
+- or that synthetic stdin can satisfy a human approval gate,
 
 that doc is stale and must be corrected.

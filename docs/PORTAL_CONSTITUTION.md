@@ -11,8 +11,11 @@ Maintained by the **portal-steward** role (`.claude/agents/portal-steward.md`).
 3. **Narrative links down.** Every claim in a narrative page must link to or reference a source artifact. No unsupported claims.
 4. **Audits diagnose, they don't rewrite.** Audit findings flag drift with evidence. They never alter source intent.
 5. **Every page is classified.** Each file in `docs/` is one of: **mirror**, **narrative**, **status**, or **audit**.
-6. **Steward owns the surface; auditor owns the diagnosis.** The portal-steward maintains `docs/`. The auditor writes `sawmill/PORTAL_AUDIT_RESULTS.md`.
-7. **Conflicts escalate.** When source contradicts source, neither agent resolves it — escalate to Ray.
+6. **Runner owns stage-local sync.** `sawmill/run.sh` performs stage-local status updates and framework-local stage audits.
+7. **Steward owns portal maintenance; auditor owns diagnosis.** The portal-steward maintains mirrors, nav/catalog alignment, and narrative freshness. The auditor writes `sawmill/PORTAL_AUDIT_RESULTS.md`.
+8. **Verification guidance is steward-owned narrative.** Human-readable run-verification guidance lives in portal narrative pages and must point back to runtime source truth.
+9. **Pre-commit is the primary mirror-sync path.** `.githooks/pre-commit` handles automatic mirror sync for covered source files; portal-steward repairs anything it does not cover.
+10. **Conflicts escalate.** When source contradicts source, neither agent resolves it — escalate to Ray.
 
 ## Page Types
 
@@ -20,12 +23,12 @@ Maintained by the **portal-steward** role (`.claude/agents/portal-steward.md`).
 |------|---------|---------------|
 | Mirror | Rendered copy of a source file | Must match source exactly |
 | Narrative | Explains, summarizes, orients humans | Must link to source backing |
-| Status | Operational state, gaps, timeline | Must reflect current artifacts |
+| Status | Operational state, gaps, timeline | Runner-owned stage status must reflect current artifacts; steward-owned portal health must reflect current portal state |
 | Audit | Diagnostic findings with evidence | Read-only, auditor-written |
 
 ## Source-to-Surface Map
 
-All mappings are declared in `docs/PORTAL_MAP.yaml`. The portal-steward reads this map to detect drift and maintain alignment.
+All mappings are declared in `docs/PORTAL_MAP.yaml`. Pre-commit sync covers the declared mirror classes it knows about. The portal-steward reads this map to detect drift and repair anything the hook did not cover.
 
 ## Authority Resolution
 

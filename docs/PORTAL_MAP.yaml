@@ -79,6 +79,10 @@ entries:
     mirror: docs/agents/builder.md
     sync: mirror
 
+  - source: .claude/agents/reviewer.md
+    mirror: docs/agents/reviewer.md
+    sync: mirror
+
   - source: .claude/agents/evaluator.md
     mirror: docs/agents/evaluator.md
     sync: mirror
@@ -148,6 +152,10 @@ entries:
     mirror: docs/sawmill-templates/BUILDER_PROMPT_CONTRACT.md
     sync: mirror
 
+  - source: Templates/REVIEWER_PROMPT_CONTRACT.md
+    mirror: docs/sawmill-templates/REVIEWER_PROMPT_CONTRACT.md
+    sync: mirror
+
   - source: Templates/PRODUCT_SPEC_FRAMEWORK.md
     mirror: docs/sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
     sync: mirror
@@ -165,8 +173,22 @@ entries:
     mirror: docs/sawmill/COLD_START.md
     sync: mirror
 
+  - source: sawmill/EXECUTION_CONTRACT.md
+    mirror: docs/sawmill/EXECUTION_CONTRACT.md
+    sync: mirror
+
+  - source: sawmill/ROLE_REGISTRY.yaml
+    mirror: docs/sawmill/ROLE_REGISTRY.yaml
+    sync: mirror
+
   - source: sawmill/DEPENDENCIES.yaml
     sync: mirror
+
+  - narrative: docs/sawmill/ROLE_REGISTRY.md
+    sync: narrative
+
+  - narrative: docs/sawmill/RUN_VERIFICATION.md
+    sync: narrative
 
   # ─── Narrative pages (steward-authored) ───
   - narrative: docs/index.md

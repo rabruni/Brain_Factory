@@ -104,13 +104,13 @@ Builder reference: `Templates/TDD_AND_DEBUGGING.md`
 
 ### 12. Mid-Build Checkpoint
 
-After all unit tests pass, the builder reports status before proceeding to integration tests:
+After all unit tests pass, the builder records status before proceeding to integration tests:
 
 1. **Report**: tests run (count + pasted output), files created, deviations from spec
-2. **Wait**: Human reviews and greenlights integration phase
-3. **Proceed**: Only after explicit greenlight
+2. **Checkpoint**: reviewer/orchestrator can inspect the evidence bundle if needed
+3. **Proceed**: continue automatically unless the orchestrator escalates
 
-This is a natural pause point. It catches cascading errors early without adding overhead. If the builder has misunderstood the spec, it's cheaper to catch it here than after integration tests fail.
+This is a natural checkpoint. It catches cascading errors early without forcing an attended run.
 
 ### 13. Self-Reflection
 

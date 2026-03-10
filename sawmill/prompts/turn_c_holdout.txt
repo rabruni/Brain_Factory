@@ -1,0 +1,13 @@
+YOUR TASK: Write holdout test scenarios from D2 and D4 ONLY.
+
+YOU ARE THE HOLDOUT AGENT. You have STRICT ISOLATION.
+
+READING ORDER — read ONLY these files:
+1. {{D2_SPECIFICATION_PATH}} — behavioral spec
+2. {{D4_CONTRACTS_PATH}} — interface contracts
+3. Templates/compressed/D9_HOLDOUT_SCENARIOS.md — output template
+
+DO NOT READ any other files. Not D1, D3, D5, D6, D7, D8, D10.
+Not BUILDER_HANDOFF. Not architecture/. Not src/.
+
+OUTPUT: Write {{D9_HOLDOUT_SCENARIOS_PATH}}

@@ -1,0 +1,107 @@
+version: 1
+prompts:
+  audit_run:
+    role: auditor
+    prompt_file: sawmill/prompts/audit_run.txt
+    required_artifacts: []
+    expected_artifacts:
+      - portal_audit_results
+    retry_behavior: none
+
+  portal_stage:
+    role: portal-steward
+    prompt_file: sawmill/prompts/portal_stage.txt
+    required_artifacts:
+      - status_page
+    expected_artifacts:
+      - portal_status
+      - portal_changeset
+    retry_behavior: maintenance
+
+  turn_a_spec:
+    role: spec-agent
+    prompt_file: sawmill/prompts/turn_a_spec.txt
+    required_artifacts:
+      - task
+    expected_artifacts:
+      - d1_constitution
+      - d2_specification
+      - d3_data_model
+      - d4_contracts
+      - d5_research
+      - d6_gap_analysis
+    retry_behavior: none
+
+  turn_b_plan:
+    role: spec-agent
+    prompt_file: sawmill/prompts/turn_b_plan.txt
+    required_artifacts:
+      - d1_constitution
+      - d2_specification
+      - d3_data_model
+      - d4_contracts
+      - d5_research
+      - d6_gap_analysis
+    expected_artifacts:
+      - d7_plan
+      - d8_tasks
+      - d10_agent_context
+      - builder_handoff
+    retry_behavior: none
+
+  turn_c_holdout:
+    role: holdout-agent
+    prompt_file: sawmill/prompts/turn_c_holdout.txt
+    required_artifacts:
+      - d2_specification
+      - d4_contracts
+    expected_artifacts:
+      - d9_holdout_scenarios
+    retry_behavior: none
+
+  turn_d_13q:
+    role: builder
+    prompt_file: sawmill/prompts/turn_d_13q.txt
+    required_artifacts:
+      - d10_agent_context
+      - builder_handoff
+    expected_artifacts:
+      - q13_answers
+    retry_behavior: review_loop
+
+  turn_d_review:
+    role: reviewer
+    prompt_file: sawmill/prompts/turn_d_review.txt
+    required_artifacts:
+      - d10_agent_context
+      - builder_handoff
+      - q13_answers
+    expected_artifacts:
+      - review_report
+      - review_errors
+    retry_behavior: review_loop
+
+  turn_d_build:
+    role: builder
+    prompt_file: sawmill/prompts/turn_d_build.txt
+    required_artifacts:
+      - d10_agent_context
+      - builder_handoff
+      - q13_answers
+      - review_report
+    expected_artifacts:
+      - staging_root
+      - results
+    retry_behavior: build_loop
+
+  turn_e_eval:
+    role: evaluator
+    prompt_file: sawmill/prompts/turn_e_eval.txt
+    required_artifacts:
+      - d9_holdout_scenarios
+      - staging_root
+      - results
+    expected_artifacts:
+      - evaluation_report
+      - evaluation_errors
+    retry_behavior: evaluation_loop

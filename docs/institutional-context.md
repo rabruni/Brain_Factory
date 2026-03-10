@@ -85,27 +85,60 @@ Two formats: `Templates/` (full, for humans) and `Templates/compressed/` (for ag
 
 This repo uses the Sawmill L3 dark factory process. Five turns:
 
-- **Turn A** (Spec Agent): Design docs → D1-D6. Gate: D6 zero OPEN items.
-- **Turn B** (Plan Agent): D1-D6 → D7, D8, D10. Gate: Constitution Check passes.
+- **Turn A** (Spec Agent): Design docs → D1-D6. Checkpoint: D6 zero OPEN items.
+- **Turn B** (Plan Agent): D1-D6 → D7, D8, D10. Checkpoint: Constitution Check passes.
 - **Turn C** (Holdout Agent): D2+D4 ONLY → D9. Parallel with Turn B.
-- **Turn D** (Builder): D10 + Handoff → Code + Tests. Gate: 13Q + all tests pass.
-- **Turn E** (Evaluator): D9 + PR code ONLY → Evaluation. Gate: 2/3 per scenario, 90% overall.
+- **Turn D** (Builder + Reviewer): D10 + Handoff → 13Q → reviewer PASS → Code + Tests.
+- **Turn E** (Evaluator): D9 + PR code ONLY → Evaluation. Verdict: 2/3 per scenario, 90% overall.
+
+### Operational Execution Model
+
+The authoritative runtime contract for Sawmill execution is defined in
+`sawmill/EXECUTION_CONTRACT.md`.
+
+In short:
+
+```
+Human -> Claude orchestrator -> registry-resolved workers -> Sawmill artifacts and verdicts
+```
+
+- **Human** starts the run and resolves true authority conflicts or explicit escalations.
+- Default execution is unattended and exception-driven. `./sawmill/run.sh --interactive` is the opt-in path for live checkpoints. Agents must not simulate approvals with piped stdin, `yes ''`, or other synthetic input.
+- **Claude** is the orchestrator. Claude reads state, invokes `sawmill/run.sh`, supervises retries, and routes blockers.
+- **Workers** are resolved from `sawmill/ROLE_REGISTRY.yaml`. Critical review/evaluation roles may use a max-capability policy.
+- Claude-native subagents are optional tooling, not the authoritative Sawmill execution model.
+
+The canonical role inventory and backend-routing metadata live in
+`sawmill/ROLE_REGISTRY.yaml`. `sawmill/run.sh` consumes that registry at
+runtime. Role behavior and isolation still live in `.claude/agents/*.md`.
+
+### Operational Roles
+
+| Role | Responsibilities |
+|------|------------------|
+| Orchestrator | Supervises the pipeline, starts worker turns, waits for gates, and routes retries/blockers |
+| Worker | Executes role files for spec, planning, holdout, build, evaluation, and audit work under orchestration |
 
 Agent role files: `.claude/agents/`
 
 | Role | File | What it does |
 |------|------|-------------|
-| Orchestrator | `orchestrator.md` | Dispatch-only HO2. Reads state, decides next turn, emits work orders, invokes agents, tracks gates/retries, reports verdict. |
-| Spec Agent | `spec-agent.md` | Writes D1-D6 (Turn A), then D7-D10 + handoff (Turn B). |
-| Holdout Agent | `holdout-agent.md` | Writes D9 holdout scenarios from D2+D4 only (Turn C). |
-| Builder | `builder.md` | Implements code from handoff. 13Q gate, then DTT (Turn D). |
-| Evaluator | `evaluator.md` | Runs holdout scenarios against built code (Turn E). |
-| Auditor | `auditor.md` | Audits portal coherence — finds contradictions, gaps, stale content across all files. |
-| Portal Steward | `portal-steward.md` | Maintains docs/, mkdocs.yml, catalog-info.yaml alignment with source truth. Fixes portal drift. |
+| Orchestrator | `orchestrator.md` | HO2 supervisor. Reads state, decides next turn, dispatches workers, tracks gates/retries, reports verdict. |
+| Spec Agent | `spec-agent.md` | Worker role for Turn A and Turn B outputs (D1-D10 + handoff). |
+| Holdout Agent | `holdout-agent.md` | Worker role for Turn C holdout scenarios from D2+D4 only. |
+| Builder | `builder.md` | Worker role for Turn D implementation after the 13Q review pass. |
+| Reviewer | `reviewer.md` | Worker role for automated 13Q review and retry/escalate decisions before build. |
+| Evaluator | `evaluator.md` | Worker role for Turn E holdout evaluation. |
+| Auditor | `auditor.md` | Worker role for portal coherence audits and system checks. |
+| Portal Steward | `portal-steward.md` | Worker role for portal maintenance in the runtime stage loop. |
 
 To become any role, read its file: e.g., "you are the orchestrator" → read `.claude/agents/orchestrator.md`, follow its instructions.
 
-To invoke another role from within a session, use the Agent tool (subagent) with the role file content as instructions. A subagent call is a work-order dispatch.
+The orchestrator dispatches worker roles through `sawmill/run.sh` or a direct worker CLI invocation using the target role file. `sawmill/ROLE_REGISTRY.yaml` is the canonical source for role files, default backends, allowed backends, and env override names. Do not assume Claude-native subagents are available; the authoritative contract is Claude supervision and Codex worker execution. For runtime ownership boundaries, use `sawmill/EXECUTION_CONTRACT.md`.
+
+For the human-readable filesystem evidence checklist after a run, use `docs/sawmill/RUN_VERIFICATION.md`.
+
+If a request requires the normal `sawmill/run.sh` path, direct worker invocation is not a substitute unless the human explicitly changes the request.
 
 Templates: `Templates/`
 Holdouts: `.holdouts/` (NEVER shown to builder agents)
@@ -168,7 +201,8 @@ Use imperative, scoped messages: `docs(templates): clarify D6 gate criteria`
 - Create new primitives (assemble from the nine)
 - Add execution logic to HO3 (pure storage only)
 - Write directly to the Ledger (use Write Path)
-- Skip the 13Q gate before building
+- Skip the automated 13Q review before building
+- Auto-approve or synthesize human checkpoint input for `sawmill/run.sh` outside the supported `--interactive` mode
 - Read holdouts if you're a builder
 - Guess when you should ask
 - Optimize governance for its own sake

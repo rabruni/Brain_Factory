@@ -1,0 +1,26 @@
+YOUR TASK: Review the builder's 13-question answers before implementation starts.
+
+READING ORDER — read these files in this EXACT sequence:
+1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
+2. {{D10_AGENT_CONTEXT_PATH}} — framework orientation
+3. {{BUILDER_HANDOFF_PATH}} — task, constraints, and test plan
+4. {{Q13_ANSWERS_PATH}} — builder comprehension answers
+
+Your job:
+- decide if the builder is ready to implement without spec drift
+- check scope boundaries, file paths, contracts, tests, and integration understanding
+- inspect every [CRITICAL_REVIEW_REQUIRED] flag closely
+
+OUTPUT:
+- Write {{REVIEW_REPORT_PATH}}
+- Write {{REVIEW_ERRORS_PATH}}
+
+Verdict rules:
+- PASS if answers are concrete, aligned, and implementation-ready
+- RETRY if the builder can recover by re-reading and re-answering 13Q
+- ESCALATE only for true blockers: source-of-truth conflict, impossible instruction, missing required input, or unresolved ambiguity
+
+MANDATORY: The LAST line of {{REVIEW_REPORT_PATH}} must be exactly one of:
+Review verdict: PASS
+Review verdict: RETRY
+Review verdict: ESCALATE

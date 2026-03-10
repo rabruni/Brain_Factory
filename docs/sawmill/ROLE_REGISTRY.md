@@ -19,6 +19,7 @@ Each role entry defines:
 - `role_file`
 - `execution_scope`
 - `default_backend`
+- `model_policy`
 - `allowed_backends`
 - `env_override`
 

@@ -1,0 +1,185 @@
+version: 1
+artifacts:
+  task:
+    owner_role: orchestrator
+    path_template: sawmill/{FMWK}/TASK.md
+    stage: orchestrator
+    required: true
+    artifact_kind: file
+    standard_ref: sawmill/COLD_START.md
+
+  d1_constitution:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D1_CONSTITUTION.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D1_CONSTITUTION.md
+
+  d2_specification:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D2_SPECIFICATION.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D2_SPECIFICATION.md
+
+  d3_data_model:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D3_DATA_MODEL.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D3_DATA_MODEL.md
+
+  d4_contracts:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D4_CONTRACTS.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D4_CONTRACTS.md
+
+  d5_research:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D5_RESEARCH.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D5_RESEARCH.md
+
+  d6_gap_analysis:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D6_GAP_ANALYSIS.md
+    stage: A
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D6_GAP_ANALYSIS.md
+
+  d7_plan:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D7_PLAN.md
+    stage: B
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D7_PLAN.md
+
+  d8_tasks:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D8_TASKS.md
+    stage: B
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D8_TASKS.md
+
+  d10_agent_context:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/D10_AGENT_CONTEXT.md
+    stage: B
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D10_AGENT_CONTEXT.md
+
+  builder_handoff:
+    owner_role: spec-agent
+    path_template: sawmill/{FMWK}/BUILDER_HANDOFF.md
+    stage: B
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/BUILDER_HANDOFF_STANDARD.md
+
+  d9_holdout_scenarios:
+    owner_role: holdout-agent
+    path_template: .holdouts/{FMWK}/D9_HOLDOUT_SCENARIOS.md
+    stage: C
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/compressed/D9_HOLDOUT_SCENARIOS.md
+
+  q13_answers:
+    owner_role: builder
+    path_template: sawmill/{FMWK}/13Q_ANSWERS.md
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/BUILDER_PROMPT_CONTRACT.md
+
+  review_report:
+    owner_role: reviewer
+    path_template: sawmill/{FMWK}/REVIEW_REPORT.md
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/REVIEWER_PROMPT_CONTRACT.md
+
+  review_errors:
+    owner_role: reviewer
+    path_template: sawmill/{FMWK}/REVIEW_ERRORS.md
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/REVIEWER_PROMPT_CONTRACT.md
+
+  staging_root:
+    owner_role: builder
+    path_template: staging/{FMWK}
+    stage: D
+    required: true
+    artifact_kind: dir
+    standard_ref:
+
+  results:
+    owner_role: builder
+    path_template: sawmill/{FMWK}/RESULTS.md
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: Templates/BUILDER_HANDOFF_STANDARD.md
+
+  evaluation_report:
+    owner_role: evaluator
+    path_template: sawmill/{FMWK}/EVALUATION_REPORT.md
+    stage: E
+    required: true
+    artifact_kind: file
+    standard_ref:
+
+  evaluation_errors:
+    owner_role: evaluator
+    path_template: sawmill/{FMWK}/EVALUATION_ERRORS.md
+    stage: E
+    required: true
+    artifact_kind: file
+    standard_ref:
+
+  status_page:
+    owner_role: orchestrator
+    path_template: docs/sawmill/{FMWK}.md
+    stage: portal
+    required: true
+    artifact_kind: file
+    standard_ref:
+
+  portal_status:
+    owner_role: portal-steward
+    path_template: docs/PORTAL_STATUS.md
+    stage: portal
+    required: true
+    artifact_kind: file
+    standard_ref:
+
+  portal_changeset:
+    owner_role: portal-steward
+    path_template: sawmill/PORTAL_CHANGESET.md
+    stage: portal
+    required: true
+    artifact_kind: file
+    standard_ref:
+
+  portal_audit_results:
+    owner_role: auditor
+    path_template: sawmill/PORTAL_AUDIT_RESULTS.md
+    stage: audit
+    required: true
+    artifact_kind: file
+    standard_ref:

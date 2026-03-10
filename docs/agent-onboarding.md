@@ -2,6 +2,8 @@
 
 Every agent in the Sawmill pipeline starts from zero — no memory of prior turns, no shared state. The filesystem is the message bus. This page explains exactly how an agent goes from "I exist" to "I know what to do."
 
+Current execution contract: Claude is the orchestrator, and Codex is the default worker backend for Turns A-E.
+
 ---
 
 ## The Three-Layer Boot Sequence
@@ -47,6 +49,8 @@ The orchestrator sends the agent's role file content in the prompt. Role files l
 
 Each role reads a different set of files. The role file lists them explicitly. See the per-role sections below.
 
+All non-orchestrator roles below are worker roles. Claude dispatches and supervises them; Codex executes them by default.
+
 ---
 
 ## Per-Role Boot Paths
@@ -70,14 +74,14 @@ graph LR
         ART["sawmill/FMWK-NNN/<br/>(scan for artifacts)"]
     end
     subgraph "Actions"
-        RUN["run.sh or<br/>direct agent invocation"]
+        RUN["run.sh or<br/>direct worker dispatch"]
     end
     CTX --> DEP
     ROLE --> DEP
     DEP --> CS --> ST --> ART --> RUN
 ```
 
-**Can:** Emit dispatch/work-order artifacts (`TASK.md` or inline `WORK_ORDER`), invoke `run.sh`, dispatch subagents, wait for gates, report `STATUS` / `VERDICT`.
+**Can:** Emit dispatch/work-order artifacts (`TASK.md` or inline `WORK_ORDER`), invoke `run.sh`, dispatch Codex workers directly, wait for gates, report `STATUS` / `VERDICT`.
 
 **Cannot:** Skip gates, modify holdouts, make architectural decisions, fix specs/code/evaluations directly, create standalone plans beyond dispatch artifacts, run frameworks in parallel.
 
@@ -303,6 +307,8 @@ This matrix is the enforcement boundary. Violations break the pipeline's integri
 
 The orchestrator reads `sawmill/DEPENDENCIES.yaml` to determine build order, scans framework directories for artifact presence to derive state, emits a `WORK_ORDER`, and invokes agents via `run.sh` or direct CLI calls. When blockers exist, it dispatches the owning agent with the blocker context. It does NOT interpret specs, fix D2/D4/D8 directly, or make architectural decisions.
 
+In the current system, Claude performs this orchestration work and Codex is the default worker backend for each dispatched turn.
+
 ### Claude Code
 ```bash
 claude -p "<prompt>" \
@@ -330,21 +336,21 @@ gemini -p "<prompt with role file and task>" \
 
 ```mermaid
 flowchart TD
-    ORC["Orchestrator / HO2<br/>reads DEPENDENCIES.yaml<br/>scans artifacts, emits TASK.md work order"] --> SA["Spec Agent / HO1<br/>Spec Writing — produces D1-D6"]
+    ORC["Claude Orchestrator / HO2<br/>reads DEPENDENCIES.yaml<br/>scans artifacts, emits TASK.md work order"] --> SA["Codex Worker / HO1<br/>Spec Writing — produces D1-D6"]
     SA -->|"D1-D6 files"| GATE1{"Human approves<br/>D1-D6?"}
     GATE1 -->|Yes| PARALLEL
     GATE1 -->|No| SA
 
     subgraph PARALLEL ["Parallel Execution"]
-        HA["Holdout Agent<br/>Acceptance Tests — reads D2+D4 only"]
-        SB["Spec Agent<br/>Build Planning — reads D1-D6"]
+        HA["Codex Worker<br/>Acceptance Tests — reads D2+D4 only"]
+        SB["Codex Worker<br/>Build Planning — reads D1-D6"]
     end
 
-    SB -->|"D7, D8, D10,<br/>BUILDER_HANDOFF"| BLD["Builder<br/>Code Building"]
+    SB -->|"D7, D8, D10,<br/>BUILDER_HANDOFF"| BLD["Codex Worker<br/>Code Building"]
     BLD -->|"13Q answers"| GATE2{"Human approves<br/>13Q?"}
-    GATE2 -->|Yes| CODE["Builder codes<br/>(DTT cycles)"]
+    GATE2 -->|Yes| CODE["Codex worker codes<br/>(DTT cycles)"]
     GATE2 -->|No| BLD
-    CODE -->|"PR + RESULTS.md"| EVAL["Evaluator<br/>Evaluation"]
+    CODE -->|"PR + RESULTS.md"| EVAL["Codex Worker<br/>Evaluation"]
     HA -->|"D9 holdouts"| EVAL
 
     EVAL --> VERDICT{"Pass?"}
@@ -360,7 +366,7 @@ flowchart TD
 
 | Question | Answer |
 |----------|--------|
-| Where do agents get project context? | `CLAUDE.md` (auto-loaded by CLI) |
+| Where do agents get project context? | The active CLI auto-loads its project context file: `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` |
 | Where are role definitions? | `.claude/agents/<role>.md` |
 | Where is the orchestrator role? | `.claude/agents/orchestrator.md` |
 | Where is the dependency graph? | `sawmill/DEPENDENCIES.yaml` |
@@ -368,8 +374,8 @@ flowchart TD
 | Where does the builder write code? | `staging/<FMWK-ID>/` |
 | Where do holdouts live? | `.holdouts/<FMWK-ID>/` (builder NEVER sees this) |
 | Where are build results? | `sawmill/<FMWK-ID>/` |
-| What model does the builder use? | sonnet (fast coding) |
-| What model does the evaluator use? | opus (deep reasoning) |
+| What executes the builder turn? | Codex worker by default, routed and supervised by Claude |
+| What executes the evaluator turn? | Codex worker by default, routed and supervised by Claude |
 | Max retry attempts? | 3, then back to spec writing |
 | What's the pass threshold? | 2/3 per scenario, 90% overall, all P0+P1 must pass |
 | How do I run an audit? | `./sawmill/run.sh --audit` or `SAWMILL_AUDIT_AGENT=codex ./sawmill/run.sh --audit` |

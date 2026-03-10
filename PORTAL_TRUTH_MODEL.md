@@ -33,6 +33,7 @@ Use the repo authority chain in this order:
 These files define how agents, templates, and the Sawmill actually work:
 
 - `.claude/agents/*`
+- `sawmill/EXECUTION_CONTRACT.md`
 - `sawmill/COLD_START.md`
 - `sawmill/DEPENDENCIES.yaml`
 - `sawmill/run.sh`
@@ -68,6 +69,7 @@ Examples:
 - `docs/agent-onboarding.md`
 - `docs/dopejar-catalog.md`
 - `docs/PORTAL_CONSTITUTION.md`
+- `docs/sawmill/RUN_VERIFICATION.md`
 
 Rule:
 
@@ -92,7 +94,9 @@ Rule:
 ## Ownership Model
 
 - source owners fix source-truth conflicts
-- `portal-steward` syncs mirrors, fixes narrative drift, updates portal status
+- `.githooks/pre-commit` is the primary automatic mirror-sync path for covered files
+- `sawmill/run.sh` owns stage-local status updates and framework-local stage audits
+- `portal-steward` repairs mirror gaps, fixes narrative drift, updates portal health, and maintains nav/catalog alignment
 - `auditor` reports drift and contradictions
 
 ## When Files Disagree

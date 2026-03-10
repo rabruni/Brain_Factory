@@ -1,22 +1,23 @@
 # Portal Status
 
-> Maintained by the **portal-steward** role. Last updated: 2026-03-07.
+> Maintained by the **portal-steward** role. Last updated: 2026-03-09.
 
 ## Summary
 
-Portal is **healthy**. All 37 mirror pairs aligned. Nav integrity clean. Two mirror drifts and one narrative drift fixed this run.
+Portal is **healthy**. All 39 rendered mirror pairs aligned. Nav integrity clean. Execution-contract mirror and ownership split docs synced this run.
 
 ## Mirror Alignment
 
 | Group | Count | Status |
 |-------|-------|--------|
 | Architecture | 10 | Aligned |
-| Agent roles | 7 | Aligned (builder.md synced this run) |
+| Agent roles | 7 | Aligned |
 | Templates | 17 | Aligned |
-| Sawmill (COLD_START) | 1 | Aligned (synced this run) |
+| Sawmill (COLD_START + EXECUTION_CONTRACT) | 2 | Aligned |
+| Portal governance sources | 2 | Aligned |
 | Sawmill (DEPENDENCIES.yaml) | 1 | Aligned (added to map this run) |
 | CLAUDE.md -> institutional-context | 1 | Aligned |
-| **Total mirrors** | **37** | **All aligned** |
+| **Total rendered mirrors** | **39** | **All aligned** |
 
 Infrastructure mirrors (no docs/ copy, validated by map only):
 - `catalog-info.yaml` — exists, valid
@@ -31,7 +32,7 @@ Infrastructure mirrors (no docs/ copy, validated by map only):
 | `docs/agent-onboarding.md` | narrative | Builder reading order diagram updated this run to include AGENT_BOOTSTRAP.md. All claims now backed. |
 | `docs/dopejar-catalog.md` | narrative | All claims backed |
 | `docs/sawmill/PIPELINE_VISUAL.md` | narrative | All claims reference existing templates and agents |
-| `docs/PORTAL_CONSTITUTION.md` | narrative | Self-referential governance doc, internally consistent |
+| `docs/PORTAL_CONSTITUTION.md` | narrative | Reflects runner/steward/auditor ownership split |
 
 ## Status Pages
 
@@ -48,7 +49,7 @@ Infrastructure mirrors (no docs/ copy, validated by map only):
 
 ## Nav Integrity
 
-- **49 nav targets** in `mkdocs.yml` — all exist on disk.
+- **53 nav targets** in `mkdocs.yml` — all exist on disk.
 - **2 orphan files** in `docs/`: `PORTAL_MAP.yaml`, `validate_portal_map.py` — portal infrastructure, not rendered content. Expected.
 - **No missing pages.**
 
@@ -63,5 +64,5 @@ None. All drift resolved this run.
 ## Portal Map Validation
 
 ```
-PASS: 52 entries, 0 errors
+PASS: 53 entries, 0 errors
 ```

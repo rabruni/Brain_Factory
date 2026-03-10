@@ -4,6 +4,7 @@ roles:
     role_file: .claude/agents/orchestrator.md
     execution_scope: orchestrator
     default_backend: claude
+    model_policy: max_capability
     allowed_backends:
       - claude
       - gemini
@@ -13,6 +14,7 @@ roles:
     role_file: .claude/agents/spec-agent.md
     execution_scope: worker
     default_backend: codex
+    model_policy: default
     allowed_backends:
       - claude
       - codex
@@ -23,6 +25,7 @@ roles:
     role_file: .claude/agents/holdout-agent.md
     execution_scope: worker
     default_backend: codex
+    model_policy: default
     allowed_backends:
       - claude
       - codex
@@ -33,16 +36,29 @@ roles:
     role_file: .claude/agents/builder.md
     execution_scope: worker
     default_backend: codex
+    model_policy: default
     allowed_backends:
       - claude
       - codex
       - gemini
     env_override: SAWMILL_BUILD_AGENT
 
+  reviewer:
+    role_file: .claude/agents/reviewer.md
+    execution_scope: worker
+    default_backend: claude
+    model_policy: max_capability
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_REVIEW_AGENT
+
   evaluator:
     role_file: .claude/agents/evaluator.md
     execution_scope: worker
-    default_backend: codex
+    default_backend: claude
+    model_policy: max_capability
     allowed_backends:
       - claude
       - codex
@@ -53,6 +69,7 @@ roles:
     role_file: .claude/agents/auditor.md
     execution_scope: worker
     default_backend: claude
+    model_policy: max_capability
     allowed_backends:
       - claude
       - codex
@@ -63,6 +80,7 @@ roles:
     role_file: .claude/agents/portal-steward.md
     execution_scope: worker
     default_backend: codex
+    model_policy: default
     allowed_backends:
       - claude
       - codex

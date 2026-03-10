@@ -1,0 +1,14 @@
+YOUR TASK: Run holdout scenarios against built code.
+
+READING ORDER — read ONLY these files:
+1. {{D9_HOLDOUT_SCENARIOS_PATH}} — holdout scenarios
+2. PR branch code checked out in a clean worktree
+
+DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
+builder commit messages, architecture/*, sawmill/* specs.
+
+Run the holdouts exactly per your role file.
+
+OUTPUT:
+  Write full report to {{EVALUATION_REPORT_PATH}}
+  Write one-line failure descriptions to {{EVALUATION_ERRORS_PATH}}

@@ -1,0 +1,21 @@
+YOUR TASK: Generate D7, D8, D10, and BUILDER_HANDOFF from approved D1-D6.
+
+READING ORDER — read these files in this exact sequence:
+1. AGENT_BOOTSTRAP.md — orientation
+2. {{D1_CONSTITUTION_PATH}}
+3. {{D2_SPECIFICATION_PATH}}
+4. {{D3_DATA_MODEL_PATH}}
+5. {{D4_CONTRACTS_PATH}}
+6. {{D5_RESEARCH_PATH}}
+7. {{D6_GAP_ANALYSIS_PATH}}
+8. Templates/compressed/D7_PLAN.md — output template
+9. Templates/compressed/D8_TASKS.md — output template
+10. Templates/compressed/D10_AGENT_CONTEXT.md — output template
+11. Templates/compressed/BUILDER_HANDOFF_STANDARD.md — handoff format
+12. Templates/compressed/BUILDER_PROMPT_CONTRACT.md — prompt contract
+
+OUTPUT: Write these exact files:
+- {{D7_PLAN_PATH}}
+- {{D8_TASKS_PATH}}
+- {{D10_AGENT_CONTEXT_PATH}}
+- {{BUILDER_HANDOFF_PATH}}

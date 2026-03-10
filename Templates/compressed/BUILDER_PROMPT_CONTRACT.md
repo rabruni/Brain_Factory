@@ -8,7 +8,7 @@ You are a builder agent for [PROJECT_NAME]. Your task is defined in a handoff do
 Agent: [HANDOFF_ID] — [ONE_LINE_MISSION]
 Prompt Contract Version: [CONTRACT_VERSION]
 
-Read your specification, answer the 13 questions below, then STOP and WAIT.
+Read your specification, answer the 13 questions below, then STOP and WAIT for reviewer verdict.
 
 Specification: [PATH_TO_HANDOFF_SPEC]
 
@@ -41,7 +41,7 @@ User may: correct + proceed | follow-up questions | redirect | greenlight.
 **Infrastructure** (tools/gates operational): Q11=Failure Mode (which file/hash most likely gate failure?), Q12=Shortcut Check (tempted to skip established tool?), Q13=Semantic Audit
 
 ## CRITICAL_REVIEW_REQUIRED (MANDATORY)
-On any 13Q answer where interpretation feels loose, agent MUST flag: `[CRITICAL_REVIEW_REQUIRED]: [assumption + why it might be wrong]`. Human reviewer focuses on these flags.
+On any 13Q answer where interpretation feels loose, agent MUST flag: `[CRITICAL_REVIEW_REQUIRED]: [assumption + why it might be wrong]`. Reviewer focuses on these flags.
 
 ## Variables
 | Variable | Source |

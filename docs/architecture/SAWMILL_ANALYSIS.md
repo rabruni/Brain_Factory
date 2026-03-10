@@ -2,7 +2,7 @@
 
 **Status**: WORKING DRAFT
 **Date**: 2026-02-25
-**Purpose**: Design a product-agnostic build process ("the sawmill") that takes design documents and produces built, tested, verified code through Claude Code and Codex CLI agents operating on a shared repository.
+**Purpose**: Design a product-agnostic build process ("the sawmill") that takes design documents and produces built, tested, verified code through a two-role execution model on a shared repository: Claude orchestrates and Codex executes worker turns.
 
 **Scope boundary**: This document defines THE FACTORY — the turns, the templates, the agent roles, the quality gates. It does NOT define what gets built. Products, primitives, schemas, and build order are inputs to the sawmill, not part of it.
 
@@ -38,13 +38,13 @@
 
 **Hard limits:** Files >500KB often excluded from indexing. Multi-file refactors achieve only 42% capability in enterprise. Context compaction in long sessions loses architectural decisions.
 
-### 1.4 Claude Code + Codex CLI Specific Patterns
+### 1.4 Claude Orchestration + Codex Worker Patterns
 
-**Claude Code:** Deep reasoning, subagent orchestration, persistent specialist agents via `.claude/agents/`, Agent Teams for multi-session work.
+**Claude:** Orchestration, deep reasoning, blocker triage, gate supervision, and role-file-driven dispatch via `.claude/agents/`.
 
-**Codex CLI:** Background/async execution, phone-accessible (Codex Cloud), strong at well-scoped implementation, headless workers.
+**Codex:** Default worker backend for Turns A-E, background/async execution, phone-accessible (Codex Cloud), strong at well-scoped implementation, headless workers.
 
-**Same-repo best practices:** Git worktrees for isolation. CLAUDE.md as institutional context ("quality difference obvious within 24 hours"). Limit 3-4 specialist agents. Opus for planning, Sonnet for execution. Persistent agents in `.claude/agents/`.
+**Same-repo best practices:** Git worktrees for isolation. CLAUDE.md as institutional context ("quality difference obvious within 24 hours"). Claude owns work-order emission and supervision; Codex workers execute the scoped turns. Persistent role definitions live in `.claude/agents/`.
 
 ---
 
@@ -103,7 +103,7 @@ Turns are sequential. A turn's gate must pass before the next turn begins. Withi
 
 ### 3.2 Turn A — Specification (D1 through D6)
 
-**Role**: Spec Agent (Claude Code, Opus)
+**Role**: Spec Agent (worker role; Claude orchestrates, Codex executes by default)
 **Inputs**: Design documents (architecture docs, prior specs, standards)
 **Outputs**: D1, D2, D3, D4, D5, D6 — all filled, per component
 **Gate**: D6 has zero OPEN items
@@ -141,7 +141,7 @@ The agent is compelled to reduce risk and manage scope proactively. This means:
 
 ### 3.3 Turn B — Build Planning (D7, D8, D10)
 
-**Role**: Plan Agent (Claude Code, Opus — can be same session as Turn A if context allows)
+**Role**: Plan Agent (worker role; Claude orchestrates, Codex executes by default)
 **Inputs**: D1 through D6 from Turn A
 **Outputs**: D7, D8, D10
 **Gate**: D7 Constitution Check passes all D1 articles. D8 tasks trace to D2 scenarios and D4 contracts. D10 tooling rules match D1 tooling constraints.
@@ -172,7 +172,7 @@ The plan agent translates the spec (what to build) into a build plan (how to bui
 
 ### 3.4 Turn C — Holdout Authoring (D9)
 
-**Role**: Holdout Agent (Claude Code, Opus — **different agent session, cleared context**)
+**Role**: Holdout Agent (worker role; Claude orchestrates, Codex executes by default in a **different cleared session**)
 **Inputs**: D2 Specification + D4 Contracts ONLY. No other D-documents. No design docs. No builder handoff.
 **Outputs**: D9 Holdout Scenarios
 **Gate**: Coverage matrix covers all P0 and P1 scenarios from D2. At least 3 scenarios. Human reviews for strength.
@@ -190,7 +190,7 @@ If the holdout agent saw D7 (architecture), it might write scenarios that test f
 
 ### 3.5 Turn D — Build (Handoff + 13Q + DTT)
 
-**Role**: Builder Agent (Claude Code or Codex CLI, Sonnet)
+**Role**: Builder Agent (worker role; Codex default backend, routed by Claude)
 **Inputs**: D10 (read first), Builder Handoff (generated from D7+D8), referenced code per handoff Section 7
 **Outputs**: Built code, test suite, Results file
 **Gate**: All tests pass. Results file complete with SHA256 hashes. PR opened.
@@ -263,7 +263,7 @@ For each behavior in the handoff's Test Plan:
 
 ### 3.6 Turn E — Evaluation (D9 Executed)
 
-**Role**: Evaluator Agent (Claude Code, Opus — **different agent session, cleared context**)
+**Role**: Evaluator Agent (worker role; Claude orchestrates, Codex executes by default in a **different cleared session**)
 **Inputs**: D9 Holdout Scenarios (from `.holdouts/`) + built code (from PR branch). **Nothing else.** No handoff, no spec, no builder reasoning, no results file.
 **Outputs**: Evaluation report
 **Gate**: 2/3 pass per scenario. 90% overall. Human reviews report.
@@ -282,7 +282,7 @@ The evaluator checks out the PR branch in a clean worktree. It reads the holdout
 ```
 TURN A: SPECIFICATION                    TURN C: HOLDOUT AUTHORING
 ─────────────────────                    ─────────────────────────
-Role:  Spec Agent (Opus)                 Role:  Holdout Agent (Opus, cleared)
+Role:  Spec Agent worker (Codex default) Role:  Holdout worker (Codex default, cleared)
 Input: Design docs                       Input: D2 + D4 ONLY
 Output: D1, D2, D3, D4, D5, D6          Output: D9
 Gate:  D6 zero OPEN items               Gate:  Coverage matrix complete
@@ -291,7 +291,7 @@ Human: Answers gaps, approves D6         Human: Reviews holdout strength
                 ▼                                       │
 TURN B: BUILD PLANNING                                  │
 ──────────────────────                                  │
-Role:  Plan Agent (Opus)                                │
+Role:  Plan worker (Codex default)                      │
 Input: D1-D6                                            │
 Output: D7, D8, D10                                     │
 Gate:  Constitution check passes                        │
@@ -300,7 +300,7 @@ Human: Reviews plan, approves                           │
                 ▼                                       │
 TURN D: BUILD                                           │
 ─────────                                               │
-Role:  Builder Agent (Sonnet)                           │
+Role:  Builder worker (Codex default)                   │
 Input: D10 + Handoff + ref code                         │
 Process: 13Q → approval → DTT → results → PR            │
 Gate:  All tests pass, results complete                 │
@@ -309,7 +309,7 @@ Human: Reviews 13Q, greenlights                         │
                 ▼                                       ▼
 TURN E: EVALUATION
 ──────────────────
-Role:  Evaluator Agent (Opus, cleared)
+Role:  Evaluator worker (Codex default, cleared)
 Input: D9 + PR branch code ONLY
 Process: Run scenarios 3x each
 Gate:  2/3 per scenario, 90% overall
@@ -335,7 +335,7 @@ These are product-agnostic. They govern how the sawmill processes ANY spec.
 
 3. **Generation and validation are isolated.** The builder never sees holdout scenarios. The evaluator has cleared context. No shared state.
 
-4. **Agents assemble, they do not architect.** If a builder agent needs to make a design decision, the spec failed — not the agent.
+4. **Agents assemble, they do not architect.** If a worker needs to make a design decision, the spec failed — not the worker.
 
 5. **Start from spec, ask if there's a gap.** The spec agent extracts what's in the design docs and surfaces what isn't. It does not invent. It asks.
 
@@ -355,20 +355,20 @@ These are product-agnostic. They govern how the sawmill processes ANY spec.
 
 ## Part 5: Agent Roles and Isolation
 
-| Role | Turn | Tool | Model | What It Reads | What It NEVER Reads | Isolation |
-|------|------|------|-------|--------------|-------------------|-----------|
-| **Spec Agent** | A | Claude Code | Opus | Design docs, prior specs | `.holdouts/`, builder results | Main worktree |
-| **Plan Agent** | B | Claude Code | Opus | D1-D6 | `.holdouts/`, builder results | Main worktree (can be same session as Turn A) |
-| **Holdout Agent** | C | Claude Code (fresh) | Opus | D2 + D4 ONLY | D1, D3, D5, D6, D7, D8, D10, design docs, builder results | Cleared context |
-| **Builder** | D | Claude Code or Codex CLI | Sonnet | D10 + handoff + referenced code | `.holdouts/`, D9, evaluator reports | Dedicated git worktree |
-| **Evaluator** | E | Claude Code (fresh) | Opus | D9 + PR branch code | Handoff, D1-D8, D10, builder reasoning, results file | Separate worktree, cleared context |
+| Role | Turn | Execution Contract | What It Reads | What It NEVER Reads | Isolation |
+|------|------|--------------------|--------------|-------------------|-----------|
+| **Spec Agent** | A | Claude routes, Codex worker executes | Design docs, prior specs | `.holdouts/`, builder results | Main worktree |
+| **Plan Agent** | B | Claude routes, Codex worker executes | D1-D6 | `.holdouts/`, builder results | Main worktree (can be same session as Turn A) |
+| **Holdout Agent** | C | Claude routes, Codex worker executes (fresh) | D2 + D4 ONLY | D1, D3, D5, D6, D7, D8, D10, design docs, builder results | Cleared context |
+| **Builder** | D | Claude routes, Codex worker executes | D10 + handoff + referenced code | `.holdouts/`, D9, evaluator reports | Dedicated git worktree |
+| **Evaluator** | E | Claude routes, Codex worker executes (fresh) | D9 + PR branch code | Handoff, D1-D8, D10, builder reasoning, results file | Separate worktree, cleared context |
 
 **Critical isolation rules:**
 
 - Builder NEVER sees `.holdouts/` or D9.
 - Evaluator NEVER sees the builder's handoff, spec, reasoning, or results file.
 - Holdout Agent NEVER sees D1, D3, D5, D6, D7, D8, D10, or design docs.
-- Reviewer and Builder are ALWAYS different agent sessions.
+- Evaluator and Builder are ALWAYS different worker sessions.
 - "Cleared context" means a fresh agent session with no memory of prior turns.
 
 ---
@@ -434,7 +434,7 @@ Product-specific directories (specs per component, source, architecture docs) li
 | Decision | Options | Lean | Reasoning |
 |----------|---------|------|-----------|
 | **Holdout isolation** | (A) `.holdouts/` dir excluded from builder context, (B) separate branch, (C) encrypted | A | Simplest; `.gitignore` + CLAUDE.md rules enforce |
-| **Agent routing** | (A) Claude Code only, (B) Codex CLI only, (C) Claude Code orchestrates, Codex CLI for parallel builds | C | Claude Code for reasoning; Codex CLI for well-scoped parallel work |
+| **Agent routing** | (A) Claude-only execution, (B) Codex-only execution, (C) Claude orchestrates and Codex executes worker turns | C | Matches the current two-role contract: Claude supervises, Codex performs the worker turns |
 | **Worktree strategy** | (A) One worktree per active handoff, (B) Separate checkouts, (C) Sequential | A | Lighter than checkouts; branch-per-handoff gives clean PR flow |
 | **Session continuity** | (A) "Land the plane" summaries, (B) JSONL state files, (C) Git commits | A + C | Summaries + frequent commits = recoverable |
 
@@ -447,7 +447,7 @@ Product-specific directories (specs per component, source, architecture docs) li
 | **Spec quality insufficient** | HIGH | HIGH | D6 gap gate. After first 5 handoffs, trace deviations to spec gaps. |
 | **Holdout scenarios too weak** | MEDIUM | HIGH | Review holdout quality after first 5 handoffs. Must test behavior, not implementation. |
 | **Context compaction loses decisions** | HIGH | MEDIUM | "Land the plane" protocol. Frequent commits. Session logs in Results file. |
-| **Builder/evaluator isolation breaks** | LOW | HIGH | CLAUDE.md rules + fresh sessions. Verify in first 3 runs. |
+| **Builder/evaluator isolation breaks** | LOW | HIGH | CLAUDE.md and AGENTS.md rules + fresh worker sessions. Verify in first 3 runs. |
 | **Token costs escalate** | MEDIUM | MEDIUM | Budget per handoff. Hard cap: 3 retries. |
 | **Controlled redundancy catches nothing** | LOW | MEDIUM | If cross-document checks never diverge, either specs are perfect or checks aren't being done. Audit after 10 handoffs. |
 

@@ -9,6 +9,8 @@
 #   architecture/*.md        → docs/architecture/
 #   .claude/agents/*.md      → docs/agents/
 #   sawmill/COLD_START.md    → docs/sawmill/
+#   sawmill/EXECUTION_CONTRACT.md → docs/sawmill/
+#   sawmill/ROLE_REGISTRY.yaml → docs/sawmill/
 #   Templates/compressed/COMPRESSION_STANDARD.md → docs/compressed/
 #   Templates/*.md            → docs/sawmill-templates/
 #   Templates/*.yaml          → docs/sawmill-templates/
@@ -44,8 +46,9 @@ for file in $STAGED; do
                 CHANGED=1
             fi
             ;;
-        sawmill/COLD_START.md)
-            dest="docs/sawmill/COLD_START.md"
+        sawmill/COLD_START.md|sawmill/EXECUTION_CONTRACT.md|sawmill/ROLE_REGISTRY.yaml)
+            basename=$(basename "$file")
+            dest="docs/sawmill/$basename"
             if [ -f "$REPO_ROOT/$file" ]; then
                 mkdir -p "$REPO_ROOT/docs/sawmill"
                 cp "$REPO_ROOT/$file" "$REPO_ROOT/$dest"

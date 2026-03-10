@@ -22,6 +22,10 @@ The first real build after the canary passes is:
 ./sawmill/run.sh FMWK-001-ledger --from-turn D
 ```
 
+The authoritative runtime execution model is defined in:
+
+- `sawmill/EXECUTION_CONTRACT.md`
+
 ## One-System Rule
 
 Sawmill is only trustworthy when these three layers agree:
@@ -61,9 +65,7 @@ If any of these disagree, the stage fails.
 
 ### Still missing
 
-- One system-owned completion loop
-- A canary framework that proves the whole governed system
-- Automatic portal sync and canary audit as part of stage completion
+- One fully current portal health pass after the ownership split is documented
 - One clean current-state audit after the system loop is wired
 
 ## What A Canary Pass Must Prove
@@ -106,87 +108,12 @@ These are the outputs that become framework state:
 These constrain behavior but do not become per-framework artifacts:
 
 - `.claude/agents/*`
+- `sawmill/EXECUTION_CONTRACT.md`
 - `Templates/TDD_AND_DEBUGGING.md`
 - `Templates/AGENT_BUILD_PROCESS.yaml`
 - `Templates/BUILDER_PROMPT_CONTRACT.md`
 - `sawmill/COLD_START.md`
 - `sawmill/run.sh`
-
-## Template To Artifact Map
-
-### Turn A
-
-Instantiates:
-
-- `Templates/D1_CONSTITUTION.md`
-- `Templates/D2_SPECIFICATION.md`
-- `Templates/D3_DATA_MODEL.md`
-- `Templates/D4_CONTRACTS.md`
-- `Templates/D5_RESEARCH.md`
-- `Templates/D6_GAP_ANALYSIS.md`
-
-Outputs:
-
-- `sawmill/<FMWK-ID>/D1_CONSTITUTION.md`
-- `sawmill/<FMWK-ID>/D2_SPECIFICATION.md`
-- `sawmill/<FMWK-ID>/D3_DATA_MODEL.md`
-- `sawmill/<FMWK-ID>/D4_CONTRACTS.md`
-- `sawmill/<FMWK-ID>/D5_RESEARCH.md`
-- `sawmill/<FMWK-ID>/D6_GAP_ANALYSIS.md`
-
-### Turn B
-
-Instantiates:
-
-- `Templates/D7_PLAN.md`
-- `Templates/D8_TASKS.md`
-- `Templates/D10_AGENT_CONTEXT.md`
-- `Templates/BUILDER_HANDOFF_STANDARD.md`
-
-Outputs:
-
-- `sawmill/<FMWK-ID>/D7_PLAN.md`
-- `sawmill/<FMWK-ID>/D8_TASKS.md`
-- `sawmill/<FMWK-ID>/D10_AGENT_CONTEXT.md`
-- `sawmill/<FMWK-ID>/BUILDER_HANDOFF.md`
-
-### Turn C
-
-Instantiates:
-
-- `Templates/D9_HOLDOUT_SCENARIOS.md`
-
-Outputs:
-
-- `.holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md`
-
-### Turn D
-
-Reads governing sources:
-
-- `Templates/TDD_AND_DEBUGGING.md`
-- `Templates/AGENT_BUILD_PROCESS.yaml`
-- `Templates/BUILDER_PROMPT_CONTRACT.md`
-- `sawmill/<FMWK-ID>/D10_AGENT_CONTEXT.md`
-- `sawmill/<FMWK-ID>/BUILDER_HANDOFF.md`
-
-Outputs:
-
-- `staging/<FMWK-ID>/*`
-- `sawmill/<FMWK-ID>/13Q_ANSWERS.md`
-- `sawmill/<FMWK-ID>/RESULTS.md`
-
-### Turn E
-
-Reads:
-
-- `.holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md`
-- built code from `staging/<FMWK-ID>/`
-
-Outputs:
-
-- `sawmill/<FMWK-ID>/EVALUATION_REPORT.md`
-- `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md`
 
 ## Agents Used
 
@@ -195,7 +122,7 @@ Outputs:
 - `holdout-agent` handles Turn C
 - `builder` handles Turn D
 - `evaluator` handles Turn E
-- `portal-steward` syncs portal/Backstage after stage changes
+- `portal-steward` handles portal maintenance outside the runner's stage-local flow
 - `auditor` verifies the current canary stage
 
 ## Execution Roadmap
@@ -219,7 +146,7 @@ Run:
 Then the system must:
 
 1. verify Turn A artifacts exist
-2. run `portal-steward`
+2. let `run.sh` update the stage-local portal status
 3. run canary audit
 4. continue only on pass
 
@@ -235,7 +162,7 @@ Then the system must:
 
 1. verify Turn B and C artifacts exist
 2. verify holdout isolation
-3. run `portal-steward`
+3. let `run.sh` update the stage-local portal status
 4. run canary audit
 5. continue only on pass
 
@@ -251,7 +178,7 @@ Then the system must:
 
 1. verify builder outputs exist
 2. verify 13Q gate and results behavior
-3. run `portal-steward`
+3. let `run.sh` update the stage-local portal status
 4. run canary audit
 5. continue only on pass
 
@@ -266,7 +193,7 @@ Run:
 Then the system must:
 
 1. verify evaluator outputs exist
-2. run `portal-steward`
+2. let `run.sh` update the stage-local portal status
 3. run canary audit
 4. stop with final pass/fail
 
@@ -326,6 +253,7 @@ END GOAL
 READ-ONLY GOVERNING SOURCES
   .claude/agents/*
   Templates/*
+  sawmill/EXECUTION_CONTRACT.md
   sawmill/COLD_START.md
   sawmill/run.sh
   hooks
@@ -349,7 +277,7 @@ Phase 1
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -369,7 +297,7 @@ Phase 2
   verify expected artifacts + holdout isolation
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -387,7 +315,7 @@ Phase 3
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit
@@ -405,7 +333,7 @@ Phase 4
   verify expected artifacts
           |
           v
-  portal-steward
+  run.sh updates stage-local status
           |
           v
   canary audit

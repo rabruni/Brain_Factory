@@ -1,0 +1,27 @@
+YOUR TASK: Generate D1-D6 specification documents for a framework.
+
+READING ORDER — read these files in this exact sequence:
+1. AGENT_BOOTSTRAP.md — full orientation (primitives, invariants, boot order)
+2. architecture/NORTH_STAR.md — WHY (design authority)
+3. architecture/BUILDER_SPEC.md — WHAT (nine primitives, build rules)
+4. architecture/OPERATIONAL_SPEC.md — HOW (runtime behavior)
+5. architecture/FWK-0-DRAFT.md — framework rules, decomposition standard
+6. architecture/BUILD-PLAN.md — what gets built, in what order
+7. {{TASK_PATH}} — YOUR ASSIGNMENT (which framework to spec)
+8. {{SOURCE_MATERIAL_PATH}} — detailed spec material (if it exists)
+9. Templates/compressed/D1_CONSTITUTION.md — output template
+10. Templates/compressed/D2_SPECIFICATION.md — output template
+11. Templates/compressed/D3_DATA_MODEL.md — output template
+12. Templates/compressed/D4_CONTRACTS.md — output template
+13. Templates/compressed/D5_RESEARCH.md — output template
+14. Templates/compressed/D6_GAP_ANALYSIS.md — output template
+
+OUTPUT: Write these exact files:
+- {{D1_CONSTITUTION_PATH}}
+- {{D2_SPECIFICATION_PATH}}
+- {{D3_DATA_MODEL_PATH}}
+- {{D4_CONTRACTS_PATH}}
+- {{D5_RESEARCH_PATH}}
+- {{D6_GAP_ANALYSIS_PATH}}
+
+GATE: D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED.

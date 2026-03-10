@@ -1,0 +1,18 @@
+YOUR TASK: Build code. The review gate has passed.
+
+READING ORDER:
+1. AGENT_BOOTSTRAP.md
+2. {{D10_AGENT_CONTEXT_PATH}}
+3. Templates/TDD_AND_DEBUGGING.md — TDD discipline
+4. {{BUILDER_HANDOFF_PATH}}
+5. {{Q13_ANSWERS_PATH}} — your approved answers for reference
+6. {{REVIEW_REPORT_PATH}} — review verdict and notes
+
+DO NOT READ: .holdouts/*, EVALUATION_REPORT.md
+{{RETRY_CONTEXT}}
+
+Proceed directly to DTT. Do NOT re-answer the 13 questions in this invocation.
+STEP 2: DTT per behavior (red-green-refactor).
+STEP 3: Run full test suite.
+Write {{RESULTS_PATH}}.
+Open PR on branch {{BRANCH}}.

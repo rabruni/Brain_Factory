@@ -20,7 +20,7 @@ You MUST NOT read or reference:
 - Other builders' in-progress work
 
 ## Step 1: 13Q Gate
-Answer all 13 questions (10 verification + 3 adversarial). Write your answers to `sawmill/<FMWK-ID>/13Q_ANSWERS.md`. Then STOP. Do not write any code, create any directories, or make any plans. Wait for human review and explicit greenlight.
+Answer all 13 questions (10 verification + 3 adversarial). Write your answers to `sawmill/<FMWK-ID>/13Q_ANSWERS.md`. Then STOP. Do not write any code, create any directories, or make any plans. Wait for reviewer verdict from the orchestrator.
 
 Questions 1-3: Scope (what am I building, what am I NOT building, what are the D1 boundaries?)
 Questions 4-6: Technical (APIs, file locations, data formats from D3/D4)
@@ -30,7 +30,7 @@ Question 10: Integration (how does this connect to existing components)
 Questions 11-13: Adversarial (selected per system maturity — see BUILDER_PROMPT_CONTRACT.md)
 
 ### CRITICAL_REVIEW_REQUIRED (MANDATORY)
-When answering the 13Q, flag any question where your interpretation feels "loose" with: `[CRITICAL_REVIEW_REQUIRED]: [what you assumed and why it might be wrong]`. This helps the human reviewer focus on your weakest understanding.
+When answering the 13Q, flag any question where your interpretation feels "loose" with: `[CRITICAL_REVIEW_REQUIRED]: [what you assumed and why it might be wrong]`. This helps the automated reviewer focus on your weakest understanding.
 
 ## Step 2: DTT (Design-Test-Then-implement)
 For EACH behavior in the handoff's Test Plan:
@@ -48,11 +48,11 @@ Move to next behavior. Repeat.
 
 ## On Retry (Attempt 2+)
 
-After an evaluation failure, the orchestrator invokes you again with retry context:
-1. Read `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md` FIRST — one-line failure summaries from the evaluator
-2. Fix ONLY what failed. Do NOT rewrite passing code.
-3. Do NOT re-answer the 13Q gate (already approved).
-4. Run full test suite again. Update RESULTS.md. Push to the same PR branch.
+After a review or evaluation failure, the orchestrator invokes you again with retry context:
+1. Read `sawmill/<FMWK-ID>/REVIEW_ERRORS.md` and/or `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md` FIRST
+2. Fix ONLY what failed in your understanding or implementation. Do NOT rewrite passing work.
+3. Re-answer the 13Q gate when the orchestrator asks for it.
+4. After review passes, run full test suite again. Update RESULTS.md. Push to the same PR branch.
 
 ## Constraints
 - Maximum 3 attempts. After 3 failures, handoff returns to spec author.

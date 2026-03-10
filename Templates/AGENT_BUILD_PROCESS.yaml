@@ -1,6 +1,6 @@
 # AGENT_BUILD_PROCESS.yaml
 # Machine-readable agent build workflow
-# Maps: context loading → handoff dispatch → 13Q gate → DTT → results → validation
+# Maps: context loading → handoff dispatch → 13Q → automated review → DTT → results → validation
 # Last updated: [YYYY-MM-DD]
 
 meta:
@@ -23,7 +23,7 @@ context_loading:
       tokens_approx: 3000
     - order: 2
       file: "BUILDER_PROMPT_CONTRACT.md"
-      purpose: "Prompt contract — agent template, 13Q gate protocol, behavior rules"
+      purpose: "Prompt contract — agent template, 13Q + reviewer protocol, behavior rules"
       tokens_approx: 1000
     - order: 3
       file: "<specific_handoff_spec>"
@@ -44,7 +44,7 @@ handoff_lifecycle:
       description: "Handoff doc written, not yet sent to an agent"
       transitions_to: [DISPATCHED]
     - state: DISPATCHED
-      description: "Handoff sent to agent, awaiting 13-question answers"
+      description: "Handoff sent to agent, awaiting 13-question answers and reviewer verdict"
       transitions_to: [APPROVED, FAILED]
     - state: APPROVED
       description: "13-question answers reviewed, agent told to proceed"
@@ -130,7 +130,7 @@ handoff_structure:
       content: "Every test claim requires pasted output from THIS session"
     - section: 12
       name: "Mid-Build Checkpoint"
-      content: "After unit tests pass, report and wait for human greenlight"
+      content: "After unit tests pass, record checkpoint evidence and continue unless orchestrator escalates"
     - section: 13
       name: "Self-Reflection"
       content: "Review own work against spec before reporting complete"
@@ -152,7 +152,7 @@ agent_prompt:
     - element: "13-question gate"
       content: "Questions 1-3: scope. 4-6: technical. 7-8: packaging. 9: tests. 10: integration. 11-13: adversarial."
     - element: "STOP instruction"
-      content: "Do NOT proceed until user approval"
+      content: "Do NOT proceed until reviewer PASS"
 
   thirteen_question_gate:
     purpose: "Checkpoint — proves agent understanding before implementation"
@@ -186,9 +186,9 @@ agent_prompt:
             question: "Identify one ambiguous word in my plan and redefine it precisely."
 
     behavior:
-      must_do: "Answer all 13 questions, then STOP and WAIT"
+      must_do: "Answer all 13 questions, then STOP and WAIT for reviewer verdict"
       must_not: "Start creating directories, writing tests, making plans"
-      user_responses: ["Correct and proceed", "Follow-up questions", "Redirect approach", "Greenlight"]
+      user_responses: ["PASS", "RETRY", "ESCALATE"]
 
 # ═══════════════════════════════════════════
 # SECTION 5: BUILD PHASES (DTT)
@@ -202,7 +202,7 @@ build_phases:
       - "Read handoff spec"
       - "Read referenced code (Section 7 of spec)"
       - "Answer 13-question gate"
-      - "STOP. Wait for approval."
+      - "STOP. Wait for reviewer verdict."
 
   phase_2_build:
     name: "Build (Red-Green-Refactor)"
@@ -317,9 +317,9 @@ prompt_routing:
 
     - type: "review"
       prompt_contract: "REVIEWER_PROMPT_CONTRACT.md"
-      version: null
+      version: "1.0.0"
       when: "Validating a completed handoff"
-      status: "NOT YET CREATED"
+      status: "ACTIVE"
 
     - type: "integration"
       prompt_contract: "INTEGRATION_PROMPT_CONTRACT.md"

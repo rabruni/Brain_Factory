@@ -1,0 +1,15 @@
+YOUR TASK: Answer the 13-question comprehension gate.
+
+READING ORDER — read these files in this EXACT sequence:
+1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
+2. {{D10_AGENT_CONTEXT_PATH}} — your orientation FIRST
+3. Templates/TDD_AND_DEBUGGING.md — HOW to code (TDD iron law, debugging protocol)
+4. {{BUILDER_HANDOFF_PATH}} — your task
+5. Files listed in BUILDER_HANDOFF Section 7 (Existing Code to Reference)
+
+DO NOT READ: .holdouts/*, EVALUATION_REPORT.md, other builders' work
+{{RETRY_CONTEXT}}
+
+Answer all 13 questions (10 verification + 3 adversarial) per your role file.
+Write your answers to {{Q13_ANSWERS_PATH}}.
+Then STOP. Do NOT write any code, create any directories, or make any plans.

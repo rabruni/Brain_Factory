@@ -4,7 +4,7 @@ status: PLAN — requires Ray approval before execution
 version: "1.0"
 created: "2026-02-26"
 author: "Ray Bruni + Claude"
-audience: "Ray, builder agents, operators"
+audience: "Ray, Codex workers, operators"
 timeline: "48 hours from approval"
 depends_on:
   - NORTH_STAR.md
@@ -24,7 +24,23 @@ The plan assumes:
 - FWK-0 decisions from FWK-0-PRAGMATIC-RESOLUTIONS.md are approved (or adjusted)
 - Docker topology is decided (4 services: kernel, immudb, ollama, zitadel)
 - Authority docs (NORTH_STAR, BUILDER_SPEC, OPERATIONAL_SPEC) are stable
-- Builder agents are Claude-class LLMs working from spec packs + FWK-0
+- Claude is the sawmill orchestrator and Codex is the default worker backend for Turns A-E
+
+## Execution Contract
+
+The operational execution model for the sawmill is defined in
+`sawmill/EXECUTION_CONTRACT.md`.
+
+In short:
+
+```text
+Human -> Claude orchestrator -> Codex workers -> Sawmill turns A-E
+```
+
+- Human approves explicit gates and resolves authority conflicts.
+- Claude supervises the pipeline, invokes the runner, routes retries, and reports verdicts.
+- Codex executes the worker turns and produces the turn artifacts.
+- This plan describes the same framework dependency order regardless of which CLI launches the worker.
 
 ---
 
@@ -130,9 +146,9 @@ FMWK-000 (framework/FWK-0)
 
 ## 48-Hour Timeline
 
-### Hour 0–4: FOUNDATIONS (Ray + Claude)
+### Hour 0–4: FOUNDATIONS (Ray + Claude Orchestrator)
 
-**Goal:** Everything a builder agent needs before it can start.
+**Goal:** Everything a Codex worker needs before it can start.
 
 | Task | Owner | Deliverable | Blocks |
 |------|-------|------------|--------|
@@ -140,12 +156,12 @@ FMWK-000 (framework/FWK-0)
 | Finalize FWK-0 JSON schemas | Claude | framework-schema.json, specpack-schema.json, pack-schema.json, manifest-schema.json | GENESIS |
 | Write gate definition JSON files | Claude | framework-gate.json, specpack-gate.json, pack-gate.json, file-gate.json, package-gate.json, system-gate.json | Package Lifecycle |
 | Write GENESIS bootstrap script | Claude | genesis.sh (shell script, deterministic, reviewable) | Phase 0 |
-| Write KERNEL spec packs (all 6) | Claude | specpack.json for each KERNEL framework | Builder agents |
+| Write KERNEL spec packs (all 6) | Claude | specpack.json for each KERNEL framework | Codex workers |
 | Design mock provider containers | Claude | docker-compose-staging.yml with mock-ollama, mock-ledger, mock-graph | Dark factory |
 
 **Critical path:** FWK-0 schemas must be complete before GENESIS can run. Spec packs must be written before builders can start.
 
-### Hour 4–8: GENESIS + KERNEL SCAFFOLD (Ray + Claude)
+### Hour 4–8: GENESIS + KERNEL SCAFFOLD (Ray + Claude Orchestrator)
 
 **Goal:** Governed filesystem exists, FWK-0 on disk, KERNEL frameworks scaffolded.
 
@@ -153,15 +169,15 @@ FMWK-000 (framework/FWK-0)
 |------|-------|------------|--------|
 | Run GENESIS ceremony | Ray (with Claude assist) | /governed/FMWK-000-framework/ populated, Ledger initialized, bootstrap events recorded | Everything after |
 | Validate FWK-0 self-referential test | Ray | FWK-0 passes its own gates | Builder confidence |
-| Scaffold KERNEL frameworks (directories + stubs) | Claude | /staging/FMWK-001 through FMWK-006 with framework.json, specpack.json stubs | Builder agents |
+| Scaffold KERNEL frameworks (directories + stubs) | Claude | /staging/FMWK-001 through FMWK-006 with framework.json, specpack.json stubs | Codex workers |
 
-### Hour 8–24: KERNEL BUILD (Parallel builder agents)
+### Hour 8–24: KERNEL BUILD (Claude orchestrator + parallel Codex workers)
 
 **Goal:** All 6 KERNEL frameworks authored, tested, packaged.
 
-Builder agents work in parallel on independent frameworks. Dependencies between KERNEL frameworks are resolved at package assembly, not authoring.
+Claude dispatches parallel Codex worker sessions for independent frameworks. Dependencies between KERNEL frameworks are resolved at package assembly, not authoring.
 
-| Task | Builder | Est. Complexity | Can Parallelize With |
+| Task | Codex Worker | Est. Complexity | Can Parallelize With |
 |------|---------|----------------|---------------------|
 | FMWK-001 ledger | Agent A | Medium — event schemas, durability specs | All others |
 | FMWK-002 write-path | Agent B | High — fold logic, signal accumulation, synchronous contract | FMWK-001 (needs event schemas as reference) |
@@ -176,37 +192,37 @@ Builder agents work in parallel on independent frameworks. Dependencies between 
 - Hour 12-20: Start FMWK-003, FMWK-004 (depend on 001+002 interfaces)
 - Hour 20-24: Assemble KERNEL package, run gate validation, fix failures
 
-**Each builder agent receives:**
+**Each Codex worker receives:**
 1. FWK-0 reference (relevant sections only, ~500-800 tokens)
 2. Framework spec pack (specpack.json with builder instructions)
 3. Interface stubs for dependencies (what the depended-on framework exposes)
 4. Scaffold (generated directory structure and metadata stubs)
 
-**Each builder agent delivers:**
+**Each Codex worker delivers:**
 1. Complete framework.json with governance rules, interfaces, dependencies
 2. All spec packs with complete specpack.json
 3. All packs with pack.json, files, computed hashes
 4. Quality measures with test cases
 5. Sealed package (hashes computed, manifest ready)
 
-### Hour 24–28: KERNEL INSTALL + VERIFICATION (Ray + Claude)
+### Hour 24–28: KERNEL INSTALL + VERIFICATION (Ray + Claude Orchestrator)
 
 **Goal:** KERNEL installed, core operational invariant holds, CLI tools working.
 
 | Task | Owner | Deliverable | Blocks |
 |------|-------|------------|--------|
-| Assemble KERNEL package (manifest.json) | Claude | Single package containing 6 frameworks | Install |
+| Assemble KERNEL package (manifest.json) | Claude orchestrator | Single package containing 6 frameworks | Install |
 | Hand-verify KERNEL package | Ray | Human review of critical schemas and interfaces | Install |
 | Install KERNEL via GENESIS CLI | Ray | KERNEL frameworks in /governed/, Ledger events recorded | Layer 1 |
-| Run cold-storage validation | Claude (CLI) | All framework chains validate against Ledger | Confidence |
+| Run cold-storage validation | Claude orchestrator (CLI) | All framework chains validate against Ledger | Confidence |
 | Start kernel process | Ray | Kernel accepting connections, Write Path operational, Graph built | Layer 1 |
-| Smoke test: scaffold/seal/validate/package CLI | Claude | CLI tools return expected results | Builder confidence for Layer 1 |
+| Smoke test: scaffold/seal/validate/package CLI | Claude orchestrator | CLI tools return expected results | Builder confidence for Layer 1 |
 
-### Hour 28–36: LAYER 1 BUILD (Parallel builder agents)
+### Hour 28–36: LAYER 1 BUILD (Claude orchestrator + parallel Codex workers)
 
 **Goal:** DoPeJarMo OS frameworks authored, tested, packaged.
 
-| Task | Builder | Est. Complexity | Install Order |
+| Task | Codex Worker | Est. Complexity | Install Order |
 |------|---------|----------------|--------------|
 | FMWK-010 agent-interface | Agent H | High — conversational agent, WebSocket dispatch, framework diagnostics | FIRST (via CLI) |
 | FMWK-011 routing | Agent I | Low — policy definition, provider mapping | After 010 (through DoPeJarMo) |
@@ -217,27 +233,27 @@ Builder agents work in parallel on independent frameworks. Dependencies between 
 
 **After FMWK-010 install:** Operator can interact with DoPeJarMo via WebSocket. This is the first interactive milestone.
 
-### Hour 36–44: LAYER 2 BUILD (Parallel builder agents)
+### Hour 36–44: LAYER 2 BUILD (Claude orchestrator + parallel Codex workers)
 
 **Goal:** DoPeJar product frameworks authored, tested, packaged.
 
-| Task | Builder | Est. Complexity | Install Order |
+| Task | Codex Worker | Est. Complexity | Install Order |
 |------|---------|----------------|--------------|
 | FMWK-020 memory | Agent L | High — learning artifacts, consolidation, Attention config, epigenetic layer | Parallel with 021 |
 | FMWK-021 intent | Agent M | Medium — lifecycle state machine, proposal/authority, bridge mode | Parallel with 020 |
 | FMWK-022 conversation | Agent N | Medium — personality definition, response generation, user-facing prompts | After 020 + 021 |
 
-### Hour 44–48: INTEGRATION + DOPEJAR ALIVE (Ray + Claude)
+### Hour 44–48: INTEGRATION + DOPEJAR ALIVE (Ray + Claude Orchestrator)
 
 **Goal:** Full system operational. DoPeJar responding to users.
 
 | Task | Owner | Deliverable | Blocks |
 |------|-------|------------|--------|
 | Install Layer 2 frameworks through DoPeJarMo | Ray | FMWK-020, 021, 022 installed, gates passed | DoPeJar |
-| Validate full system composition | Claude (CLI) | All interfaces satisfied, no conflicts | DoPeJar |
+| Validate full system composition | Claude orchestrator (CLI) | All interfaces satisfied, no conflicts | DoPeJar |
 | Connect as user, test DoPeJar interaction | Ray | DoPeJar responds, remembers, demonstrates personality | Milestone |
-| Run Two Sarahs test scenario | Ray + Claude | Context reconstruction works, methylation scoring produces correct ranking | Validation |
-| Cold-storage validation of full system | Claude (CLI) | Entire governed filesystem validates against Ledger | Confidence |
+| Run Two Sarahs test scenario | Ray + Claude orchestrator | Context reconstruction works, methylation scoring produces correct ranking | Validation |
+| Cold-storage validation of full system | Claude orchestrator (CLI) | Entire governed filesystem validates against Ledger | Confidence |
 
 ---
 
@@ -307,7 +323,7 @@ Before builders can start, spec packs must be written. Priority order based on c
 
 ## Builder Agent Handoff Template
 
-Each builder agent receives a standardized handoff:
+Each Codex worker receives a standardized handoff:
 
 ```
 ## Builder Handoff: FMWK-{NNN}-{name}
@@ -351,7 +367,7 @@ Build the {name} framework for DoPeJarMo.
 
 | Risk | Severity | Likelihood | Mitigation | Owner |
 |------|----------|-----------|-----------|-------|
-| FWK-0 schemas incomplete | Critical | Medium | Hand-verify before GENESIS | Ray + Claude |
+| FWK-0 schemas incomplete | Critical | Medium | Hand-verify before GENESIS | Ray + Claude orchestrator |
 | KERNEL circular dependency | Critical | Low | Verify DAG before builders start | Claude |
 | Mock providers missing/broken | High | Medium | Build mocks before builders start | Claude |
 | Write-path spec pack unclear | High | Medium | Write with extreme precision, review | Claude + Ray |
@@ -381,7 +397,7 @@ Build the {name} framework for DoPeJarMo.
 
 ### Stretch (if time permits)
 - [ ] Dark factory mock environment operational
-- [ ] One framework built entirely by autonomous builder agent
+- [ ] One framework built entirely by autonomous Codex worker
 - [ ] Zitadel authentication integrated
 - [ ] DoPeJar demonstrates consolidation (MLA triggered)
 

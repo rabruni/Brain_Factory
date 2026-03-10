@@ -11,6 +11,10 @@ This document defines the exact reading chain for every agent type. When an agen
 
 The filesystem is the message bus. Agents communicate through files at known paths. No agent passes data directly to another.
 
+Current execution contract: see `sawmill/EXECUTION_CONTRACT.md`. This file defines how agents load context and read files; the execution-contract file defines who owns the runtime flow.
+
+For the human-readable post-run evidence checklist, see `docs/sawmill/RUN_VERIFICATION.md`.
+
 ---
 
 ## How Each Agent Loads Context (Entry Points Are Different)
@@ -55,6 +59,8 @@ The orchestrator reads `CLAUDE.md` and injects its contents into the prompt for 
 ## Agent Invocation Reference
 
 How the orchestrator invokes each agent programmatically:
+
+Claude is the orchestrator in the current system. Worker backends are resolved from `sawmill/ROLE_REGISTRY.yaml`, and critical review/evaluation roles may use a max-capability policy. `sawmill/EXECUTION_CONTRACT.md` is the source of truth for this runtime split.
 
 ### Claude Code
 ```bash
@@ -119,7 +125,7 @@ The agent now knows WHAT PROJECT it's in and WHAT THE RULES ARE.
 
 ### Layer 1: Role Assignment (orchestrator tells the agent its role)
 
-The orchestrator sends the agent's role file content in the prompt:
+The orchestrator (Claude) sends the agent's role file content in the prompt:
 
 ```
 Orchestrator passes → .claude/agents/<role>.md content
@@ -178,7 +184,7 @@ Writes:
   .holdouts/<FMWK>/D9_HOLDOUT_SCENARIOS.md
 ```
 
-**Builder Agent (Turn D)**:
+**Builder Worker (Turn D)**:
 ```
 Reads (in this exact order):
   AGENT_BOOTSTRAP.md                      ← orientation and invariants FIRST
@@ -188,11 +194,13 @@ Reads (in this exact order):
   Files from BUILDER_HANDOFF Section 7    ← referenced code
 
 On retry, also reads:
+  sawmill/<FMWK>/REVIEW_ERRORS.md         ← what the reviewer rejected
   sawmill/<FMWK>/EVALUATION_ERRORS.md     ← what failed
 
 CANNOT read: .holdouts/*, EVALUATION_REPORT.md
 
 Writes:
+  sawmill/<FMWK>/13Q_ANSWERS.md
   staging/<FMWK>/**
   sawmill/<FMWK>/RESULTS.md
   PR on branch build/<FMWK>
@@ -200,6 +208,23 @@ Writes:
 Note: Staging is in Brain_Factory, not dopejar. The builder imports from
 `/Users/raymondbruni/dopejar/platform_sdk/` but writes code to `staging/` in this repo.
 ```
+
+**Reviewer Worker (Turn D Review)**:
+```
+Reads (ONLY these):
+  sawmill/<FMWK>/D10_AGENT_CONTEXT.md
+  sawmill/<FMWK>/BUILDER_HANDOFF.md
+  sawmill/<FMWK>/13Q_ANSWERS.md
+
+Writes:
+  sawmill/<FMWK>/REVIEW_REPORT.md
+  sawmill/<FMWK>/REVIEW_ERRORS.md
+```
+
+**Verdict rules**:
+- PASS → builder proceeds to DTT
+- RETRY → builder re-answers 13Q on the next attempt
+- ESCALATE → orchestrator stops and asks the human
 
 **Evaluator Agent (Turn E)** — STRICT ISOLATION:
 ```
@@ -239,7 +264,7 @@ expected_outputs:
   - sawmill/<FMWK-NNN-name>/D4_CONTRACTS.md
   - sawmill/<FMWK-NNN-name>/D5_RESEARCH.md
   - sawmill/<FMWK-NNN-name>/D6_GAP_ANALYSIS.md
-gate: D6 zero OPEN items + human approval
+gate: D6 zero OPEN items + automatic stage validation
 retry: 0
 ```
 
@@ -247,21 +272,23 @@ retry: 0
 
 ## Handoff Diagram
 
+All non-orchestrator boxes below are worker turns. In the current system Claude routes them and `run.sh` resolves worker backends from `ROLE_REGISTRY.yaml`.
+
 ```
                     ┌──────────────┐
                     │  TASK.md     │ ← orchestrator emits dispatch
                     └──────┬───────┘
                            │
                     ┌──────▼───────┐
-                    │  Spec Agent  │ Turn A
+                    │ Spec Worker  │ Turn A
                     │  (D1-D6)     │
                     └──────┬───────┘
                            │ D1-D6 files in sawmill/<FMWK>/
                            │
-              ┌────────────┤ GATE: Ray approves D1-D6
+              ┌────────────┤ CHECKPOINT: automated validation + optional review
               │            │
      ┌────────▼─────┐  ┌───▼──────────┐
-     │ Holdout Agent│  │  Spec Agent  │ Turn B
+     │Holdout Worker│  │ Plan Worker  │ Turn B
      │ Turn C (D9)  │  │  (D7-D8-D10) │
      │ reads D2+D4  │  │  reads D1-D6 │
      └────────┬─────┘  └───┬──────────┘
@@ -269,22 +296,34 @@ retry: 0
               │            │ BUILDER_HANDOFF.md + D10
               │            │
               │     ┌──────▼───────┐
-              │     │   Builder    │ Turn D
-              │     │   (Code)     │
-              │     │ 13Q → DTT   │
+              │     │Builder Worker│ Turn D
+              │     │   13Q only   │
+              │     └──────┬───────┘
+              │            │ 13Q_ANSWERS.md
+              │            │
+              │     ┌──────▼───────┐
+              │     │Review Worker │
+              │     │ PASS/RETRY/  │
+              │     │  ESCALATE    │
+              │     └──────┬───────┘
+              │            │ PASS
+              │            │
+              │     ┌──────▼───────┐
+              │     │Builder Worker│ Turn D
+              │     │   (DTT)      │
               │     └──────┬───────┘
               │            │ PR branch + RESULTS.md
               │            │
               │     ┌──────▼───────┐
-              └────►│  Evaluator   │ Turn E
+              └────►│Evaluator Work│ Turn E
                     │  D9 + PR     │
                     └──────┬───────┘
                            │
                     EVALUATION_REPORT.md
                            │
                     ┌──────▼───────┐
-                    │  PASS → merge │
-                    │  FAIL → retry │ (max 3, then back to spec)
+                    │ PASS → done   │
+                    │ FAIL → retry  │ (max 3, then back to spec)
                     └──────────────┘
 ```
 
@@ -292,8 +331,8 @@ retry: 0
 
 ## Cross-Agent File Visibility Matrix
 
-| File | Orchestrator | Spec (A) | Spec (B) | Holdout (C) | Builder (D) | Evaluator (E) |
-|------|--------------|----------|----------|-------------|-------------|----------------|
+| File | Orchestrator | Spec Worker (A) | Plan Worker (B) | Holdout Worker (C) | Builder Worker (D) | Reviewer Worker | Evaluator Worker (E) |
+|------|--------------|----------|----------|-------------|-------------|----------------|----------------|
 | Context file* | AUTO | AUTO | AUTO | AUTO | AUTO | AUTO |
 | AGENT_BOOTSTRAP.md | READ | READ | READ | READ | READ | - |
 | architecture/* | READ | READ | - | - | - | - |
@@ -302,11 +341,14 @@ retry: 0
 | D1-D6 | READ | WRITE | READ | D2+D4 only | - | - |
 | D7-D8-D10 | READ | - | WRITE | - | READ | - |
 | BUILDER_HANDOFF | READ | - | WRITE | - | READ | - |
-| D9 (holdouts) | NEVER | - | - | WRITE | NEVER | READ |
-| staging/ code | - | - | - | - | WRITE | READ (PR) |
-| RESULTS.md | READ | - | - | - | WRITE | NEVER |
-| EVALUATION_REPORT | READ | - | - | - | NEVER | WRITE |
-| EVALUATION_ERRORS | READ | - | - | - | READ (retry) | WRITE |
+| D9 (holdouts) | NEVER | - | - | WRITE | NEVER | NEVER | READ |
+| 13Q_ANSWERS.md | READ | - | - | - | WRITE | READ | NEVER |
+| REVIEW_REPORT.md | READ | - | - | - | READ | WRITE | NEVER |
+| REVIEW_ERRORS.md | READ | - | - | - | READ (retry) | WRITE | NEVER |
+| staging/ code | - | - | - | - | WRITE | NEVER | READ (PR) |
+| RESULTS.md | READ | - | - | - | WRITE | NEVER | NEVER |
+| EVALUATION_REPORT | READ | - | - | - | NEVER | NEVER | WRITE |
+| EVALUATION_ERRORS | READ | - | - | - | READ (retry) | NEVER | WRITE |
 
 *Context file = CLAUDE.md / AGENTS.md / GEMINI.md (same content via symlinks)
 
@@ -314,7 +356,7 @@ retry: 0
 
 ## What the Orchestrator Does
 
-The orchestrator is HO2. It reads state and dispatches work. Worker agents are HO1 executions reached through `run.sh` or a subagent/tool call.
+The orchestrator is HO2. It reads state and dispatches work. Worker turns are HO1 executions reached through `run.sh` or a direct worker CLI call. Runtime ownership boundaries come from `sawmill/EXECUTION_CONTRACT.md`.
 
 It does NOT:
 - Interpret specs
@@ -324,16 +366,16 @@ It does NOT:
 - Implement code directly
 - Evaluate deliverables directly except for routing/reporting evaluator outcomes
 - Create standalone plans beyond dispatch/work-order artifacts
-- Skip gates
+- Skip automated review or escalation rules
 
 It DOES:
 - Read dependencies, blocker status, and framework artifacts to derive state
 - Emit `TASK.md` as a `WORK_ORDER` artifact before Turn A
 - Create symlinks (AGENTS.md, GEMINI.md → CLAUDE.md) if they don't exist
-- Invoke each agent with its role file content in the prompt
+- Dispatch each worker role with its role file content in the prompt
 - List the explicit files to read in the prompt (reinforces the Cold Start order)
-- Wait for human gates where required
-- Pass `EVALUATION_ERRORS.md` to builder on retry
+- Record checkpoints automatically unless interactive mode was explicitly requested
+- Pass `REVIEW_ERRORS.md` and `EVALUATION_ERRORS.md` to builder on retry
 - Track attempt count (max 3)
 - Report `STATUS` / `VERDICT`
 
@@ -352,12 +394,12 @@ Before running the Sawmill for the first time:
 - [ ] `CLAUDE.md` exists at project root with institutional context
 - [ ] `AGENTS.md` symlinked to `CLAUDE.md` (for Codex)
 - [ ] `GEMINI.md` symlinked to `CLAUDE.md` (for Gemini)
-- [ ] `.claude/agents/` has all 4 role files (spec-agent, holdout-agent, builder, evaluator)
+- [ ] `.claude/agents/` has all runtime role files (orchestrator, spec-agent, holdout-agent, builder, reviewer, evaluator, auditor, portal-steward)
 - [ ] `Templates/` has all D1-D10 templates + handoff standards (full, for humans)
 - [ ] `Templates/compressed/` has all compressed templates (for agents)
 - [ ] `.holdouts/` directory exists
 - [ ] `sawmill/` directory exists
 - [ ] Git hooks activated: `git config core.hooksPath .githooks` (syncs source → docs/ on commit)
-- [ ] Agent CLIs installed: `claude`, `codex`, `gemini` (whichever you're using)
+- [ ] CLI availability matches the execution contract: `claude` for orchestration, `codex` for worker turns, `gemini` only if explicitly used
 - [ ] Codex fallback configured (if using Codex without symlinks): `project_doc_fallback_filenames = ["CLAUDE.md"]`
 - [ ] Gemini context configured (if using Gemini without symlinks): `"contextFileName": ["GEMINI.md", "CLAUDE.md"]`
