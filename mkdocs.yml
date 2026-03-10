@@ -11,6 +11,8 @@ nav:
       - Pipeline Overview: sawmill/PIPELINE_VISUAL.md
       - Agent Onboarding: agent-onboarding.md
       - Cold Start Protocol: sawmill/COLD_START.md
+      - Execution Contract: sawmill/EXECUTION_CONTRACT.md
+      - Sawmill Role Registry: sawmill/ROLE_REGISTRY.md
       - Institutional Context: institutional-context.md
   - Architecture:
       - NORTH STAR — Why: architecture/NORTH_STAR.md

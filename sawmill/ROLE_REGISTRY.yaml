@@ -1,0 +1,70 @@
+version: 1
+roles:
+  orchestrator:
+    role_file: .claude/agents/orchestrator.md
+    execution_scope: orchestrator
+    default_backend: claude
+    allowed_backends:
+      - claude
+      - gemini
+    env_override: SAWMILL_ORCHESTRATOR_AGENT
+
+  spec-agent:
+    role_file: .claude/agents/spec-agent.md
+    execution_scope: worker
+    default_backend: codex
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_SPEC_AGENT
+
+  holdout-agent:
+    role_file: .claude/agents/holdout-agent.md
+    execution_scope: worker
+    default_backend: codex
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_HOLDOUT_AGENT
+
+  builder:
+    role_file: .claude/agents/builder.md
+    execution_scope: worker
+    default_backend: codex
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_BUILD_AGENT
+
+  evaluator:
+    role_file: .claude/agents/evaluator.md
+    execution_scope: worker
+    default_backend: codex
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_EVAL_AGENT
+
+  auditor:
+    role_file: .claude/agents/auditor.md
+    execution_scope: worker
+    default_backend: claude
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_AUDIT_AGENT
+
+  portal-steward:
+    role_file: .claude/agents/portal-steward.md
+    execution_scope: worker
+    default_backend: codex
+    allowed_backends:
+      - claude
+      - codex
+      - gemini
+    env_override: SAWMILL_PORTAL_AGENT
