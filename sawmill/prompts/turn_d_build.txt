@@ -15,4 +15,5 @@ Proceed directly to DTT. Do NOT re-answer the 13 questions in this invocation.
 STEP 2: DTT per behavior (red-green-refactor).
 STEP 3: Run full test suite.
 Write {{RESULTS_PATH}}.
-Open PR on branch {{BRANCH}}.
+Ensure the final passing implementation is written under {{STAGING_ROOT_PATH}}.
+Then STOP.

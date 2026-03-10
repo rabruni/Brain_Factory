@@ -30,7 +30,7 @@ Never resolve ambiguity by inventing an answer.
 
 ## Agent Entry Point
 
-Read `AGENT_BOOTSTRAP.md` first. It provides orientation before you encounter detail.
+This file is the startup context auto-loaded by Claude (and mirrored to Codex/Gemini via symlinks). After startup context loads, worker reading chains begin with `AGENT_BOOTSTRAP.md` as directed by `sawmill/run.sh`, the role file, and the rendered task prompt.
 
 ## Repository Layout
 
@@ -89,7 +89,7 @@ This repo uses the Sawmill L3 dark factory process. Five turns:
 - **Turn B** (Plan Agent): D1-D6 → D7, D8, D10. Checkpoint: Constitution Check passes.
 - **Turn C** (Holdout Agent): D2+D4 ONLY → D9. Parallel with Turn B.
 - **Turn D** (Builder + Reviewer): D10 + Handoff → 13Q → reviewer PASS → Code + Tests.
-- **Turn E** (Evaluator): D9 + PR code ONLY → Evaluation. Verdict: 2/3 per scenario, 90% overall.
+- **Turn E** (Evaluator): D9 + staged output ONLY → Evaluation. Verdict: 2/3 per scenario, 90% overall.
 
 ### Operational Execution Model
 
@@ -111,6 +111,16 @@ Human -> Claude orchestrator -> registry-resolved workers -> Sawmill artifacts a
 The canonical role inventory and backend-routing metadata live in
 `sawmill/ROLE_REGISTRY.yaml`. `sawmill/run.sh` consumes that registry at
 runtime. Role behavior and isolation still live in `.claude/agents/*.md`.
+
+### Sawmill Quick Start
+
+Use this path unless Ray explicitly requests something else:
+
+1. Ensure `sawmill/<FMWK-ID>/TASK.md` exists.
+2. Run `./sawmill/run.sh <FMWK-ID>`.
+3. Use `--interactive` only when Ray explicitly wants live checkpoints.
+4. Verify the run with `docs/sawmill/RUN_VERIFICATION.md`.
+5. Stop on escalation or runtime failure. Do not improvise around `run.sh`.
 
 ### Operational Roles
 
@@ -134,7 +144,7 @@ Agent role files: `.claude/agents/`
 
 To become any role, read its file: e.g., "you are the orchestrator" → read `.claude/agents/orchestrator.md`, follow its instructions.
 
-The orchestrator dispatches worker roles through `sawmill/run.sh` or a direct worker CLI invocation using the target role file. `sawmill/ROLE_REGISTRY.yaml` is the canonical source for role files, default backends, allowed backends, and env override names. Do not assume Claude-native subagents are available; the authoritative contract is Claude supervision and Codex worker execution. For runtime ownership boundaries, use `sawmill/EXECUTION_CONTRACT.md`.
+The orchestrator dispatches worker roles through `sawmill/run.sh`. `sawmill/ROLE_REGISTRY.yaml` is the canonical source for role files, default backends, allowed backends, and env override names. Do not assume Claude-native subagents are available; the authoritative contract is Claude supervision and Codex worker execution. Direct worker CLI invocation is exceptional and only allowed when Ray explicitly requests a non-`run.sh` path. For runtime ownership boundaries, use `sawmill/EXECUTION_CONTRACT.md`.
 
 For the human-readable filesystem evidence checklist after a run, use `docs/sawmill/RUN_VERIFICATION.md`.
 

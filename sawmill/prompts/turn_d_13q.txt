@@ -14,4 +14,6 @@ DO NOT READ: .holdouts/*, EVALUATION_REPORT.md, other builders' work
 
 Answer all 13 questions (10 verification + 3 adversarial) per your role file.
 Write your answers to {{Q13_ANSWERS_PATH}}.
+Include exactly one line in {{Q13_ANSWERS_PATH}}:
+Builder Prompt Contract Version: {{BUILDER_PROMPT_CONTRACT_VERSION}}
 Then STOP. Do NOT write any code, create any directories, or make any plans.

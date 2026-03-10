@@ -1,24 +1,21 @@
 # Reviewer Prompt Contract
 
-**Type**: Prompt contract for automated 13Q review
+**Type**: automated 13Q review
 **Version**: 1.0.0
 **Process standard**: `BUILDER_HANDOFF_STANDARD.md`
 
----
+## Runtime Evidence Requirement
 
-## Purpose
+The reviewer artifact must carry explicit version evidence:
 
-This contract governs the automated reviewer that evaluates the builder's
-13-question answers before implementation begins. The reviewer decides whether
-the builder is ready to proceed, must retry the comprehension gate, or must
-escalate a true blocker.
+`REVIEW_REPORT.md` must contain exactly one parseable line each:
 
----
+- `Builder Prompt Contract Version Reviewed: [BUILDER_CONTRACT_VERSION]`
+- `Reviewer Prompt Contract Version: [REVIEWER_CONTRACT_VERSION]`
+
+The orchestrator validates both lines before accepting reviewer output.
 
 ## Template
-
-Every review prompt includes a copy-paste block built from this contract.
-Variables in `[BRACKETS]` are filled per framework.
 
 ```text
 You are the review agent for [PROJECT_NAME].
@@ -40,7 +37,11 @@ Your task:
 Output requirements:
 1. Write [REVIEW_REPORT_PATH]
 2. Write [REVIEW_ERRORS_PATH]
-3. End REVIEW_REPORT.md with exactly one line:
+3. Include exactly one line in REVIEW_REPORT.md:
+   Builder Prompt Contract Version Reviewed: [BUILDER_CONTRACT_VERSION]
+4. Include exactly one line in REVIEW_REPORT.md:
+   Reviewer Prompt Contract Version: [REVIEWER_CONTRACT_VERSION]
+5. End REVIEW_REPORT.md with exactly one line:
    Review verdict: PASS
    Review verdict: RETRY
    Review verdict: ESCALATE
@@ -59,25 +60,14 @@ ESCALATE:
 - ambiguity that cannot be resolved mechanically
 ```
 
----
-
 ## Reviewer Rules
 
-- Review only the builder's understanding, not the implementation itself.
+- Review only the builder's understanding, not implementation details.
 - Do not fix specs or rewrite the handoff.
 - Do not drift into evaluation or holdout behavior.
-- Prefer `RETRY` over `ESCALATE` unless the blocker is real and external to the builder.
+- Prefer RETRY over ESCALATE unless the blocker is real and external to the builder.
 
----
+## REVIEW_ERRORS.md
 
-## Output Expectations
-
-### REVIEW_REPORT.md
-- Summary of readiness
-- Specific findings tied to handoff/context
-- Clear verdict rationale
-- Mandatory final verdict line
-
-### REVIEW_ERRORS.md
-- `NONE` when verdict is `PASS`
-- one concise bullet per blocking issue when verdict is `RETRY` or `ESCALATE`
+- PASS -> `NONE`
+- RETRY or ESCALATE -> one concise bullet per issue

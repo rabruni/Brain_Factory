@@ -22,7 +22,7 @@ After D4: verify error contracts cover all D2 edge case scenarios.
 After D6: verify all boundary walks have corresponding D4 contracts.
 
 ### Gate
-D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED with justification. Human approves.
+D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED with justification. The runtime validates this automatically; human review is optional in `--interactive` mode.
 
 ### Framework Decomposition (REQUIRED for framework D1s)
 Every framework D1 MUST include the three decomposition test articles from FWK-0-DRAFT Section 3.0:

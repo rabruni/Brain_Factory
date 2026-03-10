@@ -6,6 +6,7 @@ prompts:
     required_artifacts: []
     expected_artifacts:
       - portal_audit_results
+    freshness_policy: required
     retry_behavior: none
 
   portal_stage:
@@ -16,6 +17,7 @@ prompts:
     expected_artifacts:
       - portal_status
       - portal_changeset
+    freshness_policy: allow_unchanged
     retry_behavior: maintenance
 
   turn_a_spec:
@@ -30,6 +32,7 @@ prompts:
       - d4_contracts
       - d5_research
       - d6_gap_analysis
+    freshness_policy: required
     retry_behavior: none
 
   turn_b_plan:
@@ -47,6 +50,7 @@ prompts:
       - d8_tasks
       - d10_agent_context
       - builder_handoff
+    freshness_policy: required
     retry_behavior: none
 
   turn_c_holdout:
@@ -57,6 +61,7 @@ prompts:
       - d4_contracts
     expected_artifacts:
       - d9_holdout_scenarios
+    freshness_policy: required
     retry_behavior: none
 
   turn_d_13q:
@@ -67,6 +72,7 @@ prompts:
       - builder_handoff
     expected_artifacts:
       - q13_answers
+    freshness_policy: required
     retry_behavior: review_loop
 
   turn_d_review:
@@ -79,6 +85,7 @@ prompts:
     expected_artifacts:
       - review_report
       - review_errors
+    freshness_policy: required
     retry_behavior: review_loop
 
   turn_d_build:
@@ -92,6 +99,7 @@ prompts:
     expected_artifacts:
       - staging_root
       - results
+    freshness_policy: required
     retry_behavior: build_loop
 
   turn_e_eval:
@@ -104,4 +112,5 @@ prompts:
     expected_artifacts:
       - evaluation_report
       - evaluation_errors
+    freshness_policy: required
     retry_behavior: evaluation_loop

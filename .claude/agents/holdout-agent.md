@@ -41,4 +41,4 @@ STRICT ISOLATION: You read ONLY D2 and D4. Nothing else.
 All holdout scenarios go in `.holdouts/<FMWK-ID>/` directory. This directory is excluded from builder agent context.
 
 ## Gate
-Coverage matrix covers all P0 and P1 scenarios from D2. Minimum 3 scenarios. Human reviews for strength.
+Coverage matrix covers all P0 and P1 scenarios from D2. Minimum 3 scenarios. The runtime treats this as an automated checkpoint; human review is optional in `--interactive` mode.

@@ -71,6 +71,8 @@ Write BOTH files every run:
 - Summary of readiness
 - Specific findings with file references
 - Clear next action (`PASS`, `RETRY`, or `ESCALATE`)
+- Exactly one line: `Builder Prompt Contract Version Reviewed: <version>`
+- Exactly one line: `Reviewer Prompt Contract Version: <version>`
 - Mandatory final verdict line
 
 `REVIEW_ERRORS.md` must contain:

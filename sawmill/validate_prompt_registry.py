@@ -20,9 +20,11 @@ REQUIRED_FIELDS = {
     "prompt_file",
     "required_artifacts",
     "expected_artifacts",
+    "freshness_policy",
     "retry_behavior",
 }
 VALID_RETRY_BEHAVIORS = {"none", "review_loop", "build_loop", "evaluation_loop", "maintenance"}
+VALID_FRESHNESS_POLICIES = {"required", "allow_unchanged"}
 KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -84,6 +86,7 @@ def validate_registry(data: dict, roles_data: dict, artifacts_data: dict) -> Non
         prompt_file = metadata["prompt_file"]
         required_artifacts = metadata["required_artifacts"]
         expected_artifacts = metadata["expected_artifacts"]
+        freshness_policy = metadata["freshness_policy"]
         retry_behavior = metadata["retry_behavior"]
 
         if role not in known_roles:
@@ -111,6 +114,10 @@ def validate_registry(data: dict, roles_data: dict, artifacts_data: dict) -> Non
             errors.append(
                 f"Prompt '{prompt_key}' has invalid retry_behavior '{retry_behavior}'"
             )
+        if freshness_policy not in VALID_FRESHNESS_POLICIES:
+            errors.append(
+                f"Prompt '{prompt_key}' has invalid freshness_policy '{freshness_policy}'"
+            )
 
     if errors:
         raise ValueError("\n".join(errors))
@@ -129,6 +136,9 @@ def build_shell_exports(data: dict) -> str:
         )
         lines.append(
             f"{prefix}_EXPECTED_ARTIFACTS={shlex.quote(' '.join(metadata['expected_artifacts']))}"
+        )
+        lines.append(
+            f"{prefix}_FRESHNESS_POLICY={shlex.quote(str(metadata['freshness_policy']))}"
         )
         lines.append(
             f"{prefix}_RETRY_BEHAVIOR={shlex.quote(str(metadata['retry_behavior']))}"

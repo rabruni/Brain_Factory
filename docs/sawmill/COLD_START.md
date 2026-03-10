@@ -15,6 +15,16 @@ Current execution contract: see `sawmill/EXECUTION_CONTRACT.md`. This file defin
 
 For the human-readable post-run evidence checklist, see `docs/sawmill/RUN_VERIFICATION.md`.
 
+## Sawmill Quick Start
+
+Default agent entry path:
+
+1. Ensure `sawmill/<FMWK-ID>/TASK.md` exists.
+2. Run `./sawmill/run.sh <FMWK-ID>`.
+3. Use `--interactive` only when the human explicitly wants live checkpoints.
+4. Verify the run with `docs/sawmill/RUN_VERIFICATION.md`.
+5. Stop on escalation or runtime failure. Do not bypass `run.sh` unless the human explicitly requests a non-`run.sh` path.
+
 ---
 
 ## How Each Agent Loads Context (Entry Points Are Different)
@@ -203,7 +213,6 @@ Writes:
   sawmill/<FMWK>/13Q_ANSWERS.md
   staging/<FMWK>/**
   sawmill/<FMWK>/RESULTS.md
-  PR on branch build/<FMWK>
 
 Note: Staging is in Brain_Factory, not dopejar. The builder imports from
 `/Users/raymondbruni/dopejar/platform_sdk/` but writes code to `staging/` in this repo.
@@ -345,7 +354,7 @@ All non-orchestrator boxes below are worker turns. In the current system Claude 
 | 13Q_ANSWERS.md | READ | - | - | - | WRITE | READ | NEVER |
 | REVIEW_REPORT.md | READ | - | - | - | READ | WRITE | NEVER |
 | REVIEW_ERRORS.md | READ | - | - | - | READ (retry) | WRITE | NEVER |
-| staging/ code | - | - | - | - | WRITE | NEVER | READ (PR) |
+| staging/ code | - | - | - | - | WRITE | NEVER | READ (staging) |
 | RESULTS.md | READ | - | - | - | WRITE | NEVER | NEVER |
 | EVALUATION_REPORT | READ | - | - | - | NEVER | NEVER | WRITE |
 | EVALUATION_ERRORS | READ | - | - | - | READ (retry) | NEVER | WRITE |
@@ -356,7 +365,7 @@ All non-orchestrator boxes below are worker turns. In the current system Claude 
 
 ## What the Orchestrator Does
 
-The orchestrator is HO2. It reads state and dispatches work. Worker turns are HO1 executions reached through `run.sh` or a direct worker CLI call. Runtime ownership boundaries come from `sawmill/EXECUTION_CONTRACT.md`.
+The orchestrator is HO2. It reads state and dispatches work. Worker turns are HO1 executions reached through `run.sh`. Direct worker CLI calls are exceptional and only allowed when the human explicitly requests a non-`run.sh` path. Runtime ownership boundaries come from `sawmill/EXECUTION_CONTRACT.md`.
 
 It does NOT:
 - Interpret specs

@@ -91,15 +91,33 @@ validate_agent_timeout() {
     esac
 }
 
-extract_markdown_version() {
+extract_prompt_contract_version() {
     local file_path="$1"
-    awk -F': ' '/^\*\*Version\*\*:/{print $2; exit}' "$file_path"
+    awk '
+        {
+            line = $0
+            lower = tolower(line)
+            if (match(lower, /\*\*version\*\*:[[:space:]]*[0-9a-z._-]+/)) {
+                segment = substr(lower, RSTART, RLENGTH)
+                sub(/^.*\*\*version\*\*:[[:space:]]*/, "", segment)
+                print segment
+                exit
+            }
+            if (match(lower, /(^|[|[:space:]])version:[[:space:]]*[0-9a-z._-]+([|[:space:]]|$)/)) {
+                segment = substr(lower, RSTART, RLENGTH)
+                sub(/^.*version:[[:space:]]*/, "", segment)
+                sub(/[|[:space:]].*$/, "", segment)
+                print segment
+                exit
+            }
+        }
+    ' "$file_path"
 }
 
 load_prompt_contract_versions() {
     export BUILDER_PROMPT_CONTRACT_VERSION REVIEWER_PROMPT_CONTRACT_VERSION
-    BUILDER_PROMPT_CONTRACT_VERSION="$(extract_markdown_version "Templates/BUILDER_PROMPT_CONTRACT.md")"
-    REVIEWER_PROMPT_CONTRACT_VERSION="$(extract_markdown_version "Templates/REVIEWER_PROMPT_CONTRACT.md")"
+    BUILDER_PROMPT_CONTRACT_VERSION="$(extract_prompt_contract_version "Templates/BUILDER_PROMPT_CONTRACT.md")"
+    REVIEWER_PROMPT_CONTRACT_VERSION="$(extract_prompt_contract_version "Templates/REVIEWER_PROMPT_CONTRACT.md")"
 
     if [ -z "$BUILDER_PROMPT_CONTRACT_VERSION" ] || [ -z "$REVIEWER_PROMPT_CONTRACT_VERSION" ]; then
         fail "Unable to determine prompt contract versions from Templates/BUILDER_PROMPT_CONTRACT.md and Templates/REVIEWER_PROMPT_CONTRACT.md"
@@ -267,6 +285,14 @@ prompt_required_artifacts() {
     printf '%s\n' "${!required_var}"
 }
 
+prompt_freshness_policy() {
+    local key prefix policy_var
+    key="$1"
+    prefix="$(key_to_env "$key")"
+    policy_var="PROMPT_${prefix}_FRESHNESS_POLICY"
+    printf '%s\n' "${!policy_var}"
+}
+
 prompt_role() {
     local key prefix role_var
     key="$1"
@@ -366,14 +392,25 @@ artifact_newer_than() {
 
 verify_prompt_outputs() {
     local prompt_key="$1"
-    local artifact_id sentinel_path
+    local artifact_id sentinel_path freshness_policy
     sentinel_path="$(prompt_sentinel_path "$prompt_key")"
+    freshness_policy="$(prompt_freshness_policy "$prompt_key")"
     for artifact_id in $(prompt_expected_artifacts "$prompt_key"); do
         ensure_artifact_exists "$artifact_id" "output for ${prompt_key}"
-        if [ -n "$sentinel_path" ] && ! artifact_newer_than "$artifact_id" "$sentinel_path"; then
-            cleanup_prompt_sentinel "$prompt_key"
-            escalate "Output for ${prompt_key} was not refreshed this run: $(artifact_path "$artifact_id")"
-        fi
+        case "$freshness_policy" in
+            required)
+                if [ -n "$sentinel_path" ] && ! artifact_newer_than "$artifact_id" "$sentinel_path"; then
+                    cleanup_prompt_sentinel "$prompt_key"
+                    escalate "Output for ${prompt_key} was not refreshed this run: $(artifact_path "$artifact_id")"
+                fi
+                ;;
+            allow_unchanged)
+                ;;
+            *)
+                cleanup_prompt_sentinel "$prompt_key"
+                escalate "Prompt '${prompt_key}' has unsupported freshness policy '${freshness_policy}'"
+                ;;
+        esac
     done
     cleanup_prompt_sentinel "$prompt_key"
 }
@@ -469,6 +506,7 @@ while [ $# -gt 0 ]; do
             FROM_TURN="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
             ;;
         -h|--help)
+            validate_agent_timeout
             usage
             exit 0
             ;;
@@ -981,6 +1019,88 @@ evaluation_verdict() {
     esac
 }
 
+extract_exact_version_evidence() {
+    local artifact_path="$1"
+    local label="$2"
+    local value
+
+    local parse_status
+    if value="$(
+        awk -v label="$label" '
+            BEGIN {
+                label_count = 0
+                valid_count = 0
+                label_prefix = label ":"
+            }
+            {
+                line = $0
+                sub(/\r$/, "", line)
+                if (index(line, label_prefix) == 1) {
+                    label_count++
+                    value = substr(line, length(label_prefix) + 1)
+                    sub(/^[[:space:]]+/, "", value)
+                    sub(/[[:space:]]+$/, "", value)
+                    if (value ~ /^[0-9A-Za-z._-]+$/) {
+                        valid_count++
+                        valid_value = value
+                    }
+                }
+            }
+            END {
+                if (label_count == 0) {
+                    exit 2
+                }
+                if (label_count > 1) {
+                    exit 3
+                }
+                if (valid_count != 1) {
+                    exit 4
+                }
+                print valid_value
+            }
+        ' "$artifact_path"
+    )"; then
+        printf '%s\n' "$value"
+        return 0
+    else
+        parse_status=$?
+    fi
+
+    case "$parse_status" in
+        2)
+            fail "Missing required version evidence line in ${artifact_path}: ${label}: <version>"
+            return 2
+            ;;
+        3)
+            fail "Multiple '${label}:' lines found in ${artifact_path}; expected exactly one"
+            return 3
+            ;;
+        4)
+            fail "Malformed '${label}:' line in ${artifact_path}; expected <version> token"
+            return 4
+            ;;
+        *)
+            fail "Unable to parse version evidence from ${artifact_path}"
+            return 1
+            ;;
+    esac
+}
+
+require_version_evidence() {
+    local artifact_id="$1"
+    local label="$2"
+    local expected_version="$3"
+    local artifact_file_path actual_version
+
+    artifact_file_path="$(artifact_path "$artifact_id")"
+    actual_version="$(extract_exact_version_evidence "$artifact_file_path" "$label")" || escalate \
+        "Version evidence check failed for ${artifact_file_path}"
+    if [ "$actual_version" != "$expected_version" ]; then
+        fail "Version evidence mismatch in ${artifact_file_path} for '${label}': expected '${expected_version}', found '${actual_version}'"
+        escalate "Prompt contract version evidence mismatch"
+    fi
+}
+
 # --- Preflight --------------------------------------------------------------
 
 load_role_registry
@@ -1167,11 +1287,14 @@ if should_run_turn D; then
 
         invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_13q
         verify_prompt_outputs turn_d_13q
+        require_version_evidence q13_answers "Builder Prompt Contract Version" "$BUILDER_PROMPT_CONTRACT_VERSION"
         pass "Builder produced 13Q answers"
 
         log "Turn D — Step 1.5: Review 13Q answers"
         invoke_prompt "$REVIEW_AGENT" "$REVIEW_ROLE_FILE" turn_d_review
         verify_prompt_outputs turn_d_review
+        require_version_evidence review_report "Builder Prompt Contract Version Reviewed" "$BUILDER_PROMPT_CONTRACT_VERSION"
+        require_version_evidence review_report "Reviewer Prompt Contract Version" "$REVIEWER_PROMPT_CONTRACT_VERSION"
 
         case "$(review_verdict)" in
             PASS)

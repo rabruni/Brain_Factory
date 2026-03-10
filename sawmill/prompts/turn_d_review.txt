@@ -16,6 +16,10 @@ Your job:
 OUTPUT:
 - Write {{REVIEW_REPORT_PATH}}
 - Write {{REVIEW_ERRORS_PATH}}
+- Include exactly one line in {{REVIEW_REPORT_PATH}}:
+  Builder Prompt Contract Version Reviewed: {{BUILDER_PROMPT_CONTRACT_VERSION}}
+- Include exactly one line in {{REVIEW_REPORT_PATH}}:
+  Reviewer Prompt Contract Version: {{REVIEWER_PROMPT_CONTRACT_VERSION}}
 
 Verdict rules:
 - PASS if answers are concrete, aligned, and implementation-ready

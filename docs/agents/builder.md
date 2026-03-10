@@ -20,7 +20,11 @@ You MUST NOT read or reference:
 - Other builders' in-progress work
 
 ## Step 1: 13Q Gate
-Answer all 13 questions (10 verification + 3 adversarial). Write your answers to `sawmill/<FMWK-ID>/13Q_ANSWERS.md`. Then STOP. Do not write any code, create any directories, or make any plans. Wait for reviewer verdict from the orchestrator.
+Answer all 13 questions (10 verification + 3 adversarial). Write your answers to `sawmill/<FMWK-ID>/13Q_ANSWERS.md`.
+Include exactly one line in that file:
+`Builder Prompt Contract Version: <version>`
+Use the exact contract version value provided in your prompt.
+Then STOP. Do not write any code, create any directories, or make any plans. Wait for reviewer verdict from the orchestrator.
 
 Questions 1-3: Scope (what am I building, what am I NOT building, what are the D1 boundaries?)
 Questions 4-6: Technical (APIs, file locations, data formats from D3/D4)
@@ -44,7 +48,7 @@ Move to next behavior. Repeat.
 ## Step 3: Finalize
 - Run FULL test suite (all components, not just yours)
 - Write Results file per BUILDER_HANDOFF_STANDARD.md
-- Open a PR
+- Ensure the final passing implementation is written under `staging/<FMWK-ID>/`
 
 ## On Retry (Attempt 2+)
 
@@ -71,7 +75,6 @@ NEVER read: `.holdouts/*`, `EVALUATION_REPORT.md`, other builders' work.
 ## Output Location
 - Code: `staging/<FMWK-ID>/`
 - Results: `sawmill/<FMWK-ID>/RESULTS.md`
-- PR: branch `build/<FMWK-ID>`
 
 ## Authority Chain
 NORTH_STAR.md > BUILDER_SPEC.md > OPERATIONAL_SPEC.md > FWK-0-DRAFT.md
