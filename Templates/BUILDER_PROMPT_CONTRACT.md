@@ -1,9 +1,5 @@
 # Builder Agent Prompt Contract
-
-**Type**: Prompt contract for automated builder comprehension and implementation
-**Version**: 1.0.0
-**Process standard**: `BUILDER_HANDOFF_STANDARD.md`
-
+Type: automated builder comprehension + implementation | version: 1.0.0 | standard: BUILDER_HANDOFF_STANDARD.md
 Contract version MUST be recorded in dispatched prompt. Reviewer checks version match.
 
 ## Template
@@ -33,7 +29,7 @@ Q9: Test count/verification criteria
 Q10: Integration (connection to existing components)
 Q11-13: Adversarial (see sets below)
 
-STOP AFTER ANSWERING ALL 13. Do NOT proceed until the reviewer returns `Review verdict: PASS`.
+STOP AFTER ANSWERING ALL 13. Do NOT proceed until reviewer returns PASS.
 ```
 
 ## 13Q Behavior
