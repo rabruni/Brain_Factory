@@ -91,6 +91,22 @@ validate_agent_timeout() {
     esac
 }
 
+extract_markdown_version() {
+    local file_path="$1"
+    awk -F': ' '/^\*\*Version\*\*:/{print $2; exit}' "$file_path"
+}
+
+load_prompt_contract_versions() {
+    export BUILDER_PROMPT_CONTRACT_VERSION REVIEWER_PROMPT_CONTRACT_VERSION
+    BUILDER_PROMPT_CONTRACT_VERSION="$(extract_markdown_version "Templates/BUILDER_PROMPT_CONTRACT.md")"
+    REVIEWER_PROMPT_CONTRACT_VERSION="$(extract_markdown_version "Templates/REVIEWER_PROMPT_CONTRACT.md")"
+
+    if [ -z "$BUILDER_PROMPT_CONTRACT_VERSION" ] || [ -z "$REVIEWER_PROMPT_CONTRACT_VERSION" ]; then
+        fail "Unable to determine prompt contract versions from Templates/BUILDER_PROMPT_CONTRACT.md and Templates/REVIEWER_PROMPT_CONTRACT.md"
+        exit 1
+    fi
+}
+
 ROLE_REGISTRY="sawmill/ROLE_REGISTRY.yaml"
 ROLE_REGISTRY_VALIDATOR="sawmill/validate_role_registry.py"
 ARTIFACT_REGISTRY="sawmill/ARTIFACT_REGISTRY.yaml"
@@ -762,12 +778,16 @@ for e in data.get('entries', []):
         fi
     fi
 
-    # Freshness: PORTAL_STATUS.md and PORTAL_CHANGESET.md changed during this stage
-    if [ -n "${_PRE_STATUS_HASH:-}" ] && [ -n "${_POST_STATUS_HASH:-}" ]; then
-        _ck "PORTAL_STATUS.md changed this run" test "$_POST_STATUS_HASH" != "$_PRE_STATUS_HASH"
+    _ck "portal-steward ran for this stage" test "${_PORTAL_STEWARD_RAN:-false}" = "true"
+    if [ "${_PORTAL_STATUS_CHANGED:-false}" = "true" ]; then
+        results="${results}| INFO | PORTAL_STATUS.md changed this stage |"$'\n'
+    else
+        results="${results}| INFO | PORTAL_STATUS.md unchanged this stage (already current) |"$'\n'
     fi
-    if [ -n "${_PRE_CHANGESET_HASH:-}" ] && [ -n "${_POST_CHANGESET_HASH:-}" ]; then
-        _ck "PORTAL_CHANGESET.md changed this run" test "$_POST_CHANGESET_HASH" != "$_PRE_CHANGESET_HASH"
+    if [ "${_PORTAL_CHANGESET_CHANGED:-false}" = "true" ]; then
+        results="${results}| INFO | PORTAL_CHANGESET.md changed this stage |"$'\n'
+    else
+        results="${results}| INFO | PORTAL_CHANGESET.md unchanged this stage (already current) |"$'\n'
     fi
 
     # Write audit file
@@ -807,18 +827,29 @@ run_portal_steward() {
     pre_status_hash=$(shasum -a 256 "$(artifact_path portal_status)" 2>/dev/null | cut -d' ' -f1 || echo "none")
     pre_changeset_hash=$(shasum -a 256 "$(artifact_path portal_changeset)" 2>/dev/null | cut -d' ' -f1 || echo "none")
     export _PRE_STATUS_HASH="$pre_status_hash" _PRE_CHANGESET_HASH="$pre_changeset_hash"
+    export _PORTAL_STEWARD_RAN=true
 
     export STAGE="$stage"
     invoke_prompt "$PORTAL_AGENT" "$PORTAL_ROLE_FILE" portal_stage
     verify_prompt_outputs portal_stage
 
     # Store hashes for audit freshness checks
-    export _POST_STATUS_HASH _POST_CHANGESET_HASH
+    export _POST_STATUS_HASH _POST_CHANGESET_HASH _PORTAL_STATUS_CHANGED _PORTAL_CHANGESET_CHANGED
     _POST_STATUS_HASH=$(shasum -a 256 "$(artifact_path portal_status)" 2>/dev/null | cut -d' ' -f1 || echo "none")
     _POST_CHANGESET_HASH=$(shasum -a 256 "$(artifact_path portal_changeset)" 2>/dev/null | cut -d' ' -f1 || echo "none")
+    if [ "$_POST_STATUS_HASH" != "$pre_status_hash" ]; then
+        _PORTAL_STATUS_CHANGED=true
+    else
+        _PORTAL_STATUS_CHANGED=false
+    fi
+    if [ "$_POST_CHANGESET_HASH" != "$pre_changeset_hash" ]; then
+        _PORTAL_CHANGESET_CHANGED=true
+    else
+        _PORTAL_CHANGESET_CHANGED=false
+    fi
 
     # Steward produced outputs?
-    if [ -f "$(artifact_path portal_status)" ] && [ "$_POST_STATUS_HASH" != "$pre_status_hash" ]; then
+    if [ -f "$(artifact_path portal_status)" ] && [ "$_PORTAL_STATUS_CHANGED" = true ]; then
         pass "Portal-steward updated PORTAL_STATUS.md"
     elif [ -f "$(artifact_path portal_status)" ]; then
         log "Portal-steward ran but PORTAL_STATUS.md unchanged (may be already current)"
@@ -974,7 +1005,9 @@ for f in \
     "$ROLE_REGISTRY" "$ROLE_REGISTRY_VALIDATOR" \
     "$ARTIFACT_REGISTRY" "$ARTIFACT_REGISTRY_VALIDATOR" \
     "$PROMPT_REGISTRY" "$PROMPT_REGISTRY_VALIDATOR" \
-    "$PROMPT_RENDERER"; do
+    "$PROMPT_RENDERER" \
+    "Templates/BUILDER_PROMPT_CONTRACT.md" \
+    "Templates/REVIEWER_PROMPT_CONTRACT.md"; do
     if [ ! -f "$f" ]; then
         fail "Missing required file: $f"
         exit 1
@@ -1008,6 +1041,7 @@ STATUS_PAGE_PATH="$(artifact_path status_page)"
 PORTAL_STATUS_PATH="$(artifact_path portal_status)"
 PORTAL_CHANGESET_PATH="$(artifact_path portal_changeset)"
 PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
+load_prompt_contract_versions
 export_artifact_paths
 
 # Verify TASK.md exists

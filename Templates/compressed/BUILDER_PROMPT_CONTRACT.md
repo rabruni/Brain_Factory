@@ -1,5 +1,5 @@
 # Builder Agent Prompt Contract
-Meta: v:{ver} | process standard: BUILDER_HANDOFF_STANDARD.md
+Type: automated builder comprehension + implementation | version: 1.0.0 | standard: BUILDER_HANDOFF_STANDARD.md
 Contract version MUST be recorded in dispatched prompt. Reviewer checks version match.
 
 ## Template
@@ -29,12 +29,12 @@ Q9: Test count/verification criteria
 Q10: Integration (connection to existing components)
 Q11-13: Adversarial (see sets below)
 
-STOP AFTER ANSWERING ALL 13. Do NOT proceed until user says go.
+STOP AFTER ANSWERING ALL 13. Do NOT proceed until reviewer returns PASS.
 ```
 
 ## 13Q Behavior
 Agent: read spec → answer all 13 → STOP. MUST NOT start dirs/tests/code/plans.
-User may: correct + proceed | follow-up questions | redirect | greenlight.
+Runtime continues only after reviewer PASS. RETRY and ESCALATE feed the shared attempt loop.
 
 ## Adversarial Sets (pick by maturity, Q13 Semantic Audit is universal)
 **Genesis** (no established tools/gates): Q11=Dependency Trap (what depends on nonexistent?), Q12=Scope Creep Check (closest to building infrastructure?), Q13=Semantic Audit (one ambiguous word, redefine)

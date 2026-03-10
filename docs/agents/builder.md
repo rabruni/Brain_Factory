@@ -52,7 +52,7 @@ After a review or evaluation failure, the orchestrator invokes you again with re
 1. Read `sawmill/<FMWK-ID>/REVIEW_ERRORS.md` and/or `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md` FIRST
 2. Fix ONLY what failed in your understanding or implementation. Do NOT rewrite passing work.
 3. Re-answer the 13Q gate when the orchestrator asks for it.
-4. After review passes, run full test suite again. Update RESULTS.md. Push to the same PR branch.
+4. After review passes, run the full test suite again. Update RESULTS.md and the staged framework output in `staging/<FMWK-ID>/`.
 
 ## Constraints
 - Maximum 3 attempts. After 3 failures, handoff returns to spec author.

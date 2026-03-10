@@ -80,7 +80,7 @@ Emit only one of these forms.
 WORK_ORDER
 framework: FMWK-NNN-name
 turn: A|B|C|D|E
-target_role: spec-agent|holdout-agent|builder|evaluator|auditor
+target_role: spec-agent|holdout-agent|builder|reviewer|evaluator|auditor|portal-steward
 action: dispatch
 inputs:
   - <path>

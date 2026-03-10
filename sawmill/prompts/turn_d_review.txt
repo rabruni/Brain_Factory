@@ -1,5 +1,7 @@
 YOUR TASK: Review the builder's 13-question answers before implementation starts.
 
+Prompt Contract Version: {{REVIEWER_PROMPT_CONTRACT_VERSION}}
+
 READING ORDER — read these files in this EXACT sequence:
 1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
 2. {{D10_AGENT_CONTEXT_PATH}} — framework orientation

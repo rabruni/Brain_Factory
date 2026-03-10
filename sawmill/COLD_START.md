@@ -230,7 +230,7 @@ Writes:
 ```
 Reads (ONLY these):
   .holdouts/<FMWK>/D9_HOLDOUT_SCENARIOS.md
-  PR branch code (clean worktree)
+  staging/<FMWK>/**
 
 CANNOT read: D1-D8, D10, BUILDER_HANDOFF, RESULTS.md, architecture/*
 
@@ -312,11 +312,11 @@ All non-orchestrator boxes below are worker turns. In the current system Claude 
               │     │Builder Worker│ Turn D
               │     │   (DTT)      │
               │     └──────┬───────┘
-              │            │ PR branch + RESULTS.md
+              │            │ staging/<FMWK> + RESULTS.md
               │            │
               │     ┌──────▼───────┐
               └────►│Evaluator Work│ Turn E
-                    │  D9 + PR     │
+                    │ D9 + staging │
                     └──────┬───────┘
                            │
                     EVALUATION_REPORT.md

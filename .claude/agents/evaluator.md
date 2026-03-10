@@ -9,7 +9,7 @@ Execute holdout scenarios against built code to determine if it passes acceptanc
 
 ## Inputs
 1. D9 Holdout Scenarios (from `/.holdouts/`)
-2. Built code (from PR branch, checked out in clean worktree)
+2. Built code (from `staging/<FMWK-ID>/` in the current repository workspace)
 
 You MUST NOT read or reference:
 - Builder handoff
@@ -19,7 +19,7 @@ You MUST NOT read or reference:
 - Any design documents
 
 ## Process
-1. Check out PR branch in a clean git worktree.
+1. Evaluate the built output exactly as staged under `staging/<FMWK-ID>/`.
 2. Read holdout scenarios from `/.holdouts/`.
 3. For each scenario:
    a. Run Setup commands
@@ -48,7 +48,7 @@ Your context file (CLAUDE.md / AGENTS.md / GEMINI.md) is auto-loaded by your CLI
 The orchestrator sends you this role file and tells you which files to read.
 Follow the orchestrator's READING ORDER prompt exactly.
 
-STRICT ISOLATION: You read ONLY D9 holdouts and the PR branch code. Nothing else.
+STRICT ISOLATION: You read ONLY D9 holdouts and the staged framework output. Nothing else.
 Do NOT read: `AGENT_BOOTSTRAP.md`, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
 builder commit messages, `architecture/*`, `sawmill/*` specs.
 

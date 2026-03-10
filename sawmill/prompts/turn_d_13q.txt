@@ -1,5 +1,7 @@
 YOUR TASK: Answer the 13-question comprehension gate.
 
+Prompt Contract Version: {{BUILDER_PROMPT_CONTRACT_VERSION}}
+
 READING ORDER — read these files in this EXACT sequence:
 1. AGENT_BOOTSTRAP.md — orientation (primitives, invariants)
 2. {{D10_AGENT_CONTEXT_PATH}} — your orientation FIRST
