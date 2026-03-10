@@ -69,6 +69,7 @@ Examples:
 - `docs/agent-onboarding.md`
 - `docs/dopejar-catalog.md`
 - `docs/PORTAL_CONSTITUTION.md`
+- `docs/sawmill/RUN_VERIFICATION.md`
 
 Rule:
 

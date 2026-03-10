@@ -20,6 +20,7 @@ nav:
       - BUILDER SPEC — What: architecture/BUILDER_SPEC.md
       - OPERATIONAL SPEC — How: architecture/OPERATIONAL_SPEC.md
       - Build Plan: architecture/BUILD-PLAN.md
+      - Platform SDK Diagrams: architecture/SDK_DIAGRAMS.md
       - Framework Registry: architecture/FRAMEWORK_REGISTRY.md
       - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
       - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
@@ -72,4 +73,9 @@ nav:
       - DoPeJarMo Catalog: dopejar-catalog.md
 plugins:
   - techdocs-core
-  - mermaid2
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format ''

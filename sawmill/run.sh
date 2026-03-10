@@ -129,10 +129,12 @@ ROLE_REGISTRY="sawmill/ROLE_REGISTRY.yaml"
 ROLE_REGISTRY_VALIDATOR="sawmill/validate_role_registry.py"
 ARTIFACT_REGISTRY="sawmill/ARTIFACT_REGISTRY.yaml"
 ARTIFACT_REGISTRY_VALIDATOR="sawmill/validate_artifact_registry.py"
+STAGE_ARTIFACT_RESOLVER="sawmill/resolve_stage_artifacts.py"
 PROMPT_REGISTRY="sawmill/PROMPT_REGISTRY.yaml"
 PROMPT_REGISTRY_VALIDATOR="sawmill/validate_prompt_registry.py"
 PROMPT_RENDERER="sawmill/render_prompt.py"
 TIMEOUT_RUNNER="sawmill/run_with_timeout.py"
+PORTAL_MIRROR_SYNCER="sawmill/sync_portal_mirrors.py"
 AGENT_TIMEOUT_SECONDS="${SAWMILL_AGENT_TIMEOUT_SECONDS:-1800}"
 
 resolve_registry_backend() {
@@ -221,6 +223,20 @@ load_artifact_registry() {
     )"
 }
 
+load_stage_artifact_metadata() {
+    if [ ! -f "$STAGE_ARTIFACT_RESOLVER" ]; then
+        fail "Missing stage artifact resolver: ${STAGE_ARTIFACT_RESOLVER}"
+        exit 1
+    fi
+
+    python3 "$STAGE_ARTIFACT_RESOLVER" --registry "$ARTIFACT_REGISTRY" >/dev/null
+    eval "$(
+        python3 "$STAGE_ARTIFACT_RESOLVER" \
+            --registry "$ARTIFACT_REGISTRY" \
+            --shell-exports
+    )"
+}
+
 load_prompt_registry() {
     if [ ! -f "$PROMPT_REGISTRY_VALIDATOR" ]; then
         fail "Missing prompt registry validator: ${PROMPT_REGISTRY_VALIDATOR}"
@@ -259,6 +275,18 @@ artifact_kind() {
     prefix="$(key_to_env "$key")"
     kind_var="ARTIFACT_${prefix}_KIND"
     printf '%s\n' "${!kind_var}"
+}
+
+stage_all_artifacts() {
+    local stage="$1"
+    local stage_var="STAGE_${stage}_ALL_ARTIFACTS"
+    printf '%s\n' "${!stage_var:-}"
+}
+
+stage_required_artifacts() {
+    local stage="$1"
+    local stage_var="STAGE_${stage}_REQUIRED_ARTIFACTS"
+    printf '%s\n' "${!stage_var:-}"
 }
 
 prompt_file() {
@@ -360,6 +388,31 @@ ensure_artifact_exists() {
     fi
 }
 
+artifact_exists() {
+    local artifact_id="$1"
+    local path kind
+    path="$(artifact_path "$artifact_id")"
+    kind="$(artifact_kind "$artifact_id")"
+    if [ "$kind" = "dir" ]; then
+        [ -d "$path" ]
+    else
+        [ -f "$path" ]
+    fi
+}
+
+artifact_present_for_state() {
+    local artifact_id="$1"
+    local path kind
+    path="$(artifact_path "$artifact_id")"
+    kind="$(artifact_kind "$artifact_id")"
+    if [ "$kind" = "dir" ]; then
+        [ -d "$path" ] || return 1
+        find "$path" -mindepth 1 -print -quit 2>/dev/null | grep -q .
+    else
+        [ -f "$path" ]
+    fi
+}
+
 ensure_artifact_ids() {
     local label="$1"
     shift
@@ -375,6 +428,69 @@ ensure_prompt_inputs() {
     for artifact_id in $(prompt_required_artifacts "$prompt_key"); do
         ensure_artifact_exists "$artifact_id" "input for ${prompt_key}"
     done
+}
+
+stage_has_any_artifacts() {
+    local stage="$1"
+    local artifact_id
+    for artifact_id in $(stage_all_artifacts "$stage"); do
+        if artifact_present_for_state "$artifact_id"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+stage_is_complete() {
+    local stage="$1"
+    local artifact_id verdict
+    for artifact_id in $(stage_required_artifacts "$stage"); do
+        artifact_exists "$artifact_id" || return 1
+    done
+
+    if [ "$stage" = "E" ]; then
+        verdict="$(evaluation_verdict)"
+        [ "$verdict" = "PASS" ] || [ "$verdict" = "FAIL" ] || return 1
+    fi
+    return 0
+}
+
+invalidate_artifact() {
+    local artifact_id="$1"
+    local path kind
+    path="$(artifact_path "$artifact_id")"
+    kind="$(artifact_kind "$artifact_id")"
+
+    if [ "$kind" = "dir" ]; then
+        [ -d "$path" ] || return 1
+        rm -rf "$path"
+    else
+        [ -f "$path" ] || return 1
+        rm -f "$path"
+    fi
+    return 0
+}
+
+invalidate_downstream_artifacts() {
+    local start_turn="$1"
+    local invalidate_var="INVALIDATE_FROM_${start_turn}_ARTIFACTS"
+    local artifact_ids="${!invalidate_var:-}"
+    local artifact_id invalidated=0
+
+    if [ -z "$artifact_ids" ]; then
+        return 0
+    fi
+
+    log "Invalidating stage-owned artifacts for rerun from Turn ${start_turn}"
+    for artifact_id in $artifact_ids; do
+        if invalidate_artifact "$artifact_id"; then
+            log "Invalidated $(artifact_path "$artifact_id")"
+            invalidated=$((invalidated + 1))
+        fi
+    done
+
+    mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
+    log "Invalidation complete (${invalidated} artifact paths removed)"
 }
 
 artifact_newer_than() {
@@ -625,19 +741,19 @@ PORTAL_STUB_EOF
     local spec="PENDING" plan="PENDING" holdout="PENDING" build="PENDING" eval_s="PENDING"
     local summary="Not started"
 
-    if [ -f "$(artifact_path d1_constitution)" ] && [ -f "$(artifact_path d6_gap_analysis)" ]; then
+    if stage_is_complete A; then
         spec="DONE"; summary="Spec complete"
     fi
-    if [ -f "$(artifact_path d7_plan)" ] && [ -f "$(artifact_path builder_handoff)" ]; then
+    if stage_is_complete B; then
         plan="DONE"; summary="Plan complete"
     fi
-    if [ -f "$(artifact_path d9_holdout_scenarios)" ]; then
+    if stage_is_complete C; then
         holdout="DONE"; summary="Holdouts complete"
     fi
-    if [ -f "$(artifact_path results)" ]; then
+    if stage_is_complete D; then
         build="DONE"; summary="Build complete"
     fi
-    if [ -f "$(artifact_path evaluation_report)" ]; then
+    if stage_is_complete E; then
         if [ "$(evaluation_verdict)" = "PASS" ]; then
             eval_s="PASS"; summary="Evaluation PASS"
         else
@@ -698,27 +814,26 @@ run_stage_audit() {
     _ck "mkdocs.yml references ${fmwk}" grep -qF "${fmwk}" mkdocs.yml
     _ck "PORTAL_MAP.yaml references ${fmwk}" grep -qF "${fmwk}" docs/PORTAL_MAP.yaml
 
-    # Artifact-to-portal consistency: if artifacts exist, portal must reflect them
-    if [ -f "$(artifact_path d1_constitution)" ]; then
-        _ck "D1 exists" test -f "$(artifact_path d1_constitution)"
-        _ck "D2 exists" test -f "$(artifact_path d2_specification)"
-        _ck "D3 exists" test -f "$(artifact_path d3_data_model)"
-        _ck "D4 exists" test -f "$(artifact_path d4_contracts)"
-        _ck "D5 exists" test -f "$(artifact_path d5_research)"
-        _ck "D6 exists" test -f "$(artifact_path d6_gap_analysis)"
+    # Artifact-to-portal consistency: stage completeness is registry-driven
+    local artifact_id
+    if stage_has_any_artifacts A; then
+        for artifact_id in $(stage_required_artifacts A); do
+            _ck "${artifact_id} exists" artifact_exists "$artifact_id"
+        done
         _ck "Portal: Turn A DONE" grep -qF "Turn A (Spec) | DONE" "$status_page"
     fi
 
-    if [ -f "$(artifact_path d7_plan)" ]; then
-        _ck "D7 exists" test -f "$(artifact_path d7_plan)"
-        _ck "D8 exists" test -f "$(artifact_path d8_tasks)"
-        _ck "D10 exists" test -f "$(artifact_path d10_agent_context)"
-        _ck "Handoff exists" test -f "$(artifact_path builder_handoff)"
+    if stage_has_any_artifacts B; then
+        for artifact_id in $(stage_required_artifacts B); do
+            _ck "${artifact_id} exists" artifact_exists "$artifact_id"
+        done
         _ck "Portal: Turn B DONE" grep -qF "Turn B (Plan) | DONE" "$status_page"
     fi
 
-    if [ -f "$(artifact_path d9_holdout_scenarios)" ]; then
-        _ck "D9 exists" test -f "$(artifact_path d9_holdout_scenarios)"
+    if stage_has_any_artifacts C; then
+        for artifact_id in $(stage_required_artifacts C); do
+            _ck "${artifact_id} exists" artifact_exists "$artifact_id"
+        done
         _ck "Portal: Turn C DONE" grep -qF "Turn C (Holdout) | DONE" "$status_page"
     fi
 
@@ -732,16 +847,17 @@ run_stage_audit() {
         _ck "Review verdict parseable" test "$(review_verdict)" != "UNKNOWN"
     fi
 
-    if [ -f "$(artifact_path results)" ]; then
-        _ck "RESULTS.md exists" test -f "$(artifact_path results)"
-        _ck "13Q answers exist before build" test -f "$(artifact_path q13_answers)"
-        _ck "REVIEW_REPORT.md exists before build" test -f "$(artifact_path review_report)"
-        _ck "staging/ has content" test -d "$(artifact_path staging_root)"
+    if stage_has_any_artifacts D; then
+        for artifact_id in $(stage_required_artifacts D); do
+            _ck "${artifact_id} exists" artifact_exists "$artifact_id"
+        done
         _ck "Portal: Turn D DONE" grep -qF "Turn D (Build) | DONE" "$status_page"
     fi
 
-    if [ -f "$(artifact_path evaluation_report)" ]; then
-        _ck "EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
+    if stage_has_any_artifacts E; then
+        for artifact_id in $(stage_required_artifacts E); do
+            _ck "${artifact_id} exists" artifact_exists "$artifact_id"
+        done
         case "$(evaluation_verdict)" in
             PASS)
                 _ck "Portal: Turn E PASS" grep -qF "Turn E (Eval) | PASS" "$status_page"
@@ -757,26 +873,24 @@ run_stage_audit() {
 
     # Reverse checks: if portal claims DONE, artifacts MUST exist
     if grep -qF "Turn A (Spec) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says A DONE → D1 exists" test -f "$(artifact_path d1_constitution)"
-        _ck "Portal says A DONE → D6 exists" test -f "$(artifact_path d6_gap_analysis)"
+        _ck "Portal says A DONE → Turn A complete" stage_is_complete A
     fi
     if grep -qF "Turn B (Plan) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says B DONE → D7 exists" test -f "$(artifact_path d7_plan)"
-        _ck "Portal says B DONE → Handoff exists" test -f "$(artifact_path builder_handoff)"
+        _ck "Portal says B DONE → Turn B complete" stage_is_complete B
     fi
     if grep -qF "Turn C (Holdout) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says C DONE → D9 exists" test -f "$(artifact_path d9_holdout_scenarios)"
+        _ck "Portal says C DONE → Turn C complete" stage_is_complete C
     fi
     if grep -qF "Turn D (Build) | DONE" "$status_page" 2>/dev/null; then
-        _ck "Portal says D DONE → RESULTS.md exists" test -f "$(artifact_path results)"
-        _ck "Portal says D DONE → REVIEW_REPORT.md exists" test -f "$(artifact_path review_report)"
-        _ck "Portal says D DONE → staging/ exists" test -d "$(artifact_path staging_root)"
+        _ck "Portal says D DONE → Turn D complete" stage_is_complete D
     fi
     if grep -qF "Turn E (Eval) | PASS" "$status_page" 2>/dev/null; then
-        _ck "Portal says E PASS → EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
+        _ck "Portal says E PASS → Turn E complete" stage_is_complete E
+        _ck "Portal says E PASS → evaluation verdict PASS" test "$(evaluation_verdict)" = "PASS"
     fi
     if grep -qF "Turn E (Eval) | FAIL" "$status_page" 2>/dev/null; then
-        _ck "Portal says E FAIL → EVALUATION_REPORT.md exists" test -f "$(artifact_path evaluation_report)"
+        _ck "Portal says E FAIL → Turn E complete" stage_is_complete E
+        _ck "Portal says E FAIL → evaluation verdict FAIL" test "$(evaluation_verdict)" = "FAIL"
     fi
 
     # Portal-steward output checks
@@ -857,8 +971,25 @@ AUDIT_EOF
 run_portal_steward() {
     local fmwk="$1"
     local stage="$2"
+    local mirror_changes=""
 
     log "Running portal-steward for ${fmwk} after ${stage}"
+
+    if [ ! -f "$PORTAL_MIRROR_SYNCER" ]; then
+        fail "Missing portal mirror sync helper: ${PORTAL_MIRROR_SYNCER}"
+        exit 1
+    fi
+
+    if ! mirror_changes="$(python3 "$PORTAL_MIRROR_SYNCER" --repo-root . 2>&1)"; then
+        fail "$mirror_changes"
+        exit 1
+    fi
+    if [ -n "$mirror_changes" ]; then
+        log "Mechanical mirror sync updated:"
+        printf '%s\n' "$mirror_changes"
+    else
+        log "Mechanical mirror sync found no drift"
+    fi
 
     # Snapshot portal outputs before steward runs (for freshness check)
     local pre_status_hash pre_changeset_hash
@@ -1105,6 +1236,7 @@ require_version_evidence() {
 
 load_role_registry
 load_artifact_registry
+load_stage_artifact_metadata
 load_prompt_registry
 
 log "Sawmill run: ${FMWK}"
@@ -1124,8 +1256,10 @@ for f in \
     CLAUDE.md AGENT_BOOTSTRAP.md \
     "$ROLE_REGISTRY" "$ROLE_REGISTRY_VALIDATOR" \
     "$ARTIFACT_REGISTRY" "$ARTIFACT_REGISTRY_VALIDATOR" \
+    "$STAGE_ARTIFACT_RESOLVER" \
     "$PROMPT_REGISTRY" "$PROMPT_REGISTRY_VALIDATOR" \
     "$PROMPT_RENDERER" \
+    "$PORTAL_MIRROR_SYNCER" \
     "Templates/BUILDER_PROMPT_CONTRACT.md" \
     "Templates/REVIEWER_PROMPT_CONTRACT.md"; do
     if [ ! -f "$f" ]; then
@@ -1175,6 +1309,8 @@ fi
 
 log "Preflight passed. Starting pipeline."
 echo ""
+
+invalidate_downstream_artifacts "$FROM_TURN"
 
 # Sync portal state with current artifact reality
 update_portal_state "$FMWK"
