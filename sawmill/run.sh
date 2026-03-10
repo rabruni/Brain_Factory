@@ -80,6 +80,17 @@ escalate() {
 pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; }
 
+validate_agent_timeout() {
+    case "$AGENT_TIMEOUT_SECONDS" in
+        ''|*[!0-9]*)
+            fail "SAWMILL_AGENT_TIMEOUT_SECONDS must be a non-negative integer (got '${AGENT_TIMEOUT_SECONDS}')"
+            exit 1
+            ;;
+        *)
+            ;;
+    esac
+}
+
 ROLE_REGISTRY="sawmill/ROLE_REGISTRY.yaml"
 ROLE_REGISTRY_VALIDATOR="sawmill/validate_role_registry.py"
 ARTIFACT_REGISTRY="sawmill/ARTIFACT_REGISTRY.yaml"
@@ -462,6 +473,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+validate_agent_timeout
+
 # --- Audit mode --------------------------------------------------------------
 if [ "$RUN_AUDIT" = true ]; then
     load_role_registry
@@ -540,8 +553,18 @@ update_portal_state() {
     local status_page
     status_page="$(artifact_path status_page)"
 
+    if [ ! -f "$status_page" ]; then
+        mkdir -p "$(dirname "$status_page")"
+        cat > "$status_page" <<'PORTAL_STUB_EOF'
+<!-- sawmill:auto-status -->
+# Pending framework status
+
+**Status:** Not started
+PORTAL_STUB_EOF
+    fi
+
     # Only update auto-managed status pages (marker on first line)
-    if [ ! -f "$status_page" ] || ! head -1 "$status_page" | grep -qF '<!-- sawmill:auto-status -->'; then
+    if ! head -1 "$status_page" | grep -qF '<!-- sawmill:auto-status -->'; then
         return 0
     fi
 
