@@ -12,3 +12,15 @@ Run the holdouts exactly per your role file.
 OUTPUT:
   Write full report to {{EVALUATION_REPORT_PATH}}
   Write one-line failure descriptions to {{EVALUATION_ERRORS_PATH}}
+  Write {{EVALUATOR_EVIDENCE_PATH}}
+
+{{EVALUATOR_EVIDENCE_PATH}} MUST be valid JSON with these fields:
+- run_id: {{RUN_ID}}
+- holdout_hash: SHA-256 of {{D9_HOLDOUT_SCENARIOS_PATH}}
+- staging_hash: deterministic SHA-256 of {{STAGING_ROOT_PATH}}
+- scenarios: array of objects, each containing
+  - scenario_id
+  - run_results
+  - aggregate_result
+- verdict: PASS|FAIL
+- pass_rate: numeric percentage

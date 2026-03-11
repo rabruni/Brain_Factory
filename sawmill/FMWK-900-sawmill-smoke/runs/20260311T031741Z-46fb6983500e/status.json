@@ -1,0 +1,13 @@
+{
+  "current_attempt": 1,
+  "current_backend": "gemini",
+  "current_role": "spec-agent",
+  "current_step": "turn_a_spec",
+  "current_turn": "A",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "governed_path_intact": true,
+  "last_successful_event_id": "e43534cdf05c44f8bf2ae095f6850cf1",
+  "latest_failure_code": "AGENT_TIMEOUT",
+  "run_id": "20260311T031741Z-46fb6983500e",
+  "state": "failed"
+}

@@ -125,6 +125,297 @@ load_prompt_contract_versions() {
     fi
 }
 
+iso_timestamp() {
+    date -u +%Y-%m-%dT%H:%M:%SZ
+}
+
+new_run_id() {
+    python3 - <<'PY'
+import datetime
+import uuid
+ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+print(f"{ts}-{uuid.uuid4().hex[:12]}")
+PY
+}
+
+new_event_id() {
+    python3 - <<'PY'
+import uuid
+print(uuid.uuid4().hex)
+PY
+}
+
+hash_file() {
+    shasum -a 256 "$1" | awk '{print $1}'
+}
+
+current_status_field() {
+    local field="$1"
+    python3 - "$STATUS_JSON_PATH" "$field" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+status_path = Path(sys.argv[1])
+field = sys.argv[2]
+if not status_path.exists():
+    sys.exit(1)
+data = json.loads(status_path.read_text(encoding="utf-8"))
+value = data.get(field, "")
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("")
+else:
+    print(value)
+PY
+}
+
+current_status_state() {
+    current_status_field state
+}
+
+current_governed_path_intact() {
+    current_status_field governed_path_intact
+}
+
+build_run_metadata_file() {
+    local metadata_file
+    metadata_file="$(mktemp "/tmp/sawmill-run-metadata.XXXXXX")"
+    python3 - "$metadata_file" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+import hashlib
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+role_backend_resolution = {
+    "spec-agent": os.environ["SPEC_AGENT"],
+    "holdout-agent": os.environ["HOLDOUT_AGENT"],
+    "builder": os.environ["BUILD_AGENT"],
+    "reviewer": os.environ["REVIEW_AGENT"],
+    "evaluator": os.environ["EVAL_AGENT"],
+    "auditor": os.environ["AUDIT_AGENT"],
+    "portal-steward": os.environ["PORTAL_AGENT"],
+}
+
+model_policies = {
+    "spec-agent": os.environ["SPEC_MODEL_POLICY"],
+    "holdout-agent": os.environ["HOLDOUT_MODEL_POLICY"],
+    "builder": os.environ["BUILD_MODEL_POLICY"],
+    "reviewer": os.environ["REVIEW_MODEL_POLICY"],
+    "evaluator": os.environ["EVAL_MODEL_POLICY"],
+    "auditor": os.environ["AUDIT_MODEL_POLICY"],
+    "portal-steward": os.environ["PORTAL_MODEL_POLICY"],
+}
+
+prompt_contract_versions = {
+    "builder_prompt_contract": os.environ["BUILDER_PROMPT_CONTRACT_VERSION"],
+    "reviewer_prompt_contract": os.environ["REVIEWER_PROMPT_CONTRACT_VERSION"],
+}
+
+role_file_hashes = {}
+for key in ("SPEC_ROLE_FILE", "HOLDOUT_ROLE_FILE", "BUILD_ROLE_FILE", "REVIEW_ROLE_FILE", "EVAL_ROLE_FILE", "AUDIT_ROLE_FILE", "PORTAL_ROLE_FILE"):
+    path = Path(os.environ[key])
+    role_file_hashes[path.as_posix()] = sha256_file(path)
+
+prompt_file_hashes = {}
+for prompt_key in os.environ["ALL_PROMPT_KEYS"].split():
+    env_key = f"PROMPT_{prompt_key.upper()}_PROMPT_FILE"
+    path = Path(os.environ[env_key])
+    prompt_file_hashes[path.as_posix()] = sha256_file(path)
+
+metadata = {
+    "run_id": os.environ["RUN_ID"],
+    "framework_id": os.environ["FMWK"],
+    "started_at": os.environ["RUN_STARTED_AT"],
+    "requested_entry_path": "./sawmill/run.sh",
+    "from_turn": os.environ["FROM_TURN"],
+    "retry_budget": int(os.environ["MAX_ATTEMPTS"]),
+    "role_backend_resolution": role_backend_resolution,
+    "model_policies": model_policies,
+    "prompt_contract_versions": prompt_contract_versions,
+    "role_file_hashes": role_file_hashes,
+    "prompt_file_hashes": prompt_file_hashes,
+    "artifact_registry_version_hash": sha256_file(Path(os.environ["ARTIFACT_REGISTRY"])),
+    "graph_version": "none",
+    "operator_mode": os.environ["OPERATOR_MODE"],
+}
+
+Path(sys.argv[1]).write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+    printf '%s\n' "$metadata_file"
+}
+
+project_status_now() {
+    python3 "$RUN_STATUS_PROJECTOR" project-status --run-dir "$RUN_DIR" >/dev/null
+}
+
+emit_event() {
+    local event_type="$1"
+    local outcome="$2"
+    local failure_code="$3"
+    local parent_event_id="$4"
+    local turn="$5"
+    local step="$6"
+    local role="$7"
+    local backend="$8"
+    local attempt="$9"
+    local summary="${10}"
+    shift 10
+
+    local event_id timestamp
+    event_id="$(new_event_id)"
+    timestamp="$(iso_timestamp)"
+
+    local cmd=(
+        python3 "$RUN_STATUS_PROJECTOR" append-event
+        --run-dir "$RUN_DIR"
+        --event-id "$event_id"
+        --run-id "$RUN_ID"
+        --timestamp "$timestamp"
+        --turn "$turn"
+        --step "$step"
+        --role "$role"
+        --backend "$backend"
+        --attempt "$attempt"
+        --event-type "$event_type"
+        --outcome "$outcome"
+        --failure-code "$failure_code"
+        --causal-parent-event-id "$parent_event_id"
+        --summary "$summary"
+    )
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --evidence-ref)
+                cmd+=(--evidence-ref "$2")
+                shift 2
+                ;;
+            --contract-ref)
+                cmd+=(--contract-ref "$2")
+                shift 2
+                ;;
+            *)
+                fail "Unknown emit_event argument: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    "${cmd[@]}" >/dev/null
+    project_status_now
+    printf '%s\n' "$event_id"
+}
+
+record_run_failed() {
+    local parent_event_id="$1"
+    local failure_code="$2"
+    local summary="$3"
+    emit_event "run_failed" "failed" "$failure_code" "$parent_event_id" "${CURRENT_EVENT_TURN:-orchestrator}" "${CURRENT_EVENT_STEP:-run}" "${CURRENT_EVENT_ROLE:-orchestrator}" "${CURRENT_EVENT_BACKEND:-runtime}" "${CURRENT_EVENT_ATTEMPT:-0}" "$summary" >/dev/null
+}
+
+fail_preflight() {
+    local failure_code="$1"
+    local summary="$2"
+    CURRENT_EVENT_TURN="orchestrator"
+    CURRENT_EVENT_STEP="preflight"
+    CURRENT_EVENT_ROLE="orchestrator"
+    CURRENT_EVENT_BACKEND="runtime"
+    CURRENT_EVENT_ATTEMPT=0
+    local preflight_failure
+    preflight_failure="$(emit_event "preflight_passed" "failed" "$failure_code" "$RUN_STARTED_EVENT_ID" "orchestrator" "preflight" "orchestrator" "runtime" 0 "$summary")"
+    record_run_failed "$preflight_failure" "$failure_code" "$summary"
+    fail "$summary"
+    exit 1
+}
+
+record_escalation() {
+    local parent_event_id="$1"
+    local failure_code="$2"
+    local summary="$3"
+    emit_event "escalation_triggered" "escalated" "$failure_code" "$parent_event_id" "${CURRENT_EVENT_TURN:-orchestrator}" "${CURRENT_EVENT_STEP:-run}" "${CURRENT_EVENT_ROLE:-orchestrator}" "${CURRENT_EVENT_BACKEND:-runtime}" "${CURRENT_EVENT_ATTEMPT:-0}" "$summary" >/dev/null
+}
+
+record_manual_intervention() {
+    local parent_event_id="$1"
+    local summary="$2"
+    emit_event "manual_intervention_recorded" "recorded" "MANUAL_INTERVENTION" "$parent_event_id" "${CURRENT_EVENT_TURN:-orchestrator}" "${CURRENT_EVENT_STEP:-manual_intervention}" "${CURRENT_EVENT_ROLE:-human}" "${CURRENT_EVENT_BACKEND:-manual}" "${CURRENT_EVENT_ATTEMPT:-0}" "$summary" >/dev/null
+}
+
+step_log_prefix() {
+    local step_key="$1"
+    local attempt="$2"
+    local prefix="${step_key}"
+    if [ "$step_key" = "portal_stage" ] && [ -n "${STAGE:-}" ]; then
+        prefix="${step_key}-$(printf '%s' "$STAGE" | tr '[:upper:] ' '[:lower:]_')"
+    fi
+    printf '%s/logs/%s.attempt%s' "$RUN_DIR" "$prefix" "$attempt"
+}
+
+validate_evidence_artifact() {
+    local kind="$1"
+    local artifact_id="$2"
+    shift 2
+    python3 "$EVIDENCE_VALIDATOR" --kind "$kind" --artifact "$(artifact_path "$artifact_id")" --run-id "$RUN_ID" --attempt "$ATTEMPT" "$@"
+}
+
+validate_prompt_step_success() {
+    local prompt_key="$1"
+    local parent_event_id="$2"
+    local turn="$3"
+    local role_name="$4"
+    local backend="$5"
+    local attempt="$6"
+    shift 6
+    local event_args=()
+
+    if ! verify_prompt_outputs "$prompt_key"; then
+        local failure_event_id
+        failure_event_id="$(emit_event "output_verified" "failed" "OUTPUT_VERIFICATION_FAILED" "$parent_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "${LAST_PROMPT_VERIFICATION_ERROR:-Output verification failed for ${prompt_key}}")"
+        record_run_failed "$failure_event_id" "OUTPUT_VERIFICATION_FAILED" "Output verification failed for ${prompt_key}"
+        fail "Output verification failed for ${prompt_key}"
+        exit 1
+    fi
+
+    while [ $# -gt 0 ]; do
+        event_args+=(--evidence-ref "$1")
+        shift
+    done
+
+    LAST_OUTPUT_VERIFIED_EVENT_ID="$(emit_event "output_verified" "verified" "none" "$parent_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Outputs verified for ${prompt_key}" "${event_args[@]}")"
+}
+
+initialize_run_harness() {
+    RUN_STARTED_AT="$(iso_timestamp)"
+    RUN_ID="$(new_run_id)"
+    RUN_DIR="${SAWMILL_DIR}/runs/${RUN_ID}"
+    RUN_JSON_PATH="${RUN_DIR}/run.json"
+    STATUS_JSON_PATH="${RUN_DIR}/status.json"
+    EVENTS_JSON_PATH="${RUN_DIR}/events.jsonl"
+    RUN_LOG_DIR="${RUN_DIR}/logs"
+    export RUN_ID RUN_DIR RUN_JSON_PATH STATUS_JSON_PATH EVENTS_JSON_PATH RUN_LOG_DIR RUN_STARTED_AT
+
+    local metadata_file
+    METADATA_FILE="$(build_run_metadata_file)"
+    python3 "$RUN_STATUS_PROJECTOR" init-run --run-dir "$RUN_DIR" --metadata-file "$METADATA_FILE" >/dev/null
+    rm -f "$METADATA_FILE"
+
+    local run_started_event
+    run_started_event="$(emit_event "run_started" "started" "none" "" "orchestrator" "run" "orchestrator" "runtime" 0 "Run started for ${FMWK}")"
+    RUN_STARTED_EVENT_ID="$run_started_event"
+    export RUN_STARTED_EVENT_ID
+}
+
 ROLE_REGISTRY="sawmill/ROLE_REGISTRY.yaml"
 ROLE_REGISTRY_VALIDATOR="sawmill/validate_role_registry.py"
 ARTIFACT_REGISTRY="sawmill/ARTIFACT_REGISTRY.yaml"
@@ -135,7 +426,23 @@ PROMPT_REGISTRY_VALIDATOR="sawmill/validate_prompt_registry.py"
 PROMPT_RENDERER="sawmill/render_prompt.py"
 TIMEOUT_RUNNER="sawmill/run_with_timeout.py"
 PORTAL_MIRROR_SYNCER="sawmill/sync_portal_mirrors.py"
+RUN_STATUS_PROJECTOR="sawmill/project_run_status.py"
+EVIDENCE_VALIDATOR="sawmill/validate_evidence_artifacts.py"
 AGENT_TIMEOUT_SECONDS="${SAWMILL_AGENT_TIMEOUT_SECONDS:-1800}"
+
+RUN_ID=""
+RUN_DIR=""
+RUN_JSON_PATH=""
+STATUS_JSON_PATH=""
+EVENTS_JSON_PATH=""
+RUN_LOG_DIR=""
+LAST_AGENT_EXIT_EVENT_ID=""
+LAST_FAILURE_EVENT_ID=""
+LAST_FAILURE_CODE=""
+LAST_OUTPUT_VERIFIED_EVENT_ID=""
+CURRENT_TURN_EVENT_ID=""
+LAST_TURN_COMPLETED_EVENT_ID=""
+OPERATOR_MODE=""
 
 resolve_registry_backend() {
     local override_var="$1"
@@ -168,12 +475,12 @@ require_backend_cli() {
     local backend="$2"
 
     case "$backend" in
-        claude) command -v claude >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'claude' CLI not found"; exit 1; } ;;
-        codex)  command -v codex  >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'codex' CLI not found"; exit 1; } ;;
-        gemini) command -v gemini >/dev/null 2>&1 || { fail "${agent_label}=${backend} but 'gemini' CLI not found"; exit 1; } ;;
+        claude) command -v claude >/dev/null 2>&1 || return 1 ;;
+        codex)  command -v codex  >/dev/null 2>&1 || return 1 ;;
+        gemini) command -v gemini >/dev/null 2>&1 || return 1 ;;
+        mock)   [ -f "sawmill/workers/mock_worker.py" ] || return 1 ;;
         *)
-            fail "Unknown agent backend: ${backend}"
-            exit 1
+            return 1
             ;;
     esac
 }
@@ -329,6 +636,19 @@ prompt_role() {
     printf '%s\n' "${!role_var}"
 }
 
+prompt_turn() {
+    case "$1" in
+        audit_run) printf '%s\n' "audit" ;;
+        portal_stage) printf '%s\n' "portal" ;;
+        turn_a_spec) printf '%s\n' "A" ;;
+        turn_b_plan) printf '%s\n' "B" ;;
+        turn_c_holdout) printf '%s\n' "C" ;;
+        turn_d_13q|turn_d_review|turn_d_build) printf '%s\n' "D" ;;
+        turn_e_eval) printf '%s\n' "E" ;;
+        *) printf '%s\n' "orchestrator" ;;
+    esac
+}
+
 export_artifact_paths() {
     local artifact_id upper
     for artifact_id in $ALL_ARTIFACT_IDS; do
@@ -382,9 +702,9 @@ ensure_artifact_exists() {
     path="$(artifact_path "$artifact_id")"
     kind="$(artifact_kind "$artifact_id")"
     if [ "$kind" = "dir" ]; then
-        [ -d "$path" ] || escalate "Missing required ${label}: ${path}"
+        [ -d "$path" ] || return 1
     else
-        [ -f "$path" ] || escalate "Missing required ${label}: ${path}"
+        [ -f "$path" ] || return 1
     fi
 }
 
@@ -418,7 +738,11 @@ ensure_artifact_ids() {
     shift
     local artifact_id
     for artifact_id in "$@"; do
-        ensure_artifact_exists "$artifact_id" "$label"
+        ensure_artifact_exists "$artifact_id" "$label" || {
+            LAST_MISSING_ARTIFACT_PATH="$(artifact_path "$artifact_id")"
+            LAST_MISSING_ARTIFACT_LABEL="$label"
+            return 1
+        }
     done
 }
 
@@ -426,7 +750,11 @@ ensure_prompt_inputs() {
     local prompt_key="$1"
     local artifact_id
     for artifact_id in $(prompt_required_artifacts "$prompt_key"); do
-        ensure_artifact_exists "$artifact_id" "input for ${prompt_key}"
+        ensure_artifact_exists "$artifact_id" "input for ${prompt_key}" || {
+            LAST_MISSING_ARTIFACT_PATH="$(artifact_path "$artifact_id")"
+            LAST_MISSING_ARTIFACT_LABEL="input for ${prompt_key}"
+            return 1
+        }
     done
 }
 
@@ -512,19 +840,25 @@ verify_prompt_outputs() {
     sentinel_path="$(prompt_sentinel_path "$prompt_key")"
     freshness_policy="$(prompt_freshness_policy "$prompt_key")"
     for artifact_id in $(prompt_expected_artifacts "$prompt_key"); do
-        ensure_artifact_exists "$artifact_id" "output for ${prompt_key}"
+        ensure_artifact_exists "$artifact_id" "output for ${prompt_key}" || {
+            LAST_PROMPT_VERIFICATION_ERROR="Missing required output for ${prompt_key}: $(artifact_path "$artifact_id")"
+            cleanup_prompt_sentinel "$prompt_key"
+            return 1
+        }
         case "$freshness_policy" in
             required)
                 if [ -n "$sentinel_path" ] && ! artifact_newer_than "$artifact_id" "$sentinel_path"; then
+                    LAST_PROMPT_VERIFICATION_ERROR="Output for ${prompt_key} was not refreshed this run: $(artifact_path "$artifact_id")"
                     cleanup_prompt_sentinel "$prompt_key"
-                    escalate "Output for ${prompt_key} was not refreshed this run: $(artifact_path "$artifact_id")"
+                    return 1
                 fi
                 ;;
             allow_unchanged)
                 ;;
             *)
+                LAST_PROMPT_VERIFICATION_ERROR="Prompt '${prompt_key}' has unsupported freshness policy '${freshness_policy}'"
                 cleanup_prompt_sentinel "$prompt_key"
-                escalate "Prompt '${prompt_key}' has unsupported freshness policy '${freshness_policy}'"
+                return 1
                 ;;
         esac
     done
@@ -535,44 +869,67 @@ invoke_prompt() {
     local backend="$1"
     local role_file="$2"
     local prompt_key="$3"
-    local expected_role prompt_owner rendered_prompt
+    local turn_event_id="$4"
+    local expected_role prompt_owner rendered_prompt role_name turn attempt log_prefix prompt_event_id
 
     expected_role="$(basename "$role_file" .md)"
     prompt_owner="$(prompt_role "$prompt_key")"
+    role_name="$expected_role"
+    turn="$(prompt_turn "$prompt_key")"
+    attempt="${ATTEMPT:-1}"
+    CURRENT_EVENT_TURN="$turn"
+    CURRENT_EVENT_STEP="$prompt_key"
+    CURRENT_EVENT_ROLE="$role_name"
+    CURRENT_EVENT_BACKEND="$backend"
+    CURRENT_EVENT_ATTEMPT="$attempt"
+
     if [ "$prompt_owner" != "$expected_role" ]; then
-        escalate "Prompt '${prompt_key}' is owned by '${prompt_owner}', but runtime tried to invoke role '${expected_role}'"
+        local ownership_failure
+        ownership_failure="$(emit_event "prompt_rendered" "failed" "PROMPT_OWNER_MISMATCH" "$turn_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Prompt '${prompt_key}' owner '${prompt_owner}' did not match role '${expected_role}'" --contract-ref "$(prompt_file "$prompt_key")" --contract-ref "$role_file")"
+        record_run_failed "$ownership_failure" "PROMPT_OWNER_MISMATCH" "Prompt '${prompt_key}' owner mismatch"
+        fail "Prompt '${prompt_key}' is owned by '${prompt_owner}', but runtime tried to invoke role '${expected_role}'"
+        exit 1
     fi
 
-    ensure_prompt_inputs "$prompt_key"
+    if ! ensure_prompt_inputs "$prompt_key"; then
+        local input_failure
+        input_failure="$(emit_event "prompt_rendered" "failed" "MISSING_INPUT_ARTIFACT" "$turn_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Missing required input for ${prompt_key}: ${LAST_MISSING_ARTIFACT_PATH}" --contract-ref "$(prompt_file "$prompt_key")" --contract-ref "$role_file")"
+        record_run_failed "$input_failure" "MISSING_INPUT_ARTIFACT" "Missing required input for ${prompt_key}: ${LAST_MISSING_ARTIFACT_PATH}"
+        fail "Missing required ${LAST_MISSING_ARTIFACT_LABEL}: ${LAST_MISSING_ARTIFACT_PATH}"
+        exit 1
+    fi
+
     snapshot_prompt_outputs "$prompt_key"
     if ! rendered_prompt="$(render_prompt_output "$prompt_key")"; then
         cleanup_prompt_sentinel "$prompt_key"
-        escalate "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")"
+        local render_failure
+        render_failure="$(emit_event "prompt_rendered" "failed" "PROMPT_RENDER_FAILED" "$turn_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")" --contract-ref "$(prompt_file "$prompt_key")" --contract-ref "$role_file")"
+        record_run_failed "$render_failure" "PROMPT_RENDER_FAILED" "Failed to render prompt '${prompt_key}'"
+        fail "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")"
+        exit 1
     fi
 
-    invoke_agent "$backend" "$role_file" "$rendered_prompt"
+    prompt_event_id="$(emit_event "prompt_rendered" "rendered" "none" "$turn_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Rendered prompt '${prompt_key}'" --contract-ref "$(prompt_file "$prompt_key")" --contract-ref "$role_file")"
+    if ! invoke_agent "$backend" "$role_file" "$rendered_prompt" "$prompt_key" "$prompt_event_id"; then
+        local failure_code failure_parent summary
+        failure_code="${LAST_FAILURE_CODE:-AGENT_EXIT_NONZERO}"
+        failure_parent="${LAST_FAILURE_EVENT_ID:-$prompt_event_id}"
+        summary="Agent execution failed for ${prompt_key}"
+        record_run_failed "$failure_parent" "$failure_code" "$summary"
+        fail "$summary"
+        exit 1
+    fi
 }
 
 launch_prompt_background() {
     local backend="$1"
     local role_file="$2"
     local prompt_key="$3"
-    local expected_role prompt_owner rendered_prompt
-
-    expected_role="$(basename "$role_file" .md)"
-    prompt_owner="$(prompt_role "$prompt_key")"
-    if [ "$prompt_owner" != "$expected_role" ]; then
-        escalate "Prompt '${prompt_key}' is owned by '${prompt_owner}', but runtime tried to invoke role '${expected_role}'"
-    fi
-
-    ensure_prompt_inputs "$prompt_key"
-    snapshot_prompt_outputs "$prompt_key"
-    if ! rendered_prompt="$(render_prompt_output "$prompt_key")"; then
-        cleanup_prompt_sentinel "$prompt_key"
-        escalate "Failed to render prompt '${prompt_key}' from $(prompt_file "$prompt_key")"
-    fi
-
-    invoke_agent "$backend" "$role_file" "$rendered_prompt" &
+    local turn_event_id="$4"
+    (
+        invoke_prompt "$backend" "$role_file" "$prompt_key" "$turn_event_id"
+        validate_prompt_step_success "$prompt_key" "$LAST_AGENT_EXIT_EVENT_ID" "$(prompt_turn "$prompt_key")" "$(basename "$role_file" .md)" "$backend" "${ATTEMPT:-1}" "$(artifact_path "$(prompt_expected_artifacts "$prompt_key" | awk '{print $1}')")"
+    ) &
 }
 
 append_retry_context() {
@@ -645,19 +1002,64 @@ done
 
 validate_agent_timeout
 
+OPERATOR_MODE="${SAWMILL_OPERATOR_MODE:-}"
+if [ -z "$OPERATOR_MODE" ]; then
+    if [ "$INTERACTIVE" = true ]; then
+        OPERATOR_MODE="interactive"
+    else
+        OPERATOR_MODE="governed"
+    fi
+fi
+case "$OPERATOR_MODE" in
+    governed|interactive|manual_intervention_allowed) ;;
+    *)
+        fail "SAWMILL_OPERATOR_MODE must be one of: governed, interactive, manual_intervention_allowed"
+        exit 1
+        ;;
+esac
+export OPERATOR_MODE
+
 # --- Audit mode --------------------------------------------------------------
 if [ "$RUN_AUDIT" = true ]; then
+    FMWK="PORTAL-AUDIT"
+    SAWMILL_DIR="sawmill/${FMWK}"
+    HOLDOUT_DIR=".holdouts/${FMWK}"
+    STAGING_DIR="staging/${FMWK}"
+    MAX_ATTEMPTS=1
+    BRANCH="build/${FMWK}"
+    mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
+
     load_role_registry
     load_artifact_registry
     load_prompt_registry
+    load_prompt_contract_versions
+    export FMWK SAWMILL_DIR HOLDOUT_DIR STAGING_DIR BRANCH MAX_ATTEMPTS ARTIFACT_REGISTRY
+    export SOURCE_MATERIAL_PATH STATUS_PAGE_PATH PORTAL_STATUS_PATH PORTAL_CHANGESET_PATH PORTAL_AUDIT_RESULTS_PATH
+    SOURCE_MATERIAL_PATH="${SAWMILL_DIR}/SOURCE_MATERIAL.md"
+    STATUS_PAGE_PATH="$(artifact_path status_page)"
+    PORTAL_STATUS_PATH="$(artifact_path portal_status)"
+    PORTAL_CHANGESET_PATH="$(artifact_path portal_changeset)"
+    PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
+    export STAGE="" RETRY_CONTEXT=""
+    export_artifact_paths
+    initialize_run_harness
     log "═══ PORTAL AUDIT ═══"
 
-    require_backend_cli "AUDIT_AGENT" "$AUDIT_AGENT"
-    export FMWK=""
-    export PORTAL_AUDIT_RESULTS_PATH
-    PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
-    invoke_prompt "$AUDIT_AGENT" "$AUDIT_ROLE_FILE" audit_run
-    verify_prompt_outputs audit_run
+    if ! require_backend_cli "AUDIT_AGENT" "$AUDIT_AGENT"; then
+        fail_preflight "PREFLIGHT_MISSING_CLI" "Missing required agent CLI for AUDIT_AGENT=${AUDIT_AGENT}"
+    fi
+
+    CURRENT_EVENT_TURN="orchestrator"
+    CURRENT_EVENT_STEP="preflight"
+    CURRENT_EVENT_ROLE="orchestrator"
+    CURRENT_EVENT_BACKEND="runtime"
+    CURRENT_EVENT_ATTEMPT=0
+    PREFLIGHT_PASSED_EVENT_ID="$(emit_event "preflight_passed" "passed" "none" "$RUN_STARTED_EVENT_ID" "orchestrator" "preflight" "orchestrator" "runtime" 0 "Preflight passed for ${FMWK}")"
+    local_audit_turn_event_id="$(emit_event "turn_started" "started" "none" "$RUN_STARTED_EVENT_ID" "audit" "audit_run" "auditor" "$AUDIT_AGENT" 0 "Portal audit turn started")"
+    invoke_prompt "$AUDIT_AGENT" "$AUDIT_ROLE_FILE" audit_run "$local_audit_turn_event_id"
+    validate_prompt_step_success audit_run "$LAST_AGENT_EXIT_EVENT_ID" "audit" "auditor" "$AUDIT_AGENT" 0 "$(artifact_path portal_audit_results)"
+    LAST_TURN_COMPLETED_EVENT_ID="$(emit_event "turn_completed" "completed" "none" "$LAST_OUTPUT_VERIFIED_EVENT_ID" "audit" "audit_run" "auditor" "$AUDIT_AGENT" 0 "Portal audit turn completed")"
+    emit_event "run_completed" "passed" "none" "$LAST_TURN_COMPLETED_EVENT_ID" "orchestrator" "run" "orchestrator" "runtime" 0 "Audit run completed" >/dev/null
     pass "Audit complete. Results: ${PORTAL_AUDIT_RESULTS_PATH}"
     exit 0
 fi
@@ -722,6 +1124,7 @@ update_portal_state() {
     local fmwk="$1"
     local status_page
     status_page="$(artifact_path status_page)"
+    local runtime_state governed_path run_id_display
 
     if [ ! -f "$status_page" ]; then
         mkdir -p "$(dirname "$status_page")"
@@ -740,6 +1143,14 @@ PORTAL_STUB_EOF
 
     local spec="PENDING" plan="PENDING" holdout="PENDING" build="PENDING" eval_s="PENDING"
     local summary="Not started"
+    runtime_state="running"
+    governed_path="true"
+    run_id_display="${RUN_ID:-none}"
+
+    if [ -n "${STATUS_JSON_PATH:-}" ] && [ -f "${STATUS_JSON_PATH}" ]; then
+        runtime_state="$(current_status_state || echo "running")"
+        governed_path="$(current_governed_path_intact || echo "true")"
+    fi
 
     if stage_is_complete A; then
         spec="DONE"; summary="Spec complete"
@@ -761,11 +1172,22 @@ PORTAL_STUB_EOF
         fi
     fi
 
+    case "$runtime_state" in
+        invalidated) summary="Run invalidated" ;;
+        failed) summary="Run failed" ;;
+        escalated) summary="Run escalated" ;;
+        retrying) summary="Retry in progress" ;;
+        passed) summary="Evaluation PASS" ;;
+    esac
+
     cat > "$status_page" << PORTAL_EOF
 <!-- sawmill:auto-status -->
 # ${fmwk} — Build Status
 
 **Status:** ${summary}
+**Run ID:** ${run_id_display}
+**Runtime State:** ${runtime_state}
+**Governed Path Intact:** ${governed_path}
 
 ---
 
@@ -972,15 +1394,18 @@ run_portal_steward() {
     local fmwk="$1"
     local stage="$2"
     local mirror_changes=""
+    local portal_turn_event_id
 
     log "Running portal-steward for ${fmwk} after ${stage}"
 
     if [ ! -f "$PORTAL_MIRROR_SYNCER" ]; then
+        record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "PORTAL_SYNC_HELPER_MISSING" "Missing portal mirror sync helper: ${PORTAL_MIRROR_SYNCER}"
         fail "Missing portal mirror sync helper: ${PORTAL_MIRROR_SYNCER}"
         exit 1
     fi
 
     if ! mirror_changes="$(python3 "$PORTAL_MIRROR_SYNCER" --repo-root . 2>&1)"; then
+        record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "PORTAL_MIRROR_SYNC_FAILED" "$mirror_changes"
         fail "$mirror_changes"
         exit 1
     fi
@@ -999,8 +1424,9 @@ run_portal_steward() {
     export _PORTAL_STEWARD_RAN=true
 
     export STAGE="$stage"
-    invoke_prompt "$PORTAL_AGENT" "$PORTAL_ROLE_FILE" portal_stage
-    verify_prompt_outputs portal_stage
+    portal_turn_event_id="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "portal" "portal_stage" "portal-steward" "$PORTAL_AGENT" "${ATTEMPT:-0}" "Portal steward turn started for ${stage}")"
+    invoke_prompt "$PORTAL_AGENT" "$PORTAL_ROLE_FILE" portal_stage "$portal_turn_event_id"
+    validate_prompt_step_success portal_stage "$LAST_AGENT_EXIT_EVENT_ID" "portal" "portal-steward" "$PORTAL_AGENT" "${ATTEMPT:-0}" "$(artifact_path portal_status)" "$(artifact_path portal_changeset)"
 
     # Store hashes for audit freshness checks
     export _POST_STATUS_HASH _POST_CHANGESET_HASH _PORTAL_STATUS_CHANGED _PORTAL_CHANGESET_CHANGED
@@ -1023,6 +1449,7 @@ run_portal_steward() {
     elif [ -f "$(artifact_path portal_status)" ]; then
         log "Portal-steward ran but PORTAL_STATUS.md unchanged (may be already current)"
     else
+        record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "PORTAL_STATUS_MISSING" "Portal-steward did not produce PORTAL_STATUS.md"
         fail "Portal-steward did not produce PORTAL_STATUS.md"
     fi
 }
@@ -1066,6 +1493,8 @@ invoke_agent() {
     local backend="$1"
     local role_file="$2"
     local prompt="$3"
+    local prompt_key="$4"
+    local prompt_event_id="$5"
     local role_content
     role_content="$(cat "$role_file")"
 
@@ -1075,6 +1504,21 @@ invoke_agent() {
 
     log "Invoking ${backend} with role ${role_name} (${role_file})"
 
+    local attempt step_prefix stdout_log stderr_log agent_invoked_event_id exit_code turn
+    attempt="${ATTEMPT:-1}"
+    turn="$(prompt_turn "$prompt_key")"
+    step_prefix="$(step_log_prefix "$prompt_key" "$attempt")"
+    stdout_log="${step_prefix}.stdout.log"
+    stderr_log="${step_prefix}.stderr.log"
+    : > "$stdout_log"
+    : > "$stderr_log"
+
+    agent_invoked_event_id="$(emit_event "agent_invoked" "invoked" "none" "$prompt_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Invoked ${backend} for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+    LAST_AGENT_EXIT_EVENT_ID=""
+    LAST_FAILURE_EVENT_ID=""
+    LAST_FAILURE_CODE=""
+
+    set +e
     case "$backend" in
         claude)
             # Claude auto-reads CLAUDE.md from project root.
@@ -1087,7 +1531,8 @@ invoke_agent() {
                     SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
                     claude -p "${prompt}" \
                         --append-system-prompt "${role_content}" \
-                        --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+                        --allowedTools "Read,Edit,Write,Glob,Grep,Bash" \
+                >"$stdout_log" 2>"$stderr_log"
             ;;
         codex)
             # Codex auto-reads AGENTS.md (or CLAUDE.md if symlinked/configured).
@@ -1102,7 +1547,8 @@ invoke_agent() {
                     codex exec --full-auto \
                         "${role_content}
 
-${prompt}"
+${prompt}" \
+                >"$stdout_log" 2>"$stderr_log"
             ;;
         gemini)
             # Gemini auto-reads GEMINI.md (or CLAUDE.md if configured in settings.json).
@@ -1116,13 +1562,56 @@ ${prompt}"
                     gemini -p "${role_content}
 
 ${prompt}" \
-                        --yolo
+                        --yolo \
+                >"$stdout_log" 2>"$stderr_log"
+            ;;
+        mock)
+            # Deterministic local worker used only for harness-safe pipeline validation.
+            # It must not change the harness truth model; it only writes the prompt-owned outputs.
+            run_with_timeout "${backend}:${role_name}" \
+                env \
+                    SAWMILL_ACTIVE_ROLE="$role_name" \
+                    SAWMILL_ACTIVE_FMWK="$FMWK" \
+                    SAWMILL_PROMPT_KEY="$prompt_key" \
+                    SAWMILL_MOCK_PROMPT="$prompt" \
+                    python3 sawmill/workers/mock_worker.py \
+                        --prompt-key "$prompt_key" \
+                        --role "$role_name" \
+                        --framework "$FMWK" \
+                        --attempt "$attempt" \
+                >"$stdout_log" 2>"$stderr_log"
             ;;
         *)
+            set -e
             fail "Unknown agent backend: ${backend}"
             exit 1
             ;;
     esac
+    exit_code=$?
+    set -e
+
+    if [ -s "$stdout_log" ]; then
+        cat "$stdout_log"
+    fi
+    if [ -s "$stderr_log" ]; then
+        cat "$stderr_log" >&2
+    fi
+
+    if [ "$exit_code" -eq 124 ]; then
+        LAST_FAILURE_CODE="AGENT_TIMEOUT"
+        LAST_FAILURE_EVENT_ID="$(emit_event "timeout_triggered" "timeout" "AGENT_TIMEOUT" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Timed out while running ${backend}:${role_name}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+        return "$exit_code"
+    fi
+
+    if [ "$exit_code" -ne 0 ]; then
+        LAST_FAILURE_CODE="AGENT_EXIT_NONZERO"
+        LAST_FAILURE_EVENT_ID="$(emit_event "agent_exited" "failed" "AGENT_EXIT_NONZERO" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited non-zero for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+        LAST_AGENT_EXIT_EVENT_ID="$LAST_FAILURE_EVENT_ID"
+        return "$exit_code"
+    fi
+
+    LAST_AGENT_EXIT_EVENT_ID="$(emit_event "agent_exited" "succeeded" "none" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited successfully for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+    return 0
 }
 
 review_verdict() {
@@ -1224,12 +1713,65 @@ require_version_evidence() {
     local artifact_file_path actual_version
 
     artifact_file_path="$(artifact_path "$artifact_id")"
-    actual_version="$(extract_exact_version_evidence "$artifact_file_path" "$label")" || escalate \
-        "Version evidence check failed for ${artifact_file_path}"
+    actual_version="$(extract_exact_version_evidence "$artifact_file_path" "$label")" || return 1
     if [ "$actual_version" != "$expected_version" ]; then
         fail "Version evidence mismatch in ${artifact_file_path} for '${label}': expected '${expected_version}', found '${actual_version}'"
-        escalate "Prompt contract version evidence mismatch"
+        return 1
     fi
+}
+
+validate_builder_evidence() {
+    validate_evidence_artifact builder builder_evidence \
+        --handoff "$(artifact_path builder_handoff)" \
+        --q13-answers "$(artifact_path q13_answers)" \
+        --results "$(artifact_path results)"
+}
+
+validate_reviewer_evidence() {
+    validate_evidence_artifact reviewer reviewer_evidence \
+        --q13-answers "$(artifact_path q13_answers)"
+}
+
+validate_evaluator_evidence() {
+    validate_evidence_artifact evaluator evaluator_evidence \
+        --holdouts "$(artifact_path d9_holdout_scenarios)" \
+        --staging-root "$(artifact_path staging_root)"
+}
+
+validate_final_evidence_suite() {
+    if stage_is_complete D; then
+        validate_builder_evidence
+        validate_reviewer_evidence
+    fi
+    if stage_is_complete E; then
+        validate_evaluator_evidence
+    fi
+}
+
+validate_convergence() {
+    project_status_now
+    validate_final_evidence_suite
+    local runtime_state governed_path
+    runtime_state="$(current_status_state)"
+    governed_path="$(current_governed_path_intact)"
+    update_portal_state "$FMWK"
+
+    if [ -n "$STATUS_PAGE_PATH" ] && [ -f "$STATUS_PAGE_PATH" ]; then
+        grep -qF "**Run ID:** ${RUN_ID}" "$STATUS_PAGE_PATH" || {
+            fail "Status page does not reflect current run id ${RUN_ID}"
+            return 1
+        }
+        grep -qF "**Runtime State:** ${runtime_state}" "$STATUS_PAGE_PATH" || {
+            fail "Status page does not reflect runtime state ${runtime_state}"
+            return 1
+        }
+        grep -qF "**Governed Path Intact:** ${governed_path}" "$STATUS_PAGE_PATH" || {
+            fail "Status page does not reflect governed path state ${governed_path}"
+            return 1
+        }
+    fi
+
+    python3 docs/validate_portal_map.py >/dev/null
 }
 
 # --- Preflight --------------------------------------------------------------
@@ -1239,9 +1781,34 @@ load_artifact_registry
 load_stage_artifact_metadata
 load_prompt_registry
 
+# Create working directories before the harness so the run directory has a home.
+mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
+
+export FMWK FROM_TURN SAWMILL_DIR HOLDOUT_DIR STAGING_DIR BRANCH MAX_ATTEMPTS ARTIFACT_REGISTRY
+export SOURCE_MATERIAL_PATH STATUS_PAGE_PATH PORTAL_STATUS_PATH PORTAL_CHANGESET_PATH PORTAL_AUDIT_RESULTS_PATH
+export STAGE="" RETRY_CONTEXT=""
+SOURCE_MATERIAL_PATH="${SAWMILL_DIR}/SOURCE_MATERIAL.md"
+STATUS_PAGE_PATH="$(artifact_path status_page)"
+PORTAL_STATUS_PATH="$(artifact_path portal_status)"
+PORTAL_CHANGESET_PATH="$(artifact_path portal_changeset)"
+PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
+load_prompt_contract_versions
+export SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT REVIEW_AGENT EVAL_AGENT AUDIT_AGENT PORTAL_AGENT
+export SPEC_ROLE_FILE HOLDOUT_ROLE_FILE BUILD_ROLE_FILE REVIEW_ROLE_FILE EVAL_ROLE_FILE AUDIT_ROLE_FILE PORTAL_ROLE_FILE
+export SPEC_MODEL_POLICY BUILD_MODEL_POLICY HOLDOUT_MODEL_POLICY REVIEW_MODEL_POLICY EVAL_MODEL_POLICY AUDIT_MODEL_POLICY PORTAL_MODEL_POLICY
+export ALL_PROMPT_KEYS
+for prompt_key in $ALL_PROMPT_KEYS; do
+    prompt_prefix="$(key_to_env "$prompt_key")"
+    prompt_file_var="PROMPT_${prompt_prefix}_PROMPT_FILE"
+    export "$prompt_file_var"
+done
+export_artifact_paths
+initialize_run_harness
+
 log "Sawmill run: ${FMWK}"
 log "From turn:     ${FROM_TURN}"
 log "Interactive:   ${INTERACTIVE}"
+log "Operator mode: ${OPERATOR_MODE}"
 log "Spec agent:    ${SPEC_AGENT}"
 log "Build agent:   ${BUILD_AGENT}"
 log "Holdout agent: ${HOLDOUT_AGENT}"
@@ -1260,11 +1827,12 @@ for f in \
     "$PROMPT_REGISTRY" "$PROMPT_REGISTRY_VALIDATOR" \
     "$PROMPT_RENDERER" \
     "$PORTAL_MIRROR_SYNCER" \
+    "$RUN_STATUS_PROJECTOR" \
+    "$EVIDENCE_VALIDATOR" \
     "Templates/BUILDER_PROMPT_CONTRACT.md" \
     "Templates/REVIEWER_PROMPT_CONTRACT.md"; do
     if [ ! -f "$f" ]; then
-        fail "Missing required file: $f"
-        exit 1
+        fail_preflight "PREFLIGHT_MISSING_FILE" "Missing required file: $f"
     fi
 done
 
@@ -1281,31 +1849,23 @@ fi
 # Verify the selected agent CLI is installed
 for agent_var in SPEC_AGENT BUILD_AGENT HOLDOUT_AGENT REVIEW_AGENT EVAL_AGENT PORTAL_AGENT; do
     agent_val="${!agent_var}"
-    require_backend_cli "$agent_var" "$agent_val"
+    if ! require_backend_cli "$agent_var" "$agent_val"; then
+        fail_preflight "PREFLIGHT_MISSING_CLI" "Missing required agent CLI for ${agent_var}=${agent_val}"
+    fi
 done
-
-# Create working directories
-mkdir -p "${SAWMILL_DIR}" "${HOLDOUT_DIR}" "${STAGING_DIR}"
-
-export FMWK SAWMILL_DIR HOLDOUT_DIR STAGING_DIR BRANCH
-export SOURCE_MATERIAL_PATH STATUS_PAGE_PATH PORTAL_STATUS_PATH PORTAL_CHANGESET_PATH PORTAL_AUDIT_RESULTS_PATH
-export STAGE="" RETRY_CONTEXT=""
-SOURCE_MATERIAL_PATH="${SAWMILL_DIR}/SOURCE_MATERIAL.md"
-STATUS_PAGE_PATH="$(artifact_path status_page)"
-PORTAL_STATUS_PATH="$(artifact_path portal_status)"
-PORTAL_CHANGESET_PATH="$(artifact_path portal_changeset)"
-PORTAL_AUDIT_RESULTS_PATH="$(artifact_path portal_audit_results)"
-load_prompt_contract_versions
-export_artifact_paths
 
 # Verify TASK.md exists
 if [ ! -f "$(artifact_path task)" ]; then
-    fail "Missing $(artifact_path task) — create it before running the pipeline."
-    echo ""
-    echo "TASK.md tells the spec agent which framework to spec."
-    echo "See sawmill/COLD_START.md for the template."
-    exit 1
+    fail_preflight "PREFLIGHT_MISSING_TASK" "Missing $(artifact_path task) — create it before running the pipeline."
 fi
+
+CURRENT_EVENT_TURN="orchestrator"
+CURRENT_EVENT_STEP="preflight"
+CURRENT_EVENT_ROLE="orchestrator"
+CURRENT_EVENT_BACKEND="runtime"
+CURRENT_EVENT_ATTEMPT=0
+PREFLIGHT_PASSED_EVENT_ID="$(emit_event "preflight_passed" "passed" "none" "$RUN_STARTED_EVENT_ID" "orchestrator" "preflight" "orchestrator" "runtime" 0 "Preflight passed for ${FMWK}")"
+export PREFLIGHT_PASSED_EVENT_ID
 
 log "Preflight passed. Starting pipeline."
 echo ""
@@ -1318,14 +1878,19 @@ update_portal_state "$FMWK"
 # --- Turn A: Spec Agent (D1-D6) --------------------------------------------
 
 if should_run_turn A; then
+    local_turn_a_event_id="$(emit_event "turn_started" "started" "none" "$RUN_STARTED_EVENT_ID" "A" "turn_a_spec" "spec-agent" "$SPEC_AGENT" 1 "Turn A started")"
     log "═══ TURN A: Specification (D1-D6) ═══"
-    invoke_prompt "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_a_spec
-    verify_prompt_outputs turn_a_spec
+    invoke_prompt "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_a_spec "$local_turn_a_event_id"
+    validate_prompt_step_success turn_a_spec "$LAST_AGENT_EXIT_EVENT_ID" "A" "spec-agent" "$SPEC_AGENT" 1 \
+        "$(artifact_path d1_constitution)" "$(artifact_path d6_gap_analysis)"
     pass "Turn A produced D1-D6"
 
     update_portal_state "$FMWK"
     run_portal_steward "$FMWK" "Turn A"
-    run_stage_audit "$FMWK" "Turn A"
+    if ! run_stage_audit "$FMWK" "Turn A"; then
+        record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$local_turn_a_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn A"
+        exit 1
+    fi
     checkpoint "Turn A outputs ready for optional review"
 else
     log "Skipping Turn A (--from-turn ${FROM_TURN})"
@@ -1338,15 +1903,21 @@ if should_run_turn B || should_run_turn C; then
 
     PID_B=""
     PID_C=""
+    local_turn_b_event_id=""
+    local_turn_c_event_id=""
 
     if should_run_turn B; then
         if [ "$FROM_TURN" = "B" ]; then
-            ensure_artifact_ids "Turn A output" \
-                d1_constitution d2_specification d3_data_model d4_contracts d5_research d6_gap_analysis
+            if ! ensure_artifact_ids "Turn A output" \
+                d1_constitution d2_specification d3_data_model d4_contracts d5_research d6_gap_analysis; then
+                record_run_failed "$RUN_STARTED_EVENT_ID" "MISSING_INPUT_ARTIFACT" "Missing Turn A output: ${LAST_MISSING_ARTIFACT_PATH}"
+                exit 1
+            fi
         fi
 
         # Turn B (background)
-        launch_prompt_background "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_b_plan
+        local_turn_b_event_id="$(emit_event "turn_started" "started" "none" "$RUN_STARTED_EVENT_ID" "B" "turn_b_plan" "spec-agent" "$SPEC_AGENT" 1 "Turn B started")"
+        launch_prompt_background "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_b_plan "$local_turn_b_event_id"
         PID_B=$!
     else
         log "Skipping Turn B (--from-turn ${FROM_TURN})"
@@ -1354,11 +1925,15 @@ if should_run_turn B || should_run_turn C; then
 
     if should_run_turn C; then
         if [ "$FROM_TURN" = "C" ]; then
-            ensure_artifact_ids "Turn A output" d2_specification d4_contracts
+            if ! ensure_artifact_ids "Turn A output" d2_specification d4_contracts; then
+                record_run_failed "$RUN_STARTED_EVENT_ID" "MISSING_INPUT_ARTIFACT" "Missing Turn A output: ${LAST_MISSING_ARTIFACT_PATH}"
+                exit 1
+            fi
         fi
 
         # Turn C (background)
-        launch_prompt_background "$HOLDOUT_AGENT" "$HOLDOUT_ROLE_FILE" turn_c_holdout
+        local_turn_c_event_id="$(emit_event "turn_started" "started" "none" "$RUN_STARTED_EVENT_ID" "C" "turn_c_holdout" "holdout-agent" "$HOLDOUT_AGENT" 1 "Turn C started")"
+        launch_prompt_background "$HOLDOUT_AGENT" "$HOLDOUT_ROLE_FILE" turn_c_holdout "$local_turn_c_event_id"
         PID_C=$!
     else
         log "Skipping Turn C (--from-turn ${FROM_TURN})"
@@ -1370,7 +1945,6 @@ if should_run_turn B || should_run_turn C; then
             fail "Turn B failed"
             exit 1
         fi
-        verify_prompt_outputs turn_b_plan
         pass "Turn B produced D7, D8, D10, BUILDER_HANDOFF"
     fi
 
@@ -1380,21 +1954,26 @@ if should_run_turn B || should_run_turn C; then
             fail "Turn C failed"
             exit 1
         fi
-        verify_prompt_outputs turn_c_holdout
         pass "Turn C produced D9 holdout scenarios"
     fi
 
     update_portal_state "$FMWK"
     run_portal_steward "$FMWK" "Turn BC"
-    run_stage_audit "$FMWK" "Turn BC"
+    if ! run_stage_audit "$FMWK" "Turn BC"; then
+        record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn BC"
+        exit 1
+    fi
 
 else
     log "Skipping Turn B + C (--from-turn ${FROM_TURN})"
 fi
 
 if should_run_turn D && [ "$FROM_TURN_RANK" -le "$(turn_rank C)" ]; then
-    ensure_artifact_ids "Turn B/C outputs" \
-        d7_plan d8_tasks d10_agent_context builder_handoff d9_holdout_scenarios
+    if ! ensure_artifact_ids "Turn B/C outputs" \
+        d7_plan d8_tasks d10_agent_context builder_handoff d9_holdout_scenarios; then
+        record_run_failed "$RUN_STARTED_EVENT_ID" "MISSING_INPUT_ARTIFACT" "Missing Turn B/C output: ${LAST_MISSING_ARTIFACT_PATH}"
+        exit 1
+    fi
     checkpoint "Turn B/C outputs ready for optional review"
 fi
 
@@ -1403,11 +1982,16 @@ fi
 BUILD_PASSED=false
 
 if should_run_turn D; then
-    ensure_artifact_ids "Turn D input" d10_agent_context builder_handoff
+    if ! ensure_artifact_ids "Turn D input" d10_agent_context builder_handoff; then
+        record_run_failed "$RUN_STARTED_EVENT_ID" "MISSING_INPUT_ARTIFACT" "Missing Turn D input: ${LAST_MISSING_ARTIFACT_PATH}"
+        exit 1
+    fi
 
     log "═══ TURN D: Build ═══"
 
     ATTEMPT=0
+    TURN_D_EVENT_ID="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "D" "turn_d_13q" "builder" "$BUILD_AGENT" 1 "Turn D started")"
+    LAST_DECISION_EVENT_ID=""
 
     while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
         ATTEMPT=$((ATTEMPT + 1))
@@ -1421,108 +2005,203 @@ if should_run_turn D; then
 
         log "Turn D — Step 1: 13Q Gate"
 
-        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_13q
-        verify_prompt_outputs turn_d_13q
-        require_version_evidence q13_answers "Builder Prompt Contract Version" "$BUILDER_PROMPT_CONTRACT_VERSION"
+        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_13q "$TURN_D_EVENT_ID"
+        if ! require_version_evidence q13_answers "Builder Prompt Contract Version" "$BUILDER_PROMPT_CONTRACT_VERSION"; then
+            failure_event_id="$(emit_event "output_verified" "failed" "VERSION_EVIDENCE_FAILED" "$LAST_AGENT_EXIT_EVENT_ID" "D" "turn_d_13q" "builder" "$BUILD_AGENT" "$ATTEMPT" "Builder prompt contract version evidence check failed")"
+            record_run_failed "$failure_event_id" "VERSION_EVIDENCE_FAILED" "Builder prompt contract version evidence check failed"
+            exit 1
+        fi
+        validate_prompt_step_success turn_d_13q "$LAST_AGENT_EXIT_EVENT_ID" "D" "builder" "$BUILD_AGENT" "$ATTEMPT" "$(artifact_path q13_answers)"
         pass "Builder produced 13Q answers"
 
         log "Turn D — Step 1.5: Review 13Q answers"
-        invoke_prompt "$REVIEW_AGENT" "$REVIEW_ROLE_FILE" turn_d_review
-        verify_prompt_outputs turn_d_review
-        require_version_evidence review_report "Builder Prompt Contract Version Reviewed" "$BUILDER_PROMPT_CONTRACT_VERSION"
-        require_version_evidence review_report "Reviewer Prompt Contract Version" "$REVIEWER_PROMPT_CONTRACT_VERSION"
+        invoke_prompt "$REVIEW_AGENT" "$REVIEW_ROLE_FILE" turn_d_review "$TURN_D_EVENT_ID"
+        review_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
+        if ! require_version_evidence review_report "Builder Prompt Contract Version Reviewed" "$BUILDER_PROMPT_CONTRACT_VERSION"; then
+            failure_event_id="$(emit_event "output_verified" "failed" "VERSION_EVIDENCE_FAILED" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer evidence missing builder contract version")"
+            record_run_failed "$failure_event_id" "VERSION_EVIDENCE_FAILED" "Reviewer evidence missing builder contract version"
+            exit 1
+        fi
+        if ! require_version_evidence review_report "Reviewer Prompt Contract Version" "$REVIEWER_PROMPT_CONTRACT_VERSION"; then
+            failure_event_id="$(emit_event "output_verified" "failed" "VERSION_EVIDENCE_FAILED" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer evidence missing reviewer contract version")"
+            record_run_failed "$failure_event_id" "VERSION_EVIDENCE_FAILED" "Reviewer evidence missing reviewer contract version"
+            exit 1
+        fi
+        if ! validate_reviewer_evidence; then
+            failure_event_id="$(emit_event "output_verified" "failed" "EVIDENCE_VALIDATION_FAILED" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer evidence validation failed")"
+            record_run_failed "$failure_event_id" "EVIDENCE_VALIDATION_FAILED" "Reviewer evidence validation failed"
+            exit 1
+        fi
+        validate_prompt_step_success turn_d_review "$review_agent_exit_event_id" "D" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "$(artifact_path review_report)" "$(artifact_path review_errors)" "$(artifact_path reviewer_evidence)"
 
         case "$(review_verdict)" in
             PASS)
+                LAST_DECISION_EVENT_ID="$(emit_event "review_verdict_recorded" "pass" "none" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer approved Turn D implementation")"
                 pass "Review: PASS"
                 ;;
             RETRY)
+                LAST_DECISION_EVENT_ID="$(emit_event "review_verdict_recorded" "retry" "REVIEW_RETRY" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer requested retry")"
                 fail "Review: RETRY (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
                 if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                    escalate "Build failed after ${MAX_ATTEMPTS} attempts. Reviewer never approved implementation."
+                    record_escalation "$LAST_DECISION_EVENT_ID" "REVIEW_RETRY_EXHAUSTED" "Build failed after ${MAX_ATTEMPTS} attempts. Reviewer never approved implementation."
+                    exit 1
                 fi
+                emit_event "retry_started" "retrying" "REVIEW_RETRY" "$LAST_DECISION_EVENT_ID" "D" "turn_d_retry" "orchestrator" "runtime" "$ATTEMPT" "Retrying Turn D after reviewer RETRY" >/dev/null
                 continue
                 ;;
             ESCALATE)
-                escalate "Review: ESCALATE. See $(artifact_path review_report) and $(artifact_path review_errors)"
+                LAST_DECISION_EVENT_ID="$(emit_event "review_verdict_recorded" "escalate" "REVIEW_ESCALATE" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer escalated the build")"
+                record_escalation "$LAST_DECISION_EVENT_ID" "REVIEW_ESCALATE" "Review: ESCALATE. See $(artifact_path review_report) and $(artifact_path review_errors)"
+                exit 1
                 ;;
             *)
-                escalate "Reviewer did not produce a parseable verdict in $(artifact_path review_report)"
+                failure_event_id="$(emit_event "output_verified" "failed" "INVALID_REVIEW_VERDICT" "$review_agent_exit_event_id" "D" "turn_d_review" "reviewer" "$REVIEW_AGENT" "$ATTEMPT" "Reviewer did not produce a parseable verdict")"
+                record_run_failed "$failure_event_id" "INVALID_REVIEW_VERDICT" "Reviewer did not produce a parseable verdict in $(artifact_path review_report)"
+                exit 1
                 ;;
         esac
 
         log "Turn D — Step 2: DTT Build"
-        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_build
-        verify_prompt_outputs turn_d_build
+        invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_build "$TURN_D_EVENT_ID"
+        build_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
+        if ! validate_builder_evidence; then
+            failure_event_id="$(emit_event "output_verified" "failed" "EVIDENCE_VALIDATION_FAILED" "$build_agent_exit_event_id" "D" "turn_d_build" "builder" "$BUILD_AGENT" "$ATTEMPT" "Builder evidence validation failed")"
+            record_run_failed "$failure_event_id" "EVIDENCE_VALIDATION_FAILED" "Builder evidence validation failed"
+            exit 1
+        fi
+        validate_prompt_step_success turn_d_build "$build_agent_exit_event_id" "D" "builder" "$BUILD_AGENT" "$ATTEMPT" "$(artifact_path results)" "$(artifact_path builder_evidence)" "$(artifact_path staging_root)"
         pass "Builder produced code and RESULTS.md"
 
         update_portal_state "$FMWK"
         run_portal_steward "$FMWK" "Turn D"
-        run_stage_audit "$FMWK" "Turn D"
+        if ! run_stage_audit "$FMWK" "Turn D"; then
+            record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$build_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn D"
+            exit 1
+        fi
+        LAST_TURN_COMPLETED_EVENT_ID="$(emit_event "turn_completed" "completed" "none" "$LAST_DECISION_EVENT_ID" "D" "turn_d_build" "builder" "$BUILD_AGENT" "$ATTEMPT" "Turn D completed")"
 
         if ! should_run_turn E; then
             BUILD_PASSED=true
+            emit_event "run_completed" "passed" "none" "$LAST_TURN_COMPLETED_EVENT_ID" "orchestrator" "run" "orchestrator" "runtime" "$ATTEMPT" "Run completed after Turn D" >/dev/null
+            validate_convergence || {
+                record_run_failed "$LAST_TURN_COMPLETED_EVENT_ID" "CONVERGENCE_FAILED" "Convergence validation failed after Turn D"
+                exit 1
+            }
             break
         fi
 
         # --- Turn E: Evaluator --------------------------------------------------
 
         log "═══ TURN E: Evaluation ═══"
-
-        invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval
-        verify_prompt_outputs turn_e_eval
+        TURN_E_EVENT_ID="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$TURN_D_EVENT_ID}" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Turn E started")"
+        invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval "$TURN_E_EVENT_ID"
+        eval_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
+        if ! validate_evaluator_evidence; then
+            failure_event_id="$(emit_event "output_verified" "failed" "EVIDENCE_VALIDATION_FAILED" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator evidence validation failed")"
+            record_run_failed "$failure_event_id" "EVIDENCE_VALIDATION_FAILED" "Evaluator evidence validation failed"
+            exit 1
+        fi
+        validate_prompt_step_success turn_e_eval "$eval_agent_exit_event_id" "E" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "$(artifact_path evaluation_report)" "$(artifact_path evaluation_errors)" "$(artifact_path evaluator_evidence)"
 
         case "$(evaluation_verdict)" in
             PASS)
+                LAST_DECISION_EVENT_ID="$(emit_event "evaluation_verdict_recorded" "pass" "none" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator returned PASS")"
                 BUILD_PASSED=true
                 pass "Evaluation: PASS"
                 update_portal_state "$FMWK"
                 run_portal_steward "$FMWK" "Turn E"
-                run_stage_audit "$FMWK" "Turn E"
+                if ! run_stage_audit "$FMWK" "Turn E"; then
+                    record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$eval_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn E"
+                    exit 1
+                fi
+                LAST_TURN_COMPLETED_EVENT_ID="$(emit_event "turn_completed" "completed" "none" "$LAST_DECISION_EVENT_ID" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Turn E completed")"
+                emit_event "run_completed" "passed" "none" "$LAST_TURN_COMPLETED_EVENT_ID" "orchestrator" "run" "orchestrator" "runtime" "$ATTEMPT" "Run completed with PASS verdict" >/dev/null
+                validate_convergence || {
+                    record_run_failed "$LAST_TURN_COMPLETED_EVENT_ID" "CONVERGENCE_FAILED" "Convergence validation failed at terminal PASS"
+                    exit 1
+                }
                 break
                 ;;
             FAIL)
+                LAST_DECISION_EVENT_ID="$(emit_event "evaluation_verdict_recorded" "fail" "EVALUATION_FAIL" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator returned FAIL")"
                 update_portal_state "$FMWK"
                 run_portal_steward "$FMWK" "Turn E"
-                run_stage_audit "$FMWK" "Turn E"
+                if ! run_stage_audit "$FMWK" "Turn E"; then
+                    record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$eval_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn E"
+                    exit 1
+                fi
                 fail "Evaluation: FAIL (attempt ${ATTEMPT}/${MAX_ATTEMPTS})"
                 if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                    escalate "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                    record_escalation "$LAST_DECISION_EVENT_ID" "EVALUATION_FAIL_EXHAUSTED" "Build failed after ${MAX_ATTEMPTS} attempts. Returning to spec author."
+                    exit 1
                 fi
+                emit_event "retry_started" "retrying" "EVALUATION_FAIL" "$LAST_DECISION_EVENT_ID" "E" "turn_e_retry" "orchestrator" "runtime" "$ATTEMPT" "Retrying after evaluator FAIL" >/dev/null
                 ;;
             *)
+                failure_event_id="$(emit_event "output_verified" "failed" "INVALID_EVALUATION_VERDICT" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator did not produce a parseable verdict")"
                 update_portal_state "$FMWK"
                 run_portal_steward "$FMWK" "Turn E"
-                run_stage_audit "$FMWK" "Turn E"
+                if ! run_stage_audit "$FMWK" "Turn E"; then
+                    record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$eval_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after Turn E"
+                    exit 1
+                fi
                 if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-                    escalate "Evaluator did not produce a parseable verdict in $(artifact_path evaluation_report)"
+                    record_escalation "$failure_event_id" "INVALID_EVALUATION_VERDICT" "Evaluator did not produce a parseable verdict in $(artifact_path evaluation_report)"
+                    exit 1
                 fi
                 fail "Evaluator produced an unparseable verdict"
+                emit_event "retry_started" "retrying" "INVALID_EVALUATION_VERDICT" "$failure_event_id" "E" "turn_e_retry" "orchestrator" "runtime" "$ATTEMPT" "Retrying after unparseable evaluator verdict" >/dev/null
                 ;;
         esac
     done
 elif should_run_turn E; then
-    ensure_artifact_ids "Turn E input" d9_holdout_scenarios staging_root results
+    if ! ensure_artifact_ids "Turn E input" d9_holdout_scenarios staging_root results; then
+        record_run_failed "$RUN_STARTED_EVENT_ID" "MISSING_INPUT_ARTIFACT" "Missing Turn E input: ${LAST_MISSING_ARTIFACT_PATH}"
+        exit 1
+    fi
 
     log "═══ TURN E: Evaluation ═══"
-
-    invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval
-    verify_prompt_outputs turn_e_eval
+    TURN_E_EVENT_ID="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" 1 "Turn E started")"
+    ATTEMPT="${ATTEMPT:-1}"
+    invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval "$TURN_E_EVENT_ID"
+    eval_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
+    if ! validate_evaluator_evidence; then
+        failure_event_id="$(emit_event "output_verified" "failed" "EVIDENCE_VALIDATION_FAILED" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator evidence validation failed")"
+        record_run_failed "$failure_event_id" "EVIDENCE_VALIDATION_FAILED" "Evaluator evidence validation failed"
+        exit 1
+    fi
+    validate_prompt_step_success turn_e_eval "$eval_agent_exit_event_id" "E" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "$(artifact_path evaluation_report)" "$(artifact_path evaluation_errors)" "$(artifact_path evaluator_evidence)"
 
     if [ "$(evaluation_verdict)" = "PASS" ]; then
+        LAST_DECISION_EVENT_ID="$(emit_event "evaluation_verdict_recorded" "pass" "none" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator returned PASS")"
         BUILD_PASSED=true
         pass "Evaluation: PASS"
         update_portal_state "$FMWK"
         run_portal_steward "$FMWK" "Turn E"
-        run_stage_audit "$FMWK" "Turn E"
+        if ! run_stage_audit "$FMWK" "Turn E"; then
+            record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$eval_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after standalone Turn E"
+            exit 1
+        fi
+        LAST_TURN_COMPLETED_EVENT_ID="$(emit_event "turn_completed" "completed" "none" "$LAST_DECISION_EVENT_ID" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Turn E completed")"
+        emit_event "run_completed" "passed" "none" "$LAST_TURN_COMPLETED_EVENT_ID" "orchestrator" "run" "orchestrator" "runtime" "$ATTEMPT" "Run completed with PASS verdict" >/dev/null
+        validate_convergence || {
+            record_run_failed "$LAST_TURN_COMPLETED_EVENT_ID" "CONVERGENCE_FAILED" "Convergence validation failed at terminal PASS"
+            exit 1
+        }
     else
+        LAST_DECISION_EVENT_ID="$(emit_event "evaluation_verdict_recorded" "fail" "EVALUATION_FAIL" "$eval_agent_exit_event_id" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Evaluator returned FAIL")"
         update_portal_state "$FMWK"
         run_portal_steward "$FMWK" "Turn E"
-        run_stage_audit "$FMWK" "Turn E"
-        escalate "Evaluation: FAIL"
+        if ! run_stage_audit "$FMWK" "Turn E"; then
+            record_run_failed "${LAST_OUTPUT_VERIFIED_EVENT_ID:-$eval_agent_exit_event_id}" "STAGE_AUDIT_FAILED" "Stage audit failed after standalone Turn E"
+            exit 1
+        fi
+        record_escalation "$LAST_DECISION_EVENT_ID" "EVALUATION_FAIL" "Evaluation: FAIL"
+        exit 1
     fi
 else
-    escalate "Nothing to do: --from-turn ${FROM_TURN} skips all pipeline turns"
+    record_escalation "$PREFLIGHT_PASSED_EVENT_ID" "NO_WORK" "Nothing to do: --from-turn ${FROM_TURN} skips all pipeline turns"
+    exit 1
 fi
 
 # --- Final ------------------------------------------------------------------

@@ -120,6 +120,14 @@ artifacts:
     artifact_kind: file
     standard_ref: Templates/REVIEWER_PROMPT_CONTRACT.md
 
+  reviewer_evidence:
+    owner_role: reviewer
+    path_template: sawmill/{FMWK}/reviewer_evidence.json
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: architecture/SAWMILL_RUNTIME_SPEC_v0.1.md
+
   staging_root:
     owner_role: builder
     path_template: staging/{FMWK}
@@ -136,6 +144,14 @@ artifacts:
     artifact_kind: file
     standard_ref: Templates/BUILDER_HANDOFF_STANDARD.md
 
+  builder_evidence:
+    owner_role: builder
+    path_template: sawmill/{FMWK}/builder_evidence.json
+    stage: D
+    required: true
+    artifact_kind: file
+    standard_ref: architecture/SAWMILL_RUNTIME_SPEC_v0.1.md
+
   evaluation_report:
     owner_role: evaluator
     path_template: sawmill/{FMWK}/EVALUATION_REPORT.md
@@ -151,6 +167,14 @@ artifacts:
     required: true
     artifact_kind: file
     standard_ref:
+
+  evaluator_evidence:
+    owner_role: evaluator
+    path_template: sawmill/{FMWK}/evaluator_evidence.json
+    stage: E
+    required: true
+    artifact_kind: file
+    standard_ref: architecture/SAWMILL_RUNTIME_SPEC_v0.1.md
 
   status_page:
     owner_role: orchestrator

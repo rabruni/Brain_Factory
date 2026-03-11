@@ -31,6 +31,7 @@ Never resolve ambiguity by inventing an answer.
 ## Agent Entry Point
 
 This file is the startup context auto-loaded by Claude (and mirrored to Codex/Gemini via symlinks). After startup context loads, worker reading chains begin with `AGENT_BOOTSTRAP.md` as directed by `sawmill/run.sh`, the role file, and the rendered task prompt.
+For the exact startup -> role -> runtime -> prompt traversal path, use `sawmill/AGENT_TRAVERSAL.md`.
 
 ## Repository Layout
 

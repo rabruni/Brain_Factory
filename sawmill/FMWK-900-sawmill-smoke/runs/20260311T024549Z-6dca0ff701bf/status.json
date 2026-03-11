@@ -1,0 +1,13 @@
+{
+  "current_attempt": 1,
+  "current_backend": "codex",
+  "current_role": "spec-agent",
+  "current_step": "turn_a_spec",
+  "current_turn": "A",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "governed_path_intact": true,
+  "last_successful_event_id": "e05ff8da01b4455fb9c26054597c820c",
+  "latest_failure_code": "AGENT_EXIT_NONZERO",
+  "run_id": "20260311T024549Z-6dca0ff701bf",
+  "state": "failed"
+}

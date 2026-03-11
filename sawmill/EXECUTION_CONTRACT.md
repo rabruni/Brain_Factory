@@ -1,6 +1,7 @@
 # Sawmill Execution Contract
 
 **Status**: OPERATIONAL SOURCE OF TRUTH
+**Authority label**: operational
 **Date**: 2026-03-09
 
 ## Purpose
@@ -37,6 +38,15 @@ Human -> Claude orchestrator -> registry-resolved workers -> Sawmill turns A-E
   contract, but do not replace it.
 - If documentation names a runtime stage step, that step must exist in
   `run.sh`.
+
+## Document Authority Labels
+
+Runtime-adjacent docs should declare one authority label near the top:
+
+- `operational`: binding runtime behavior (must match `run.sh`)
+- `narrative`: guidance/checklists that explain runtime evidence
+- `status`: portal/status reporting surfaces
+- `historical`: analysis or archival rationale, non-operational
 
 ## Checkpoint and Escalation Policy
 

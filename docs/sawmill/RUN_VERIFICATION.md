@@ -1,182 +1,184 @@
 # Sawmill Run Verification
 
-This page is the portal-steward-owned verification checklist for Sawmill runs.
+**Status**: NARRATIVE CHECKLIST
+**Authority label**: narrative
+**Date**: 2026-03-10
 
-It does **not** replace runtime source truth. The runtime authority remains:
+This page is a steward-owned verification checklist.
+Runtime authority remains:
 
 - `sawmill/run.sh`
+- `sawmill/EXECUTION_CONTRACT.md`
 - `sawmill/ROLE_REGISTRY.yaml`
 - `sawmill/PROMPT_REGISTRY.yaml`
 - `sawmill/ARTIFACT_REGISTRY.yaml`
-- `sawmill/EXECUTION_CONTRACT.md`
 
-Use this page when you want the shortest path to answering:
+## Canonical Command
 
-- Did the run really happen?
-- Which stage completed?
-- Did the reviewer/evaluator loop run?
-- Did the portal update?
-- Did the pipeline end in PASS or FAIL?
-
-## Canonical Run Command
-
-Normal unattended path:
+Normal path:
 
 ```bash
-./sawmill/run.sh FMWK-900-sawmill-smoke
+./sawmill/run.sh <FMWK-ID>
 ```
 
 Interactive exception path:
 
 ```bash
-./sawmill/run.sh FMWK-900-sawmill-smoke --interactive
+./sawmill/run.sh <FMWK-ID> --interactive
 ```
+
+### Canary Backend Override
+
+The Turn A worker backend was temporarily switched from Codex to Claude
+due to Codex CLI connectivity failures observed during the first governed canary.
+
+This override is configuration-only and does not modify the Sawmill runtime harness.
+
+Additional Note:
+The Claude CLI backend required interactive login on the canary host.
+For canary execution only, the backend was switched to a non-interactive API-backed worker (Gemini) so the governed pipeline can execute without manual login steps.
+
+## Successful Governed Canary
+
+- run id: `20260311T212607Z-9ef3153f5266`
+- final state: `passed`
+- governed_path_intact: `true`
+- harness checker: `PASS`
+
+This successful pass used deterministic mock/canary worker backends for controlled pipeline validation.
+
+This validates the runtime truth model, not external backend reliability.
 
 ## Verification Order
 
-Check evidence in this order.
+### 1. Core artifact directories
 
-### 1. Framework artifact directory
-
-Look in:
+Check:
 
 - `sawmill/<FMWK-ID>/`
-
-Expected progression:
-
-- Turn A: `D1_CONSTITUTION.md` through `D6_GAP_ANALYSIS.md`
-- Turn B: `D7_PLAN.md`, `D8_TASKS.md`, `D10_AGENT_CONTEXT.md`, `BUILDER_HANDOFF.md`
-- Turn D review loop:
-  - `13Q_ANSWERS.md`
-  - `REVIEW_REPORT.md`
-  - `REVIEW_ERRORS.md`
-- Turn D build:
-  - `RESULTS.md`
-- Turn E:
-  - `EVALUATION_REPORT.md`
-  - `EVALUATION_ERRORS.md`
-- Stage audit:
-  - `CANARY_AUDIT.md`
-
-### 2. Holdout directory
-
-Look in:
-
+- `sawmill/<FMWK-ID>/runs/<run-id>/`
 - `.holdouts/<FMWK-ID>/`
-
-Expected file:
-
-- `D9_HOLDOUT_SCENARIOS.md`
-
-### 3. Staging directory
-
-Look in:
-
 - `staging/<FMWK-ID>/`
 
-Expected result:
+Harness artifacts required per run:
 
-- built code owned by the framework
-- non-empty directory when Turn D succeeded
+- `run.json`
+- `status.json`
+- `events.jsonl`
+- `logs/<step>.stdout.log`
+- `logs/<step>.stderr.log`
 
-### 4. Reviewer loop evidence
+Expected artifacts by turn:
 
-The reviewer loop happened only if all three are present:
+- Turn A: `D1_CONSTITUTION.md` ... `D6_GAP_ANALYSIS.md`
+- Turn B: `D7_PLAN.md`, `D8_TASKS.md`, `D10_AGENT_CONTEXT.md`, `BUILDER_HANDOFF.md`
+- Turn C: `.holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md`
+- Turn D review: `13Q_ANSWERS.md`, `REVIEW_REPORT.md`, `REVIEW_ERRORS.md`
+- Turn D build: `RESULTS.md`, `builder_evidence.json`
+- Turn D review evidence: `reviewer_evidence.json`
+- Turn E: `EVALUATION_REPORT.md`, `EVALUATION_ERRORS.md`, `evaluator_evidence.json`
+- Stage audit: `CANARY_AUDIT.md`
 
-- `sawmill/<FMWK-ID>/13Q_ANSWERS.md`
-- `sawmill/<FMWK-ID>/REVIEW_REPORT.md`
-- `sawmill/<FMWK-ID>/REVIEW_ERRORS.md`
+### 2. Turn D contract-version evidence (required)
 
-Interpretation:
+Verify these exact lines exist and are parseable exactly once:
 
-- the last non-empty line `Review verdict: PASS` means build was allowed to proceed
-- the last non-empty line `Review verdict: RETRY` means one attempt was consumed before implementation
-- the last non-empty line `Review verdict: ESCALATE` means the run should have stopped for human intervention
+- In `13Q_ANSWERS.md`:
+  - `Builder Prompt Contract Version: <version>`
+- In `REVIEW_REPORT.md`:
+  - `Builder Prompt Contract Version Reviewed: <version>`
+  - `Reviewer Prompt Contract Version: <version>`
 
-### 5. Evaluation evidence
+These values must match the active template contract versions consumed by runtime.
 
-The evaluation loop happened only if both are present:
+### 3. Verdict line parsing evidence
 
-- `sawmill/<FMWK-ID>/EVALUATION_REPORT.md`
-- `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md`
+Runtime parses the last non-empty line of each verdict artifact.
+Confirm final lines are exactly:
 
-Interpretation:
+- `REVIEW_REPORT.md`: `Review verdict: PASS|RETRY|ESCALATE`
+- `EVALUATION_REPORT.md`: `Final verdict: PASS|FAIL`
 
-- the last non-empty line `Final verdict: PASS` means the framework completed successfully
-- the last non-empty line `Final verdict: FAIL` means the attempt failed and the retry loop should continue or exhaust
+### 4. Harness/state convergence evidence
 
-### 6. Portal evidence
+Check `status.json` against `events.jsonl`:
 
-Check these files:
+- `run_id` matches the run directory
+- `state` is one of:
+  - `running`
+  - `retrying`
+  - `escalated`
+  - `failed`
+  - `passed`
+  - `invalidated`
+- if `governed_path_intact=false`, final PASS is not allowed unless operator mode explicitly permits intervention
+- docs/sawmill status page reflects:
+  - current run id
+  - runtime state
+  - governed-path state
+
+Required rebuild check:
+
+```bash
+cp sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json /tmp/<RUN-ID>.status.json.bak
+rm sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json
+python3 sawmill/project_run_status.py project-status --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
+diff -u /tmp/<RUN-ID>.status.json.bak sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json
+```
+
+If literal diff is too strict for local formatting reasons, semantic JSON equality is still REQUIRED.
+
+### 5. Portal evidence
+
+Check:
 
 - `docs/sawmill/<FMWK-ID>.md`
 - `docs/PORTAL_STATUS.md`
 - `sawmill/PORTAL_CHANGESET.md`
 
-Expected meaning:
+Portal may be unchanged when already current; unchanged content alone is not failure.
 
-- `docs/sawmill/<FMWK-ID>.md` reflects current stage completion
-- `docs/PORTAL_STATUS.md` shows portal health for the run
-- `sawmill/PORTAL_CHANGESET.md` records what portal-steward changed this run
-
-### 7. Portal validator
-
-Run:
+### 6. Required validation commands
 
 ```bash
+python3 docs/lint_runtime_claims.py
 python3 docs/validate_portal_map.py
+python3 sawmill/validate_role_registry.py --registry sawmill/ROLE_REGISTRY.yaml
+python3 sawmill/validate_artifact_registry.py --registry sawmill/ARTIFACT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml
+python3 sawmill/validate_prompt_registry.py --registry sawmill/PROMPT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml --artifacts sawmill/ARTIFACT_REGISTRY.yaml
+python3 sawmill/check_runtime_harness.py --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
+python3 sawmill/validate_evidence_artifacts.py --kind builder --artifact sawmill/<FMWK-ID>/builder_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --handoff sawmill/<FMWK-ID>/BUILDER_HANDOFF.md --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md --results sawmill/<FMWK-ID>/RESULTS.md
+python3 sawmill/validate_evidence_artifacts.py --kind reviewer --artifact sawmill/<FMWK-ID>/reviewer_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md
+python3 sawmill/validate_evidence_artifacts.py --kind evaluator --artifact sawmill/<FMWK-ID>/evaluator_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --holdouts .holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md --staging-root staging/<FMWK-ID>
+bash -n sawmill/run.sh
 ```
-
-Expected result:
-
-- PASS
 
 ## PASS / FAIL Interpretation
 
-Treat the run as **PASS** only when all of these are true:
+Treat run as PASS only when all are true:
 
 - `EVALUATION_REPORT.md` exists
-- the last verdict is `Final verdict: PASS`
-- `CANARY_AUDIT.md` exists and passes
-- `docs/sawmill/<FMWK-ID>.md` reflects the completed state
-- `docs/validate_portal_map.py` passes
+- last verdict line is `Final verdict: PASS`
+- required Turn D version evidence is present and coherent
+- required evidence JSON files validate
+- `status.json` is derivable from `events.jsonl`
+- harness acceptance checks pass
+- required stage audit evidence passes
+- portal map validation passes
+- runtime-claim lint passes
 
-Treat the run as **FAIL** when any of these happen:
+Treat run as FAIL when any are true:
 
-- a required artifact for the current stage is missing
-- `REVIEW_REPORT.md` ends with `Review verdict: ESCALATE`
-- `EVALUATION_REPORT.md` ends with `Final verdict: FAIL` after retry exhaustion
-- `CANARY_AUDIT.md` records failure
-- portal validation fails
+- required stage artifact missing
+- reviewer verdict is `ESCALATE`
+- evaluator verdict is `FAIL` after retry exhaustion
+- required version evidence missing/malformed/mismatched
+- evidence JSON missing, malformed, or contradictory
+- manual intervention occurred and runtime state is `invalidated`
+- portal map validation fails
+- runtime-claim lint fails
 
-## Fast Human Checklist
+## Scope Clarifier
 
-For a quick manual verification:
-
-1. Open `sawmill/<FMWK-ID>/EVALUATION_REPORT.md`
-2. Confirm the last line is `Final verdict: PASS`
-3. Open `sawmill/<FMWK-ID>/CANARY_AUDIT.md`
-4. Confirm it passed
-5. Open `docs/sawmill/<FMWK-ID>.md`
-6. Confirm the page reflects the final state
-7. Run `python3 docs/validate_portal_map.py`
-
-If all seven checks pass, the run is complete and the portal reflects the filesystem state.
-
-## Fast Agent Checklist
-
-For an orchestrator or reviewer summarizing a run:
-
-1. Read `sawmill/<FMWK-ID>/REVIEW_REPORT.md`
-2. Read `sawmill/<FMWK-ID>/EVALUATION_REPORT.md`
-3. Read `sawmill/<FMWK-ID>/CANARY_AUDIT.md`
-4. Read `docs/sawmill/<FMWK-ID>.md`
-5. Read `docs/PORTAL_STATUS.md`
-6. Read `sawmill/PORTAL_CHANGESET.md`
-7. Report only what those artifacts prove
-
-## Ownership
-
-This page is a **narrative** page owned by `portal-steward`.
-
-It explains how to verify runtime evidence. It does not define runtime behavior.
+Sawmill runtime ends in PASS or FAIL.
+Merge/release actions are out-of-scope for runtime verification.

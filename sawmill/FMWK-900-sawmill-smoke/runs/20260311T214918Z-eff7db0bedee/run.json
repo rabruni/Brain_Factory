@@ -1,0 +1,53 @@
+{
+  "artifact_registry_version_hash": "1a96aa6a84aa4b4498d90fba96b0643dab87418353a7e879b1a54cb23e007eaf",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "from_turn": "A",
+  "graph_version": "none",
+  "model_policies": {
+    "auditor": "max_capability",
+    "builder": "default",
+    "evaluator": "max_capability",
+    "holdout-agent": "default",
+    "portal-steward": "default",
+    "reviewer": "max_capability",
+    "spec-agent": "default"
+  },
+  "operator_mode": "governed",
+  "prompt_contract_versions": {
+    "builder_prompt_contract": "1.0.0",
+    "reviewer_prompt_contract": "1.0.0"
+  },
+  "prompt_file_hashes": {
+    "sawmill/prompts/audit_run.txt": "eadc1a247fb77158432b44fe8de603223d04d59b1cd8167ebcfb44b408ee5a97",
+    "sawmill/prompts/portal_stage.txt": "04b9a70f83923a0602c6b8d22203104fe75cf65cd219905c8cf116b89c5fe66f",
+    "sawmill/prompts/turn_a_spec.txt": "2a4fd6730057a542cb5d75cee59623ce1363d931f205022fc1a3365d3963b9a7",
+    "sawmill/prompts/turn_b_plan.txt": "d84b4fefab2fd2222357c3207a98f9319f64170291d912069769eb25dbdaab2a",
+    "sawmill/prompts/turn_c_holdout.txt": "2b4a4846fd37d60615fc19f04d5ae8a89ff94bcb296feb4ac7323ab421f504e5",
+    "sawmill/prompts/turn_d_13q.txt": "b650fde039674be180961f5130d6aa7813767de42f5d92393f60625a2180ea94",
+    "sawmill/prompts/turn_d_build.txt": "0bcd172fbfcee2c18e08f7c0457aa6c4bc959c20ce299a28f919e35b040916dc",
+    "sawmill/prompts/turn_d_review.txt": "0deec91c5e50cb543d0dbc7f68dae2a5fb12d51b8d560029f74c36faa3147a5c",
+    "sawmill/prompts/turn_e_eval.txt": "0567c07e19e472963c187c0b54d5c19151a244ff350f98e4eafcec9e0b05fef8"
+  },
+  "requested_entry_path": "./sawmill/run.sh",
+  "retry_budget": 3,
+  "role_backend_resolution": {
+    "auditor": "claude",
+    "builder": "codex",
+    "evaluator": "claude",
+    "holdout-agent": "codex",
+    "portal-steward": "codex",
+    "reviewer": "claude",
+    "spec-agent": "claude"
+  },
+  "role_file_hashes": {
+    ".claude/agents/auditor.md": "90d958f036d6a6752a9249ce2b2287e14f757c6b5734648aec277cd63f2100e2",
+    ".claude/agents/builder.md": "293b63bdb8176e17c5040a831b24bc120d5e12c25fe513199d881192a1579b88",
+    ".claude/agents/evaluator.md": "d01763d207a507b568c13ab1a44cef63386825850f73db910e6c6d2d4a458d07",
+    ".claude/agents/holdout-agent.md": "667d939d4ae53dfa0004f245cdc22cef7f104ab50a710e17e6f34c41568b2c61",
+    ".claude/agents/portal-steward.md": "4a2625a3b2de3ed214346d9665c4b10cc9667b8f356e69dafc53801861549908",
+    ".claude/agents/reviewer.md": "294ee63a62245e1a440e5756795651f0e16abfbb6f31470ef3676f136d5531d9",
+    ".claude/agents/spec-agent.md": "cbe542cdd6d85a699ff35c10e8b4e881101ddc808544941b0076903ea13eab90"
+  },
+  "run_id": "20260311T214918Z-eff7db0bedee",
+  "started_at": "2026-03-11T21:49:18Z"
+}

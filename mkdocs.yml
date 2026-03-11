@@ -12,10 +12,12 @@ nav:
       - Agent Onboarding: agent-onboarding.md
       - Cold Start Protocol: sawmill/COLD_START.md
       - Execution Contract: sawmill/EXECUTION_CONTRACT.md
+      - Agent Traversal: sawmill/AGENT_TRAVERSAL.md
       - Sawmill Role Registry: sawmill/ROLE_REGISTRY.md
       - Run Verification: sawmill/RUN_VERIFICATION.md
       - Institutional Context: institutional-context.md
   - Architecture:
+      - Ground-Truth Audit: architecture/GROUND_TRUTH_AUDIT.md
       - NORTH STAR — Why: architecture/NORTH_STAR.md
       - BUILDER SPEC — What: architecture/BUILDER_SPEC.md
       - OPERATIONAL SPEC — How: architecture/OPERATIONAL_SPEC.md
@@ -57,6 +59,7 @@ nav:
       - Product Spec Framework: sawmill-templates/PRODUCT_SPEC_FRAMEWORK.md
       - Compression Standard: compressed/COMPRESSION_STANDARD.md
   - Framework Builds:
+      - FMWK-001 Readiness Audit: sawmill/FMWK-001-READINESS-AUDIT.md
       - FMWK-001 Ledger: sawmill/FMWK-001-ledger.md
       - FMWK-002 Write-Path: sawmill/FMWK-002-write-path.md
       - FMWK-003 Orchestration: sawmill/FMWK-003-orchestration.md
@@ -71,6 +74,7 @@ nav:
       - Portal Status: PORTAL_STATUS.md
   - System Topology:
       - DoPeJarMo Catalog: dopejar-catalog.md
+      - TechDocs URL Registry: TECHDOCS_URLS.md
 plugins:
   - techdocs-core
 markdown_extensions:

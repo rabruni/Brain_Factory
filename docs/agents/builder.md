@@ -48,6 +48,7 @@ Move to next behavior. Repeat.
 ## Step 3: Finalize
 - Run FULL test suite (all components, not just yours)
 - Write Results file per BUILDER_HANDOFF_STANDARD.md
+- Write `sawmill/<FMWK-ID>/builder_evidence.json` with the required run/attempt, per-behavior red→green evidence, full test command/result, changed files, and `RESULTS.md` hash
 - Ensure the final passing implementation is written under `staging/<FMWK-ID>/`
 
 ## On Retry (Attempt 2+)
@@ -75,6 +76,7 @@ NEVER read: `.holdouts/*`, `EVALUATION_REPORT.md`, other builders' work.
 ## Output Location
 - Code: `staging/<FMWK-ID>/`
 - Results: `sawmill/<FMWK-ID>/RESULTS.md`
+- Evidence: `sawmill/<FMWK-ID>/builder_evidence.json`
 
 ## Authority Chain
 NORTH_STAR.md > BUILDER_SPEC.md > OPERATIONAL_SPEC.md > FWK-0-DRAFT.md

@@ -38,6 +38,10 @@ entries:
     mirror: docs/architecture/BUILD-PLAN.md
     sync: mirror
 
+  - source: architecture/SDK_DIAGRAMS.md
+    mirror: docs/architecture/SDK_DIAGRAMS.md
+    sync: mirror
+
   - source: architecture/FRAMEWORK_REGISTRY.md
     mirror: docs/architecture/FRAMEWORK_REGISTRY.md
     sync: mirror
@@ -175,6 +179,10 @@ entries:
 
   - source: sawmill/EXECUTION_CONTRACT.md
     mirror: docs/sawmill/EXECUTION_CONTRACT.md
+    sync: mirror
+
+  - source: sawmill/AGENT_TRAVERSAL.md
+    mirror: docs/sawmill/AGENT_TRAVERSAL.md
     sync: mirror
 
   - source: sawmill/ROLE_REGISTRY.yaml

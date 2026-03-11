@@ -66,6 +66,7 @@ Write BOTH files every run:
 
 - `sawmill/<FMWK-ID>/REVIEW_REPORT.md`
 - `sawmill/<FMWK-ID>/REVIEW_ERRORS.md`
+- `sawmill/<FMWK-ID>/reviewer_evidence.json`
 
 `REVIEW_REPORT.md` must include:
 - Summary of readiness
@@ -78,6 +79,16 @@ Write BOTH files every run:
 `REVIEW_ERRORS.md` must contain:
 - `NONE` when verdict is `PASS`
 - one concise bullet per issue when verdict is `RETRY` or `ESCALATE`
+
+`reviewer_evidence.json` must contain:
+- run_id
+- attempt
+- q13_answers_hash
+- builder_prompt_contract_version_reviewed
+- reviewer_prompt_contract_version
+- findings[]
+- verdict
+- failure_code
 
 ## Constraints
 - You do not edit the builder handoff.

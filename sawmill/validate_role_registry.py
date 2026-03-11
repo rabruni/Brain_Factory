@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -18,11 +19,12 @@ REQUIRED_FIELDS = {
     "role_file",
     "execution_scope",
     "default_backend",
+    "production_backend",
     "model_policy",
     "allowed_backends",
     "env_override",
 }
-SUPPORTED_BACKENDS = {"claude", "codex", "gemini"}
+SUPPORTED_BACKENDS = {"claude", "codex", "gemini", "mock"}
 VALID_EXECUTION_SCOPES = {"orchestrator", "worker"}
 VALID_MODEL_POLICIES = {"default", "max_capability"}
 REQUIRED_RUNTIME_ROLES = (
@@ -115,6 +117,7 @@ def validate_registry(data: dict, registry_path: Path) -> None:
         role_file = metadata["role_file"]
         execution_scope = metadata["execution_scope"]
         default_backend = metadata["default_backend"]
+        production_backend = metadata["production_backend"]
         model_policy = metadata["model_policy"]
         allowed_backends = metadata["allowed_backends"]
         env_override = metadata["env_override"]
@@ -144,6 +147,10 @@ def validate_registry(data: dict, registry_path: Path) -> None:
                 errors.append(
                     f"Role '{role_name}' default_backend '{default_backend}' is not in allowed_backends"
                 )
+            if production_backend not in allowed_backends:
+                errors.append(
+                    f"Role '{role_name}' production_backend '{production_backend}' is not in allowed_backends"
+                )
 
         if not isinstance(role_file, str) or not role_file:
             errors.append(f"Role '{role_name}' must define a non-empty role_file")
@@ -172,11 +179,17 @@ def validate_registry(data: dict, registry_path: Path) -> None:
 def build_shell_exports(data: dict) -> str:
     roles = data["roles"]
     lines: list[str] = []
+    use_prod_backends = os.environ.get("SAWMILL_USE_PROD_BACKENDS") == "1"
 
     for role_name, prefix in SHELL_PREFIXES.items():
         metadata = roles.get(role_name)
         if metadata is None:
             continue
+        selected_default_backend = (
+            metadata["production_backend"]
+            if use_prod_backends
+            else metadata["default_backend"]
+        )
 
         lines.append(
             f"{prefix}_ROLE_FILE={shlex.quote(str(metadata['role_file']))}"
@@ -185,7 +198,10 @@ def build_shell_exports(data: dict) -> str:
             f"{prefix}_EXECUTION_SCOPE={shlex.quote(str(metadata['execution_scope']))}"
         )
         lines.append(
-            f"{prefix}_DEFAULT_BACKEND={shlex.quote(str(metadata['default_backend']))}"
+            f"{prefix}_DEFAULT_BACKEND={shlex.quote(str(selected_default_backend))}"
+        )
+        lines.append(
+            f"{prefix}_PRODUCTION_BACKEND={shlex.quote(str(metadata['production_backend']))}"
         )
         lines.append(
             f"{prefix}_MODEL_POLICY={shlex.quote(str(metadata['model_policy']))}"

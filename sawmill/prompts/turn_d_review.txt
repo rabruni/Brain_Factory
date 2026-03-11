@@ -16,10 +16,20 @@ Your job:
 OUTPUT:
 - Write {{REVIEW_REPORT_PATH}}
 - Write {{REVIEW_ERRORS_PATH}}
+- Write {{REVIEWER_EVIDENCE_PATH}}
 - Include exactly one line in {{REVIEW_REPORT_PATH}}:
   Builder Prompt Contract Version Reviewed: {{BUILDER_PROMPT_CONTRACT_VERSION}}
 - Include exactly one line in {{REVIEW_REPORT_PATH}}:
   Reviewer Prompt Contract Version: {{REVIEWER_PROMPT_CONTRACT_VERSION}}
+
+{{REVIEWER_EVIDENCE_PATH}} MUST be valid JSON with these fields:
+- run_id: {{RUN_ID}}
+- q13_answers_hash: SHA-256 of {{Q13_ANSWERS_PATH}}
+- builder_prompt_contract_version_reviewed: {{BUILDER_PROMPT_CONTRACT_VERSION}}
+- reviewer_prompt_contract_version: {{REVIEWER_PROMPT_CONTRACT_VERSION}}
+- findings: array
+- verdict: PASS|RETRY|ESCALATE
+- failure_code: string ("none" when PASS)
 
 Verdict rules:
 - PASS if answers are concrete, aligned, and implementation-ready

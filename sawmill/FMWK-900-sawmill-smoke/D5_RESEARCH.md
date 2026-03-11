@@ -1,26 +1,22 @@
-# D5: Research - FMWK-900-sawmill-smoke
-Meta: v:1.0.0 (matches D2) | status:Complete | open questions:0
+# D5: Research - sawmill-smoke
+Meta: v:0.1.0 (matches D2) | status:Complete | open questions:0
 
 ## Research Log
-
-### RQ-001
-- Prompted By: Entire framework scope
+RQ-001
+- Prompted By: `TASK.md` constraints
 - Priority: Informational
-- Sources Consulted: `sawmill/FMWK-900-sawmill-smoke/TASK.md`
+- Sources Consulted: `sawmill/FMWK-900-sawmill-smoke/TASK.md`; authority docs in D2 sources
 - Findings: No research needed - trivial system test.
-- Options Considered: | Option | Pros | Cons |
-  | Keep scope exactly at one function + one test | Matches assignment, lowest drift risk | None for this canary |
-  | Expand into richer framework scaffolding | None for this assignment | Violates `TASK.md` minimality |
-- Decision: Keep scope exactly at one function + one test.
-- Rationale: The assignment already defines the complete target and explicitly forbids expansion.
+- Options Considered:
+
+| Option | Pros | Cons |
+|---|---|---|
+| No research | Keeps scope exact | None |
+| Additional research | None | Would invent scope |
+- Decision: No research
+- Rationale: The build target, ownership, dependencies, and constraints are fully specified already.
 
 ## Prior Art Review
-
-### What Worked
-Minimal ping/pong smoke canaries clearly separate pipeline failures from product failures.
-
-### What Failed
-Expanding smoke tests into framework-shaped mini-products adds noise and defeats the purpose of a canary.
-
-### Lessons for This Build
-Keep the spec and the build target at the exact two-file scope in `TASK.md`.
+### What Worked - Single-function smoke tests catch packaging and execution drift with minimal noise.
+### What Failed - Expanding a canary into architecture or integration work hides the signal.
+### Lessons for This Build - Keep one pure function, one exact assertion, and nothing else.

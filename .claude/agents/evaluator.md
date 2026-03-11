@@ -55,12 +55,22 @@ builder commit messages, `architecture/*`, `sawmill/*` specs.
 ## Output
 - Full report: `sawmill/<FMWK-ID>/EVALUATION_REPORT.md`
 - One-line failures for builder retry: `sawmill/<FMWK-ID>/EVALUATION_ERRORS.md`
+- Structured evidence: `sawmill/<FMWK-ID>/evaluator_evidence.json`
 
 Report contents:
 - Per-scenario results (3 runs each)
 - Overall pass rate
 - One-line failure descriptions for any failed scenarios
 - Final verdict line (MANDATORY — the orchestrator parses this)
+
+`evaluator_evidence.json` must contain:
+- run_id
+- attempt
+- holdout_hash
+- staging_hash
+- scenarios[]
+- verdict
+- pass_rate
 
 ## Verdict Logic
 

@@ -1,0 +1,13 @@
+{
+  "current_attempt": 1,
+  "current_backend": "codex",
+  "current_role": "portal-steward",
+  "current_step": "portal_stage",
+  "current_turn": "portal",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "governed_path_intact": true,
+  "last_successful_event_id": "328993bdf211485397856e68e613fc7b",
+  "latest_failure_code": "AGENT_EXIT_NONZERO",
+  "run_id": "20260311T055132Z-fc7458f50085",
+  "state": "failed"
+}

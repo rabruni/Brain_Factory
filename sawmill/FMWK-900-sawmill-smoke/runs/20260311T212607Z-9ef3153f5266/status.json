@@ -1,0 +1,13 @@
+{
+  "current_attempt": 1,
+  "current_backend": "runtime",
+  "current_role": "orchestrator",
+  "current_step": "run",
+  "current_turn": "orchestrator",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "governed_path_intact": true,
+  "last_successful_event_id": "2ea85d8c1fc7454b8db55eee14654a3a",
+  "latest_failure_code": "none",
+  "run_id": "20260311T212607Z-9ef3153f5266",
+  "state": "passed"
+}

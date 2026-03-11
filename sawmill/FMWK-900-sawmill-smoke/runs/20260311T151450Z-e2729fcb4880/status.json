@@ -1,0 +1,13 @@
+{
+  "current_attempt": 1,
+  "current_backend": "mock",
+  "current_role": "reviewer",
+  "current_step": "turn_d_review",
+  "current_turn": "D",
+  "framework_id": "FMWK-900-sawmill-smoke",
+  "governed_path_intact": true,
+  "last_successful_event_id": "c16f49b354e248a89ea2bfae96c4454f",
+  "latest_failure_code": "PROMPT_RENDER_FAILED",
+  "run_id": "20260311T151450Z-e2729fcb4880",
+  "state": "failed"
+}
