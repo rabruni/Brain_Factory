@@ -362,6 +362,170 @@ step_log_prefix() {
     printf '%s/logs/%s.attempt%s' "$RUN_DIR" "$prefix" "$attempt"
 }
 
+invocation_prefix() {
+    local step_key="$1"
+    local attempt="$2"
+    local prefix="${step_key}"
+    if [ "$step_key" = "portal_stage" ] && [ -n "${STAGE:-}" ]; then
+        prefix="${step_key}-$(printf '%s' "$STAGE" | tr '[:upper:] ' '[:lower:]_')"
+    fi
+    printf '%s/%s.attempt%s' "$RUN_INVOCATIONS_DIR" "$prefix" "$attempt"
+}
+
+write_invocation_payload() {
+    local payload_path="$1"
+    local role_content="$2"
+    local prompt="$3"
+    mkdir -p "$(dirname "$payload_path")"
+    printf '%s\n\n%s' "$role_content" "$prompt" > "$payload_path"
+}
+
+write_invocation_meta() {
+    local meta_path="$1"
+    local payload_path="$2"
+    local liveness_path="$3"
+    local result_path="$4"
+    local stdout_log="$5"
+    local stderr_log="$6"
+    local heartbeat_file="$7"
+    local turn="$8"
+    local step="$9"
+    local role_name="${10}"
+    local backend="${11}"
+    local attempt="${12}"
+    local prompt_key="${13}"
+    local agent_invoked_event_id="${14}"
+    local model_policy="${15:-default}"
+
+    python3 - "$meta_path" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+meta_path = Path(sys.argv[1])
+payload_path = os.environ["SAWMILL_META_PAYLOAD_PATH"]
+liveness_path = os.environ["SAWMILL_META_LIVENESS_PATH"]
+result_path = os.environ["SAWMILL_META_RESULT_PATH"]
+stdout_log = os.environ["SAWMILL_META_STDOUT_LOG"]
+stderr_log = os.environ["SAWMILL_META_STDERR_LOG"]
+heartbeat_file = os.environ["SAWMILL_META_HEARTBEAT_FILE"]
+
+meta = {
+    "run_id": os.environ["RUN_ID"],
+    "framework_id": os.environ["FMWK"],
+    "turn": os.environ["SAWMILL_META_TURN"],
+    "step": os.environ["SAWMILL_META_STEP"],
+    "role": os.environ["SAWMILL_META_ROLE"],
+    "backend": os.environ["SAWMILL_META_BACKEND"],
+    "attempt": int(os.environ["SAWMILL_META_ATTEMPT"]),
+    "timeout_seconds": int(os.environ["SAWMILL_META_TIMEOUT_SECONDS"]),
+    "stdout_log": stdout_log,
+    "stderr_log": stderr_log,
+    "heartbeat_file": heartbeat_file,
+    "payload_path": payload_path,
+    "prompt_key": os.environ["SAWMILL_META_PROMPT_KEY"],
+    "model_policy": os.environ["SAWMILL_META_MODEL_POLICY"],
+    "operator_mode": os.environ["OPERATOR_MODE"],
+    "agent_invoked_event_id": os.environ["SAWMILL_META_AGENT_INVOKED_EVENT_ID"],
+    "result_path": result_path,
+    "liveness_path": liveness_path,
+    "cwd": Path.cwd().as_posix(),
+}
+meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+emit_liveness_records() {
+    local liveness_path="$1"
+    local agent_invoked_event_id="$2"
+    local turn="$3"
+    local step="$4"
+    local role_name="$5"
+    local backend="$6"
+    local attempt="$7"
+    local state_file="$8"
+
+    python3 - "$liveness_path" "$state_file" "$RUN_STATUS_PROJECTOR" "$RUN_DIR" "$agent_invoked_event_id" "$turn" "$step" "$role_name" "$backend" "$attempt" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+liveness_path = Path(sys.argv[1])
+state_file = Path(sys.argv[2])
+projector = sys.argv[3]
+run_dir = sys.argv[4]
+parent_id, turn, step, role, backend, attempt = sys.argv[5:11]
+
+if not liveness_path.exists():
+    raise SystemExit(0)
+
+seen = 0
+if state_file.exists():
+    raw = state_file.read_text(encoding="utf-8").strip()
+    if raw:
+        seen = int(raw)
+
+lines = [line for line in liveness_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+new_lines = lines[seen:]
+if not new_lines:
+    raise SystemExit(0)
+
+for raw in new_lines:
+    record = json.loads(raw)
+    summary = f"{record['observation']} observed from {record['source']}"
+    subprocess.run(
+        [
+            "python3",
+            projector,
+            "append-event",
+            "--run-dir",
+            run_dir,
+            "--event-id",
+            __import__("uuid").uuid4().hex,
+            "--run-id",
+            record["run_id"],
+            "--timestamp",
+            record["timestamp"],
+            "--turn",
+            turn,
+            "--step",
+            step,
+            "--role",
+            role,
+            "--backend",
+            backend,
+            "--attempt",
+            attempt,
+            "--event-type",
+            "agent_liveness_observed",
+            "--outcome",
+            record["observation"],
+            "--failure-code",
+            "none",
+            "--causal-parent-event-id",
+            parent_id,
+            "--summary",
+            summary,
+            "--evidence-ref",
+            str(liveness_path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["python3", projector, "project-status", "--run-dir", run_dir],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+state_file.write_text(str(len(lines)), encoding="utf-8")
+PY
+}
+
 validate_evidence_artifact() {
     local kind="$1"
     local artifact_id="$2"
@@ -403,12 +567,15 @@ initialize_run_harness() {
     STATUS_JSON_PATH="${RUN_DIR}/status.json"
     EVENTS_JSON_PATH="${RUN_DIR}/events.jsonl"
     RUN_LOG_DIR="${RUN_DIR}/logs"
-    export RUN_ID RUN_DIR RUN_JSON_PATH STATUS_JSON_PATH EVENTS_JSON_PATH RUN_LOG_DIR RUN_STARTED_AT
+    RUN_INVOCATIONS_DIR="${RUN_DIR}/invocations"
+    RUN_HEARTBEATS_DIR="${RUN_DIR}/heartbeats"
+    export RUN_ID RUN_DIR RUN_JSON_PATH STATUS_JSON_PATH EVENTS_JSON_PATH RUN_LOG_DIR RUN_INVOCATIONS_DIR RUN_HEARTBEATS_DIR RUN_STARTED_AT
 
     local metadata_file
     METADATA_FILE="$(build_run_metadata_file)"
     python3 "$RUN_STATUS_PROJECTOR" init-run --run-dir "$RUN_DIR" --metadata-file "$METADATA_FILE" >/dev/null
     rm -f "$METADATA_FILE"
+    mkdir -p "$RUN_INVOCATIONS_DIR" "$RUN_HEARTBEATS_DIR"
 
     local run_started_event
     run_started_event="$(emit_event "run_started" "started" "none" "" "orchestrator" "run" "orchestrator" "runtime" 0 "Run started for ${FMWK}")"
@@ -425,6 +592,8 @@ PROMPT_REGISTRY="sawmill/PROMPT_REGISTRY.yaml"
 PROMPT_REGISTRY_VALIDATOR="sawmill/validate_prompt_registry.py"
 PROMPT_RENDERER="sawmill/render_prompt.py"
 TIMEOUT_RUNNER="sawmill/run_with_timeout.py"
+RUNNER="sawmill/runner.py"
+BACKEND_ADAPTERS="sawmill/backend_adapters.py"
 PORTAL_MIRROR_SYNCER="sawmill/sync_portal_mirrors.py"
 RUN_STATUS_PROJECTOR="sawmill/project_run_status.py"
 EVIDENCE_VALIDATOR="sawmill/validate_evidence_artifacts.py"
@@ -436,6 +605,8 @@ RUN_JSON_PATH=""
 STATUS_JSON_PATH=""
 EVENTS_JSON_PATH=""
 RUN_LOG_DIR=""
+RUN_INVOCATIONS_DIR=""
+RUN_HEARTBEATS_DIR=""
 LAST_AGENT_EXIT_EVENT_ID=""
 LAST_FAILURE_EVENT_ID=""
 LAST_FAILURE_CODE=""
@@ -1504,91 +1675,69 @@ invoke_agent() {
 
     log "Invoking ${backend} with role ${role_name} (${role_file})"
 
-    local attempt step_prefix stdout_log stderr_log agent_invoked_event_id exit_code turn
+    local attempt step_prefix stdout_log stderr_log heartbeat_dir heartbeat_file agent_invoked_event_id turn
+    local invocation_prefix payload_path meta_path liveness_path result_path liveness_state_path
     attempt="${ATTEMPT:-1}"
     turn="$(prompt_turn "$prompt_key")"
     step_prefix="$(step_log_prefix "$prompt_key" "$attempt")"
     stdout_log="${step_prefix}.stdout.log"
     stderr_log="${step_prefix}.stderr.log"
+    heartbeat_dir="${RUN_HEARTBEATS_DIR}"
+    heartbeat_file="${heartbeat_dir}/$(basename "$step_prefix").log"
+    invocation_prefix="$(invocation_prefix "$prompt_key" "$attempt")"
+    payload_path="${invocation_prefix}.payload.txt"
+    meta_path="${invocation_prefix}.meta.json"
+    liveness_path="${invocation_prefix}.liveness.jsonl"
+    result_path="${invocation_prefix}.result.json"
+    liveness_state_path="${invocation_prefix}.liveness.offset"
+    mkdir -p "$heartbeat_dir"
     : > "$stdout_log"
     : > "$stderr_log"
+    : > "$liveness_path"
+    : > "$heartbeat_file"
+    write_invocation_payload "$payload_path" "$role_content" "$prompt"
 
-    agent_invoked_event_id="$(emit_event "agent_invoked" "invoked" "none" "$prompt_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Invoked ${backend} for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
     LAST_AGENT_EXIT_EVENT_ID=""
     LAST_FAILURE_EVENT_ID=""
     LAST_FAILURE_CODE=""
+    export SAWMILL_META_PAYLOAD_PATH="$payload_path"
+    export SAWMILL_META_LIVENESS_PATH="$liveness_path"
+    export SAWMILL_META_RESULT_PATH="$result_path"
+    export SAWMILL_META_STDOUT_LOG="$stdout_log"
+    export SAWMILL_META_STDERR_LOG="$stderr_log"
+    export SAWMILL_META_HEARTBEAT_FILE="$heartbeat_file"
+    export SAWMILL_META_TURN="$turn"
+    export SAWMILL_META_STEP="$prompt_key"
+    export SAWMILL_META_ROLE="$role_name"
+    export SAWMILL_META_BACKEND="$backend"
+    export SAWMILL_META_ATTEMPT="$attempt"
+    export SAWMILL_META_PROMPT_KEY="$prompt_key"
+    export SAWMILL_META_MODEL_POLICY="default"
+    export SAWMILL_META_TIMEOUT_SECONDS="$AGENT_TIMEOUT_SECONDS"
+
+    agent_invoked_event_id="$(emit_event "agent_invoked" "invoked" "none" "$prompt_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Invoked ${backend} for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --evidence-ref "$payload_path" --evidence-ref "$meta_path" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+    export SAWMILL_META_AGENT_INVOKED_EVENT_ID="$agent_invoked_event_id"
+    write_invocation_meta "$meta_path" "$payload_path" "$liveness_path" "$result_path" "$stdout_log" "$stderr_log" "$heartbeat_file" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "$prompt_key" "$agent_invoked_event_id"
+
+    if [ ! -f "$RUNNER" ]; then
+        LAST_FAILURE_CODE="RUNNER_MISSING"
+        record_run_failed "$agent_invoked_event_id" "$LAST_FAILURE_CODE" "Missing runner: ${RUNNER}"
+        fail "Missing runner: ${RUNNER}"
+        exit 1
+    fi
 
     set +e
-    case "$backend" in
-        claude)
-            # Claude auto-reads CLAUDE.md from project root.
-            # --append-system-prompt adds role constraints to its default system prompt.
-            # The task prompt goes as the -p argument.
-            # --allowedTools grants file and shell access.
-            # SAWMILL_ACTIVE_ROLE + SAWMILL_ACTIVE_FMWK enforce hooks per role.
-            run_with_timeout "${backend}:${role_name}" \
-                env -u CLAUDECODE \
-                    SAWMILL_ACTIVE_ROLE="$role_name" SAWMILL_ACTIVE_FMWK="$FMWK" \
-                    claude -p "${prompt}" \
-                        --append-system-prompt "${role_content}" \
-                        --allowedTools "Read,Edit,Write,Glob,Grep,Bash" \
-                >"$stdout_log" 2>"$stderr_log"
-            ;;
-        codex)
-            # Codex auto-reads AGENTS.md (or CLAUDE.md if symlinked/configured).
-            # No --system-prompt flag — everything goes in the exec argument.
-            # --full-auto disables approval prompts.
-            # Codex runs in a network-disabled sandbox by default.
-            # Env vars set for consistency (Codex does not use Claude Code hooks).
-            run_with_timeout "${backend}:${role_name}" \
-                env \
-                    SAWMILL_ACTIVE_ROLE="$role_name" \
-                    SAWMILL_ACTIVE_FMWK="$FMWK" \
-                    codex exec --full-auto \
-                        "${role_content}
-
-${prompt}" \
-                >"$stdout_log" 2>"$stderr_log"
-            ;;
-        gemini)
-            # Gemini auto-reads GEMINI.md (or CLAUDE.md if configured in settings.json).
-            # No --system-prompt flag — everything goes in -p argument.
-            # --yolo auto-approves all tool actions.
-            # Env vars set for consistency (Gemini does not use Claude Code hooks).
-            run_with_timeout "${backend}:${role_name}" \
-                env \
-                    SAWMILL_ACTIVE_ROLE="$role_name" \
-                    SAWMILL_ACTIVE_FMWK="$FMWK" \
-                    gemini -p "${role_content}
-
-${prompt}" \
-                        --yolo \
-                >"$stdout_log" 2>"$stderr_log"
-            ;;
-        mock)
-            # Deterministic local worker used only for harness-safe pipeline validation.
-            # It must not change the harness truth model; it only writes the prompt-owned outputs.
-            run_with_timeout "${backend}:${role_name}" \
-                env \
-                    SAWMILL_ACTIVE_ROLE="$role_name" \
-                    SAWMILL_ACTIVE_FMWK="$FMWK" \
-                    SAWMILL_PROMPT_KEY="$prompt_key" \
-                    SAWMILL_MOCK_PROMPT="$prompt" \
-                    python3 sawmill/workers/mock_worker.py \
-                        --prompt-key "$prompt_key" \
-                        --role "$role_name" \
-                        --framework "$FMWK" \
-                        --attempt "$attempt" \
-                >"$stdout_log" 2>"$stderr_log"
-            ;;
-        *)
-            set -e
-            fail "Unknown agent backend: ${backend}"
-            exit 1
-            ;;
-    esac
-    exit_code=$?
+    python3 "$RUNNER" --meta "$meta_path" &
+    local runner_pid=$!
+    while kill -0 "$runner_pid" 2>/dev/null; do
+        emit_liveness_records "$liveness_path" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "$liveness_state_path"
+        sleep 1
+    done
+    wait "$runner_pid"
+    local runner_exit_code=$?
     set -e
+    emit_liveness_records "$liveness_path" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "$liveness_state_path"
+    rm -f "$liveness_state_path"
 
     if [ -s "$stdout_log" ]; then
         cat "$stdout_log"
@@ -1596,21 +1745,51 @@ ${prompt}" \
     if [ -s "$stderr_log" ]; then
         cat "$stderr_log" >&2
     fi
-
-    if [ "$exit_code" -eq 124 ]; then
-        LAST_FAILURE_CODE="AGENT_TIMEOUT"
-        LAST_FAILURE_EVENT_ID="$(emit_event "timeout_triggered" "timeout" "AGENT_TIMEOUT" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Timed out while running ${backend}:${role_name}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
-        return "$exit_code"
-    fi
-
-    if [ "$exit_code" -ne 0 ]; then
-        LAST_FAILURE_CODE="AGENT_EXIT_NONZERO"
-        LAST_FAILURE_EVENT_ID="$(emit_event "agent_exited" "failed" "AGENT_EXIT_NONZERO" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited non-zero for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+    if [ ! -f "$result_path" ]; then
+        LAST_FAILURE_CODE="RUNNER_RESULT_MISSING"
+        LAST_FAILURE_EVENT_ID="$(emit_event "agent_exited" "failed" "$LAST_FAILURE_CODE" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Runner did not produce result.json for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --evidence-ref "$meta_path" --evidence-ref "$liveness_path" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
         LAST_AGENT_EXIT_EVENT_ID="$LAST_FAILURE_EVENT_ID"
-        return "$exit_code"
+        record_run_failed "$LAST_FAILURE_EVENT_ID" "$LAST_FAILURE_CODE" "Runner did not produce result.json for ${prompt_key}"
+        fail "Runner did not produce result.json for ${prompt_key}"
+        exit 1
     fi
 
-    LAST_AGENT_EXIT_EVENT_ID="$(emit_event "agent_exited" "succeeded" "none" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited successfully for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+    local result_outcome result_failure_code result_exit_code result_timed_out
+    result_outcome="$(python3 - "$result_path" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["outcome"])
+PY
+)"
+    result_failure_code="$(python3 - "$result_path" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["failure_code"])
+PY
+)"
+    result_exit_code="$(python3 - "$result_path" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["exit_code"])
+PY
+)"
+    result_timed_out="$(python3 - "$result_path" <<'PY'
+import json, sys
+print("true" if json.load(open(sys.argv[1], encoding="utf-8")).get("timed_out") else "false")
+PY
+)"
+
+    if [ "$result_timed_out" = "true" ] || [ "$result_outcome" = "timeout" ]; then
+        LAST_FAILURE_CODE="AGENT_TIMEOUT"
+        LAST_FAILURE_EVENT_ID="$(emit_event "timeout_triggered" "timeout" "AGENT_TIMEOUT" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Timed out while running ${backend}:${role_name}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --evidence-ref "$result_path" --evidence-ref "$liveness_path" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+        return 124
+    fi
+
+    if [ "$runner_exit_code" -ne 0 ] || [ "$result_exit_code" -ne 0 ] || [ "$result_outcome" = "failed" ]; then
+        LAST_FAILURE_CODE="${result_failure_code:-AGENT_EXIT_NONZERO}"
+        LAST_FAILURE_EVENT_ID="$(emit_event "agent_exited" "failed" "$LAST_FAILURE_CODE" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited non-zero for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --evidence-ref "$result_path" --evidence-ref "$liveness_path" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
+        LAST_AGENT_EXIT_EVENT_ID="$LAST_FAILURE_EVENT_ID"
+        return "${result_exit_code:-1}"
+    fi
+
+    LAST_AGENT_EXIT_EVENT_ID="$(emit_event "agent_exited" "succeeded" "none" "$agent_invoked_event_id" "$turn" "$prompt_key" "$role_name" "$backend" "$attempt" "Agent exited successfully for ${prompt_key}" --evidence-ref "$stdout_log" --evidence-ref "$stderr_log" --evidence-ref "$result_path" --evidence-ref "$liveness_path" --contract-ref "$role_file" --contract-ref "$(prompt_file "$prompt_key")")"
     return 0
 }
 

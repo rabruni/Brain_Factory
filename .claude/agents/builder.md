@@ -78,5 +78,37 @@ NEVER read: `.holdouts/*`, `EVALUATION_REPORT.md`, other builders' work.
 - Results: `sawmill/<FMWK-ID>/RESULTS.md`
 - Evidence: `sawmill/<FMWK-ID>/builder_evidence.json`
 
+## Heartbeat Contract
+
+Immediately after receiving the task and before performing any work, if
+`SAWMILL_HEARTBEAT_FILE` is present, append exactly one line to that file:
+
+`SAWMILL_HEARTBEAT: starting builder`
+
+During long-running work, if `SAWMILL_HEARTBEAT_FILE` is present, append
+progress lines to that file in exactly this format:
+
+`SAWMILL_HEARTBEAT: <short present-tense operator-safe status>`
+
+Rules:
+- plain text only
+- one heartbeat per line
+- do not wrap in markdown
+- do not change the prefix
+- do not add metadata to the line
+- keep the message short
+- use present tense
+- report task-level progress, not thought-level reasoning
+- do not include chain-of-thought
+- do not include secrets
+- do not include speculative language
+
+Append a heartbeat:
+- when starting meaningful work
+- when switching major subtask
+- immediately before a long command/test/verification step
+- immediately after a major step completes
+- if 2 minutes pass during active work without a heartbeat, emit one before continuing
+
 ## Authority Chain
 NORTH_STAR.md > BUILDER_SPEC.md > OPERATIONAL_SPEC.md > FWK-0-DRAFT.md

@@ -50,6 +50,11 @@ events.jsonl
 logs/
   <step>.stdout.log
   <step>.stderr.log
+invocations/
+  <step>.attempt<attempt>.payload.txt
+  <step>.attempt<attempt>.meta.json
+  <step>.attempt<attempt>.liveness.jsonl
+  <step>.attempt<attempt>.result.json
 ```
 
 ### 2.1 `run.json`
@@ -94,6 +99,9 @@ logs/
 - `governed_path_intact`
 - `last_successful_event_id`
 - `latest_failure_code`
+- `worker_observation`
+- `last_worker_observed_at`
+- `last_worker_progress_at`
 
 Allowed `state` values are:
 
@@ -136,6 +144,80 @@ Every event record in `events.jsonl` MUST contain these fields:
 
 Per-step logs in `logs/` SHALL be referenced from `events.jsonl` through `evidence_refs` when applicable.
 
+### 2.4 Invocation packet artifacts
+
+Each worker invocation MUST create these non-canonical execution artifacts:
+
+- `invocations/<step>.attempt<attempt>.payload.txt`
+- `invocations/<step>.attempt<attempt>.meta.json`
+- `invocations/<step>.attempt<attempt>.liveness.jsonl`
+- `invocations/<step>.attempt<attempt>.result.json`
+
+`payload.txt` MUST contain exactly:
+- role file content
+- one blank line
+- rendered prompt text
+
+`meta.json` MUST contain at minimum:
+- `run_id`
+- `framework_id`
+- `turn`
+- `step`
+- `role`
+- `backend`
+- `attempt`
+- `timeout_seconds`
+- `stdout_log`
+- `stderr_log`
+- `heartbeat_file`
+- `payload_path`
+
+`liveness.jsonl` MUST contain execution evidence records only. It SHALL NOT be canonical truth.
+
+Each `liveness.jsonl` record MUST contain at minimum:
+- `timestamp`
+- `run_id`
+- `step`
+- `role`
+- `backend`
+- `attempt`
+- `observation`
+- `source`
+
+Allowed observations are:
+- `started`
+- `alive`
+- `progressing`
+- `heartbeat_seen`
+- `output_seen`
+- `timed_out`
+- `exited`
+
+Allowed sources are:
+- `process_alive`
+- `heartbeat_file`
+- `stdout`
+- `timeout`
+
+`result.json` MUST contain at minimum:
+- `run_id`
+- `framework_id`
+- `turn`
+- `step`
+- `role`
+- `backend`
+- `attempt`
+- `started_at`
+- `ended_at`
+- `exit_code`
+- `outcome`
+- `failure_code`
+- `stdout_log`
+- `stderr_log`
+- `heartbeat_file`
+- `last_output_at`
+- `last_worker_progress_at`
+
 ## 3. Event Taxonomy
 
 The runtime MUST emit only event types defined by this specification unless this document is revised.
@@ -147,6 +229,7 @@ The required event types are:
 - `turn_started`
 - `prompt_rendered`
 - `agent_invoked`
+- `agent_liveness_observed`
 - `agent_exited`
 - `output_verified`
 - `review_verdict_recorded`
@@ -177,6 +260,9 @@ The runtime MUST enforce the following minimum parent rules:
 
 - `agent_invoked`
   - parent: `prompt_rendered`
+
+- `agent_liveness_observed`
+  - parent: `agent_invoked`
 
 - `agent_exited`
   - parent: `agent_invoked`
@@ -218,7 +304,8 @@ The runtime MUST reject illegal causal parentage during projection or validation
 The following semantic rules are REQUIRED:
 
 - `prompt_rendered` SHALL mean prompt rendering succeeded for the step.
-- `agent_invoked` SHALL mean the runtime attempted to launch the selected backend/role.
+- `agent_invoked` SHALL mean `run.sh` launched the worker invocation and handed execution control to the supervised runner.
+- `agent_liveness_observed` SHALL record runtime-observed worker liveness or progress between `agent_invoked` and terminal worker completion.
 - `agent_exited` SHALL record the backend process exit outcome.
 - `output_verified` SHALL mean required stage outputs were validated immediately after production.
 - `review_verdict_recorded` SHALL record a reviewer verdict after reviewer execution.
@@ -343,6 +430,17 @@ LangGraph integration SHALL obey these rules:
 - LangGraph MUST NOT redefine run authority outside Turn D/E.
 - `run.sh` SHALL remain the canonical entry path and outer runtime authority.
 
+If a supervised runner is used for worker execution, the following rules are REQUIRED:
+
+- `run.sh` SHALL remain the sole owner of canonical event emission.
+- `run.sh` SHALL emit canonical `agent_invoked` at worker-launch time and SHALL NOT reconstruct it later from `result.json`.
+- The runner SHALL write execution evidence only:
+  - `liveness.jsonl`
+  - `result.json`
+- The runner SHALL NOT write canonical events directly.
+- While the runner is still active, `run.sh` SHALL poll `liveness.jsonl` and translate each unseen liveness record into canonical `agent_liveness_observed` in near real time.
+- After runner exit, `run.sh` SHALL consume `result.json` and emit canonical terminal worker events.
+
 The Turn D/E supervisor MUST operate under the same retry budget and evidence-validation rules as the rest of the runtime.
 
 The shared attempt budget for Turn D/E SHALL be three attempts unless `run.json` explicitly defines a different approved retry budget in a future revision of this spec.
@@ -458,6 +556,7 @@ An implementation of this specification MUST satisfy all of the following:
 
 - create the required run directory structure
 - produce `run.json`, `status.json`, and `events.jsonl`
+- produce invocation packet artifacts under `invocations/`
 - emit per-step logs
 - emit the required event taxonomy
 - enforce the causal parent rules
@@ -467,6 +566,7 @@ An implementation of this specification MUST satisfy all of the following:
 - coerce final PASS to `invalidated` when governed path integrity is broken and operator mode does not allow intervention
 - keep LangGraph bounded to Turn D/E supervision only if LangGraph is present
 - keep docs as governed projections, not independent authorities
+- if a supervised runner is used, keep runner output non-canonical and require `run.sh` to translate runner liveness and terminal results into canonical events
 
 ### Required test classes
 

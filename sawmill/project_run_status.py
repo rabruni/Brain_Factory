@@ -25,6 +25,7 @@ EVENT_TYPES = {
     "turn_started",
     "prompt_rendered",
     "agent_invoked",
+    "agent_liveness_observed",
     "agent_exited",
     "output_verified",
     "review_verdict_recorded",
@@ -43,6 +44,7 @@ PARENT_RULES: dict[str, set[str]] = {
     "turn_started": {"run_started", "turn_completed"},
     "prompt_rendered": {"turn_started"},
     "agent_invoked": {"prompt_rendered"},
+    "agent_liveness_observed": {"agent_invoked"},
     "agent_exited": {"agent_invoked"},
     "output_verified": {"agent_exited"},
     "review_verdict_recorded": {"agent_exited"},
@@ -149,6 +151,9 @@ def init_run(run_dir: Path, metadata_file: Path) -> None:
         "governed_path_intact": True,
         "last_successful_event_id": "",
         "latest_failure_code": "none",
+        "worker_observation": "unknown",
+        "last_worker_observed_at": "",
+        "last_worker_progress_at": "",
     }
     with status_json_path.open("w", encoding="utf-8") as handle:
         json.dump(initial_status, handle, indent=2, sort_keys=True)
@@ -222,6 +227,8 @@ def validate_parent(
         raise ValueError(f"Event {event['event_id']} must parent a reviewer agent_exited event")
     if event_type == "evaluation_verdict_recorded" and parent_event.get("role") != "evaluator":
         raise ValueError(f"Event {event['event_id']} must parent an evaluator agent_exited event")
+    if event_type == "agent_liveness_observed" and parent_type != "agent_invoked":
+        raise ValueError(f"Event {event['event_id']} must parent an agent_invoked event")
     if event_type == "manual_intervention_recorded":
         failure_code = parent_event.get("failure_code") or "none"
         if parent_type != "timeout_triggered" and failure_code == "none" and parent_type != "run_failed":
@@ -254,14 +261,27 @@ def apply_event(status: dict[str, Any], event: dict[str, Any], operator_mode: st
     if event["event_type"] == "run_started":
         status["state"] = "running"
         status["governed_path_intact"] = True
+        status["worker_observation"] = "unknown"
     elif event["event_type"] == "retry_started":
         status["state"] = "retrying"
+        status["worker_observation"] = "unknown"
     elif event["event_type"] == "escalation_triggered":
         status["state"] = "escalated"
     elif event["event_type"] == "run_failed":
         status["state"] = "failed"
     elif event["event_type"] == "manual_intervention_recorded":
         status["governed_path_intact"] = False
+    elif event["event_type"] == "agent_invoked":
+        status["worker_observation"] = "alive"
+        status["last_worker_observed_at"] = event["timestamp"]
+    elif event["event_type"] == "agent_liveness_observed":
+        status["worker_observation"] = outcome
+        status["last_worker_observed_at"] = event["timestamp"]
+        if outcome == "progressing":
+            status["last_worker_progress_at"] = event["timestamp"]
+    elif event["event_type"] in {"agent_exited", "timeout_triggered"}:
+        status["worker_observation"] = "exited"
+        status["last_worker_observed_at"] = event["timestamp"]
     elif event["event_type"] == "run_completed":
         status["state"] = "passed"
         if not status["governed_path_intact"] and operator_mode != "manual_intervention_allowed":
@@ -276,7 +296,7 @@ def apply_event(status: dict[str, Any], event: dict[str, Any], operator_mode: st
     if event["event_type"] == "run_failed" and outcome not in {"fail", "failed", "failure"}:
         raise ValueError(f"run_failed event {event['event_id']} must have a failure outcome")
 
-    if event["event_type"] not in {"timeout_triggered", "run_failed", "escalation_triggered"} and outcome not in {"fail", "failed", "failure", "error", "timeout", "retry", "escalate"}:
+    if event["event_type"] not in {"timeout_triggered", "run_failed", "escalation_triggered"} and outcome not in {"fail", "failed", "failure", "error", "timeout", "retry", "escalate", "stalled", "transport_blocked"}:
         status["last_successful_event_id"] = event["event_id"]
 
     if status["state"] not in ALLOWED_STATES:
@@ -307,6 +327,9 @@ def project_status(run_dir: Path) -> ProjectionResult:
         "governed_path_intact": True,
         "last_successful_event_id": "",
         "latest_failure_code": "none",
+        "worker_observation": "unknown",
+        "last_worker_observed_at": "",
+        "last_worker_progress_at": "",
     }
 
     for current_position, (_, event) in enumerate(ordered):
