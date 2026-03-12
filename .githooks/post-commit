@@ -1,0 +1,18 @@
+#!/bin/sh
+#
+# post-commit hook: Auto-rebuild TechDocs and deploy to Backstage.
+# Runs after every commit. Takes ~2 seconds.
+#
+# Activate with: git config core.hooksPath .githooks
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT" || exit 0
+
+# Build TechDocs (the sync_docs.py hook syncs files + generates nav)
+python3 -m mkdocs build --site-dir /tmp/brain_factory_site --quiet 2>/dev/null || true
+
+# Deploy to Backstage static dir if it exists
+BACKSTAGE_DIR="/Users/raymondbruni/dopejar/node_modules/@backstage/plugin-techdocs-backend/static/docs/default/component/brain-factory"
+if [ -d "$BACKSTAGE_DIR" ]; then
+    cp -r /tmp/brain_factory_site/* "$BACKSTAGE_DIR/" 2>/dev/null || true
+fi

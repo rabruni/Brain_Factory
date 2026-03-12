@@ -209,5 +209,14 @@ __marimo__/
 # Sawmill runtime sentinel (written by orchestrator, not tracked)
 sawmill/.active-role
 
+# Sawmill run logs (operational data, not source)
+sawmill/FMWK-*/runs/
+
 # macOS
 .DS_Store
+
+# Auto-generated TechDocs wrapper pages (built by hooks/sync_docs.py)
+docs/spec-packs/
+docs/staging/
+docs/holdouts/
+docs/sawmill-source/
