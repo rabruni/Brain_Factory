@@ -72,11 +72,11 @@ Meta: v:1.0.0 | ratified:2026-03-01 | amended:— | authority:NORTH_STAR.md v3.0
 ---
 
 ### Article 7: IMMUDB ABSTRACTION — No Direct Dependencies
-**Rule:** All access to immudb MUST go through `platform_sdk.tier0_core.data`. No framework, service, agent, or CLI tool may import immudb SDK libraries directly. FMWK-001 wraps platform_sdk; callers wrap FMWK-001.
+**Rule:** All access to immudb MUST go through `platform_sdk.tier0_core.data`. No caller outside the `platform_sdk.tier0_core.data` adapter boundary may import immudb SDK libraries directly. FMWK-001 wraps platform_sdk; callers wrap FMWK-001.
 
 **Why:** immudb is an infrastructure dependency. If callers depend on immudb directly, swapping the backing store becomes a system-wide refactor touching every framework that writes events. The abstraction preserves the ability to evolve infrastructure. This also enforces the Platform SDK contract, which is non-negotiable per AGENT_BOOTSTRAP.md.
 
-**Test:** Grep all non-FMWK-001 files for `import immudb`, `from immudb`, or any immudb SDK namespace. Zero matches permitted. CLI tools use the same Ledger interface (or a thin offline re-implementation defined in D4) — they also do not import immudb directly.
+**Test:** Grep all files except `platform_sdk/tier0_core/data/immudb_adapter.py` for `import immudb`, `from immudb`, or any immudb SDK namespace. Zero matches permitted. CLI tools use the same Ledger interface (or a thin offline re-implementation defined in D4) and do not bypass the adapter boundary.
 
 **Violations:** No exceptions. The platform_sdk contract is architectural law, not a suggestion.
 
@@ -151,12 +151,12 @@ Meta: v:1.0.0 | ratified:2026-03-01 | amended:— | authority:NORTH_STAR.md v3.0
 
 | Operation | USE | NOT |
 |-----------|-----|-----|
-| Ledger storage access | `platform_sdk.tier0_core.data` (immudb adapter) | immudb SDK directly |
-| Configuration | `platform_sdk.tier0_core.config` | `os.getenv()` directly |
-| Secrets / credentials | `platform_sdk.tier0_core.secrets` | Hardcoded values, `os.getenv()` for secrets |
+| Ledger storage access | `platform_sdk.tier0_core.data.get_adapter()` | immudb SDK directly |
+| Configuration | `LedgerConfig.from_env()` backed by `platform_sdk.tier0_core.config` | Ad-hoc `os.getenv()` reads throughout Ledger code |
+| Secrets / credentials | `platform_sdk.tier0_core.secrets.get_secret()` | Hardcoded values, `os.getenv()` for secrets |
 | Event serialization (hash input) | `json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)` | Any JSON library with different defaults, `json.dumps()` without explicit args |
 | Hash computation | `hashlib.sha256(utf8_bytes).hexdigest()` prefixed with `sha256:` | Any hash shortcut, base64, raw bytes, uppercase output |
-| Error reporting | `platform_sdk.tier0_core.errors` | `raise Exception(...)` or bare Python exceptions |
+| Error reporting | `platform_sdk.tier0_core.errors` base classes | `raise Exception(...)` or bare Python exceptions |
 | Logging | `platform_sdk.tier0_core.logging` | `print()`, raw `structlog`, `logging.basicConfig()` |
 | Health reporting | `platform_sdk.tier2_reliability.health` | Custom `/health` endpoints |
 | Metrics | `platform_sdk.tier2_reliability` metrics module | Raw Prometheus client imports |

@@ -1,5 +1,5 @@
 # D2: Specification — FMWK-001-ledger
-Meta: pkg:FMWK-001 | v:1.0.0 | status:Draft | author:Spec Agent | sources:BUILDER_SPEC.md v3.0, OPERATIONAL_SPEC.md v3.0, SOURCE_MATERIAL.md | constitution:D1_CONSTITUTION.md
+Meta: pkg:FMWK-001 | v:1.0.0 | status:Final | author:Spec Agent | sources:BUILDER_SPEC.md v3.0, OPERATIONAL_SPEC.md v3.0, SOURCE_MATERIAL.md | constitution:D1_CONSTITUTION.md
 
 ---
 

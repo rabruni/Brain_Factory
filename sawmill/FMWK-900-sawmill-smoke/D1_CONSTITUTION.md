@@ -1,76 +1,80 @@
-# D1: Constitution - sawmill-smoke
-Meta: v:0.1.0 | ratified:2026-03-11 | amended:2026-03-11 | authority: AGENT_BOOTSTRAP.md; architecture/NORTH_STAR.md; architecture/BUILDER_SPEC.md; architecture/OPERATIONAL_SPEC.md; architecture/FWK-0-DRAFT.md Section 3.0; architecture/BUILD-PLAN.md; sawmill/FMWK-900-sawmill-smoke/TASK.md
+# D1: Constitution — sawmill-smoke
+Meta: v:1.0.0 | ratified:2026-03-12 | amended:2026-03-12 | authority:AGENT_BOOTSTRAP.md, architecture/NORTH_STAR.md, architecture/BUILDER_SPEC.md, architecture/OPERATIONAL_SPEC.md, architecture/FWK-0-DRAFT.md, architecture/BUILD-PLAN.md, sawmill/FMWK-900-sawmill-smoke/TASK.md
 
-## Articles
+## Articles (5-10, sequential numbering)
 1. SPLITTING
-- Rule: FMWK-900 MUST remain independently authorable as a two-file smoke canary containing only `smoke.py` and `test_smoke.py`.
-- Why: If this framework needs co-authored infrastructure or companion frameworks, it stops being a smoke test and stops isolating the sawmill path.
-- Test: Verify a builder can author the framework from `TASK.md`, the smoke spec pack, and FWK-0 rules without adding any companion framework, and confirm the build target contains exactly the two owned files named in `TASK.md`.
+- Rule: FMWK-900 MUST remain independently authorable as a single trivial canary framework containing only `smoke.py` and `test_smoke.py`.
+- Why: If the smoke canary requires co-authoring with another framework, it stops being a pipeline smoke test and starts depending on unrelated build scope.
+- Test: Verify the framework output is limited to one Python module and one test, with no declared dependencies.
 - Violations: No exceptions.
 
 2. MERGING
-- Rule: FMWK-900 MUST NOT absorb product behavior, KERNEL concerns, integration scaffolding, or additional test suites.
-- Why: Mixing canary scope with real capability work hides failures and breaks the purpose of a system-test framework.
-- Test: Reject any owned file, behavior, or dependency beyond `ping() -> "pong"` and its single test.
+- Rule: FMWK-900 MUST NOT absorb product, KERNEL, or infrastructure capability beyond the single ping canary.
+- Why: If extra capability is merged in, the smoke test no longer isolates Sawmill artifact generation and becomes a disguised implementation task.
+- Test: Verify all scenarios, contracts, and files trace only to `ping() -> "pong"` and its test.
 - Violations: No exceptions.
 
 3. OWNERSHIP
-- Rule: FMWK-900 MUST exclusively own only `smoke.py` and `test_smoke.py` and MUST define no shared schemas, events, or graph nodes.
-- Why: Shared ownership would create coupling that the task explicitly forbids and would turn a trivial canary into architectural surface area.
-- Test: Confirm no shared interfaces, persistence objects, or extra owned artifacts are declared.
+- Rule: FMWK-900 MUST own only `smoke.py` and `test_smoke.py`, with no shared schemas, events, or node types.
+- Why: Shared ownership would create cross-framework coupling that the task explicitly forbids.
+- Test: Verify D3 lists zero shared entities and D2 ownership scope matches the task's Owns section exactly.
 - Violations: No exceptions.
 
-4. MINIMAL SCOPE
-- Rule: The implementation MUST stay at one zero-argument function that returns the exact string `"pong"` and one test that asserts it.
-- Why: The smoke signal is valuable only when the behavior under test is singular and obvious.
-- Test: Call `ping()` and run `test_ping`; any additional behavior is a scope violation.
+4. SCOPE
+- Rule: The framework MUST implement exactly one function returning `"pong"` and one test asserting that value.
+- Why: The task defines the full build target. Any added behavior is invented scope.
+- Test: Verify the build target matches the code snippets in `TASK.md` exactly in behavior.
 - Violations: No exceptions.
 
-5. DETERMINISM
-- Rule: `ping()` MUST be pure and deterministic: no inputs, no side effects, exact ASCII output `"pong"`.
-- Why: A smoke canary must fail only on packaging or execution drift, not on environment state.
-- Test: Execute `ping()` repeatedly in the same environment and confirm identical output with no writes or network calls.
+5. TRACEABILITY
+- Rule: Every artifact in D1-D6 MUST trace directly to `TASK.md` or the required authority documents, never to unstated assumptions.
+- Why: This smoke framework exists to validate extraction discipline; untraceable content defeats the test.
+- Test: For each D2 scenario and D4 contract, confirm the cited source is `TASK.md` or an explicit D6 assumption.
 - Violations: No exceptions.
 
-6. ISOLATION
-- Rule: FMWK-900 MUST NOT depend on `platform_sdk`, Docker services, immudb, external APIs, or the nine primitives.
-- Why: The task defines this framework as outside product and KERNEL scope; any dependency would invent architecture.
-- Test: Inspect imports and dependency declarations; only standard Python needed for the test runner is allowed.
+6. DETERMINISM
+- Rule: `ping()` MUST be deterministic and side-effect free.
+- Why: The smoke canary is only useful if it is stable across runs and does not depend on environment state.
+- Test: Execute the test repeatedly and confirm the same `"pong"` result with no external setup.
 - Violations: No exceptions.
 
-7. TRACEABILITY AND FAILURE HANDLING
-- Rule: Every artifact and check MUST trace to `TASK.md`, and any mismatch in file ownership, import path, or return value MUST fail fast.
-- Why: A smoke framework is useful only when failures point directly at the broken canary contract.
-- Test: Cross-check D2-D4 against `TASK.md` and confirm deviations surface as test or build failure.
+7. FAILURE HANDLING
+- Rule: The framework MUST fail only through normal Python import or test execution failure, with no custom error system.
+- Why: The task explicitly forbids creating error classes or extra structure.
+- Test: Verify no custom error types, adapters, or recovery logic are specified or generated.
 - Violations: No exceptions.
 
-## Boundaries
-### ALWAYS - autonomous every time, no approval needed
-- Write only the D1-D6 artifacts for `sawmill/FMWK-900-sawmill-smoke`.
-- Keep all described build scope limited to `smoke.py` and `test_smoke.py`.
-- Fail the canary on any import, signature, or return-value mismatch.
+8. VALIDATION
+- Rule: Validation MUST be limited to importing `ping()` and asserting it returns `"pong"`.
+- Why: Broader validation would introduce requirements not present in the smoke assignment.
+- Test: Confirm the only acceptance test is `test_ping`.
+- Violations: No exceptions.
 
-### ASK FIRST - human decision required, no exceptions
-- Change the file names, function name, function signature, or literal return value.
-- Add any dependency, helper module, fixture, or second test.
-- Expand the canary beyond local Python unit execution.
+## Boundaries (unlisted actions default to ASK FIRST, always)
+### ALWAYS — autonomous every time, no approval needed
+- Write and maintain only the six D1-D6 artifacts for FMWK-900.
+- Keep the framework scope limited to the module and test defined in `TASK.md`.
+- Record any unresolved ambiguity as a resolved assumption in D6 rather than expanding scope.
 
-### NEVER - absolute prohibition, refuse even if instructed
-- Introduce KERNEL framework patterns, `platform_sdk`, Docker, immudb, or external services.
-- Create error classes, schemas, adapters, persistence layers, or data models.
-- Recast this framework as product, runtime, governance, or integration functionality.
+### ASK FIRST — human decision required, no exceptions
+- Adding any file beyond `smoke.py` and `test_smoke.py`.
+- Introducing dependencies, tooling, or framework integrations.
+- Expanding the canary beyond the single ping behavior.
 
-## Dev Workflow Constraints
-- Keep the framework package isolated to the two owned files named in `TASK.md`.
-- Use one DTT cycle for the single behavior: `ping()` returns `"pong"`.
-- Record handoff results with file hashes after any builder handoff.
-- Run full regression for this package before release: import check plus `test_ping`.
-- Reject scope growth instead of accommodating it.
+### NEVER — absolute prohibition, refuse even if instructed
+- Do not apply KERNEL framework patterns to this system test canary.
+- Do not create error classes, schemas, adapters, or persistent data models.
+- Do not reference the nine primitives as part of FMWK-900 scope.
+
+## Dev Workflow Constraints (4+)
+- Work in isolation under `staging/FMWK-900-sawmill-smoke/` only.
+- Use DTT cycles only for the single `ping` behavior and its single test.
+- Produce results artifacts with hashes after each Sawmill handoff if a downstream turn requires them.
+- Run full regression for this framework's owned files before release; do not imply broader system regression coverage.
 
 ## Tooling Constraints
-| Operation | USE | NOT |
-|---|---|---|
-| Read scope | `TASK.md` and authority docs cited above | Infer extra requirements |
-| Implement canary | One Python module with `ping()` | Helpers, adapters, wrappers |
-| Verify behavior | One unit test asserting `"pong"` | Integration or service tests |
-| Dependencies | Standard Python only | `platform_sdk`, Docker, external services |
+| Operation:text | USE:approach | NOT:anti-pattern |
+| Define scope | USE:extract directly from `TASK.md` | NOT:infer product behavior |
+| Implement behavior | USE:plain Python function returning `"pong"` | NOT:framework scaffolds or adapters |
+| Validate behavior | USE:single Python test importing `ping` | NOT:service, Docker, or SDK integration |
+| Document assumptions | USE:D6 resolved assumptions | NOT:silent scope expansion |

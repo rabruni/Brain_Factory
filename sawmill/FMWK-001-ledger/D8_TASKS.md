@@ -1,5 +1,5 @@
 # D8: Tasks — FMWK-001-ledger
-Meta: plan:D7 v1.0.0 | status:Draft | total_tasks:12 | parallel_opportunities:5
+Meta: plan:D7 v1.0.0 | status:Final | total_tasks:12 | parallel_opportunities:5
 
 ---
 

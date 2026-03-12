@@ -115,7 +115,7 @@ The pre-existing SDK ledger (583 lines, 3 backends) is a **different system** so
    - `SAWMILL_REVIEW_AGENT=claude`
    - `SAWMILL_EVAL_AGENT=claude`
 
-3. **Verify immudb is available for Turn E holdouts.** D9 holdout scenarios require a Docker immudb instance on port 13322 with a `ledger_hs001` database. The evaluator must be able to start this. If Docker is not running, holdout evaluation will fail.
+3. **Verify immudb is available for Turn E holdouts.** D9 holdout scenarios require a Docker immudb instance on port 3322 with a `ledger_hs001` database. The evaluator must be able to start this. If Docker is not running, holdout evaluation will fail.
 
 4. **Verify PYTHONPATH includes dopejar.** The builder handoff requires `export PYTHONPATH=/Users/raymondbruni/dopejar:$PYTHONPATH` for platform_sdk imports. This must be set in the builder's execution environment.
 
@@ -189,7 +189,7 @@ The pre-existing SDK ledger (583 lines, 3 backends) is a **different system** so
 - **Whether the prior 13Q_ANSWERS.md creates ambiguity for run.sh.** The file exists from a prior attempt. run.sh may or may not overwrite it. If it skips the 13Q phase because the file exists, the review phase may use stale answers.
 - **Whether the existing staging scaffold helps or hurts.** The builder may build on top of the existing schemas.py/errors.py (which are complete and correct) or may be confused by partial state. The handoff says CREATE for all files, not UPDATE.
 - **Whether agent workers can complete Turn D at production quality.** The canary used mock workers. FMWK-001 is a real build with 7 methods, mutex atomicity, immudb integration, and 53 tests. This is substantially harder than a mock.
-- **Whether Docker/immudb will be available for Turn E holdouts.** Holdout scenarios require Docker immudb on port 13322. If Docker is not running, all integration holdouts fail.
+- **Whether Docker/immudb will be available for Turn E holdouts.** Holdout scenarios require Docker immudb on port 3322. If Docker is not running, all integration holdouts fail.
 
 ### Unknown
 

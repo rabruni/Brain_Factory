@@ -1,5 +1,5 @@
 # D7: Plan — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2) | status:Draft | constitution:D1 v1.0.0 | gap_analysis:D6 PASS (0 open)
+Meta: v:1.0.0 (matches D2) | status:Final | constitution:D1 v1.0.0 | gap_analysis:D6 PASS (0 open)
 
 ---
 

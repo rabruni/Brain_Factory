@@ -1,5 +1,5 @@
 # D4: Contracts — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2) | data model:D3 v1.0.0 | status:Draft
+Meta: v:1.0.0 (matches D2) | data model:D3 v1.0.0 | status:Final
 
 IDs: IN-NNN (inbound), OUT-NNN (outbound), SIDE-NNN (side-effect), ERR-NNN (error).
 

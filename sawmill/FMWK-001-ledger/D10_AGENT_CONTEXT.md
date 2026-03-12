@@ -1,5 +1,5 @@
 # D10: Agent Context — FMWK-001-ledger
-Meta: pkg:FMWK-001-ledger | updated:2026-03-01
+Meta: pkg:FMWK-001 | updated:2026-03-12
 
 ---
 
@@ -73,7 +73,7 @@ Before any serialization, `check_no_floats()` recursively walks the event dict a
 `connect()` calls `list_databases()` on the adapter. If `"ledger"` is not in the result, it raises `LedgerConnectionError` immediately with zero admin calls. It NEVER calls `CreateDatabaseV2`. GENESIS is the only place that creates the database. `LedgerConfig.from_env()` reads `IMMUDB_HOST`, `IMMUDB_PORT`, and `IMMUDB_DATABASE`; the live `PlatformConfig` does not define dedicated immudb fields.
 
 **5. Cold-Storage Verifiability (D1 Article 8)** — D2 SC-005
-`verify_chain()` uses only the adapter connection (immudb gRPC :3322). It imports nothing from ledger/, Graph, HO1, HO2, or kernel. The CLI tool and the in-process call path produce identical results.
+`verify_chain()` depends only on Ledger-side code plus the adapter connection to immudb on :3322. It has no dependency on the kernel process, Graph, HO1, or HO2. The CLI tool and the in-process call path produce identical results.
 
 **6. Platform SDK Abstraction (D1 Article 7)** — D5 RQ-004
 The only file permitted to import `immudb` SDK is `immudb_adapter.py` (RealImmudbAdapter class). All other FMWK-001 code imports from `platform_sdk.tier0_core.data`. Static analysis gate T-012 enforces this.

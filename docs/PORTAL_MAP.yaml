@@ -46,6 +46,10 @@ entries:
     mirror: docs/architecture/FRAMEWORK_REGISTRY.md
     sync: mirror
 
+  - source: architecture/GROUND_TRUTH_AUDIT.md
+    mirror: docs/architecture/GROUND_TRUTH_AUDIT.md
+    sync: mirror
+
   - source: architecture/AGENT_CONSTRAINTS.md
     mirror: docs/architecture/AGENT_CONSTRAINTS.md
     sync: mirror

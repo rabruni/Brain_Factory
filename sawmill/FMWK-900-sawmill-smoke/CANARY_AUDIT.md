@@ -1,8 +1,8 @@
 # Canary Audit — FMWK-900-sawmill-smoke
 
-Stage: Turn E
-Date: 2026-03-11T21:49:03Z
-Pass: 45
+Stage: Turn BC
+Date: 2026-03-12T06:33:32Z
+Pass: 26
 Fail: 0
 
 ## Results
@@ -26,37 +26,18 @@ Fail: 0
 | PASS | Portal: Turn B DONE |
 | PASS | d9_holdout_scenarios exists |
 | PASS | Portal: Turn C DONE |
-| PASS | 13Q answers exist |
-| PASS | REVIEW_REPORT.md exists |
-| PASS | REVIEW_ERRORS.md exists |
-| PASS | Review verdict parseable |
-| PASS | builder_evidence exists |
-| PASS | q13_answers exists |
-| PASS | results exists |
-| PASS | review_errors exists |
-| PASS | review_report exists |
-| PASS | reviewer_evidence exists |
-| PASS | staging_root exists |
-| PASS | Portal: Turn D DONE |
-| PASS | evaluation_errors exists |
-| PASS | evaluation_report exists |
-| PASS | evaluator_evidence exists |
-| PASS | Portal: Turn E PASS |
 | PASS | Portal says A DONE → Turn A complete |
 | PASS | Portal says B DONE → Turn B complete |
 | PASS | Portal says C DONE → Turn C complete |
-| PASS | Portal says D DONE → Turn D complete |
-| PASS | Portal says E PASS → Turn E complete |
-| PASS | Portal says E PASS → evaluation verdict PASS |
 | PASS | PORTAL_STATUS.md exists |
 | PASS | PORTAL_CHANGESET.md exists |
 | PASS | validate_portal_map.py passes |
 | PASS | catalog-info.yaml exists |
-| PASS | Mirrors synced: 44/44 |
+| PASS | Mirrors synced: 45/45 |
 | PASS | portal-steward ran for this stage |
 | INFO | PORTAL_STATUS.md changed this stage |
 | INFO | PORTAL_CHANGESET.md changed this stage |
 
 ## Verdict
 
-**PASS** — all 45 checks passed
+**PASS** — all 26 checks passed

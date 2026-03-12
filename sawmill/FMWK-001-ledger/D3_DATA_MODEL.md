@@ -1,5 +1,5 @@
 # D3: Data Model — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2) | status:Draft | shared entities:5
+Meta: v:1.0.0 (matches D2) | status:Final | shared entities:5
 
 ---
 

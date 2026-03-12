@@ -1,25 +1,30 @@
-# D3: Data Model - sawmill-smoke
-Meta: v:0.1.0 (matches D2) | status:Final | shared entities:0
+# D3: Data Model — sawmill-smoke
+Meta: v:1.0.0 (matches D2) | status:Final | shared entities:0
 
-## Entities
-None. FMWK-900 defines no runtime or persistent data entities. `TASK.md` explicitly forbids creating a data model; this framework owns code artifacts only.
+## Entities (E-### IDs, e.g. E-001)
+No persistent or shared data entities are defined for this framework. The assignment explicitly forbids creating data models beyond the trivial function and test.
 
-Fields table: N/A
+### E-001 — PingReturn
+- Scope: PRIVATE
+- Used By: n/a
+- Source: SC-001, SC-002
+- Description: Ephemeral string output produced by `ping()` and consumed immediately by the unit test assertion. It is not stored, shared, serialized, or versioned.
 
-JSON example:
+| Field | Type | Required | Description | Constraints |
+| return_value | Type:string | Req:yes | Desc:Literal returned by `ping()` | Constraint:must equal `pong` |
+
 ```json
-null
+{
+  "return_value": "pong"
+}
 ```
 
-Invariants:
-- No schemas, events, graph nodes, or persisted records are introduced by this framework.
-- The return value `"pong"` is a scalar function result, not a modeled entity.
+Invariants: `return_value` is always the literal `"pong"` when `ping()` succeeds.
 
 ## Entity Relationship Map
 ```text
-No entities.
-No relationships.
+ping() -> PingReturn("pong") -> test_ping assertion
 ```
 
 ## Migration Notes
-No prior model - greenfield. No data model exists or is added.
+No prior model — greenfield.
