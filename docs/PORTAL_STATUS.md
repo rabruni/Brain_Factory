@@ -1,25 +1,19 @@
 # Portal Status
 
-**Status**: PORTAL HEALTH
-**Authority label**: status
-**Last updated**: 2026-03-12
-
 - Framework: `FMWK-900-sawmill-smoke`
-- Stage scope: `Turn BC` portal alignment
-- Run ID: `20260312T061949Z-6a7e9d45269b`
-- Runtime state: `running`
-- Governed path intact: `true`
-- Portal health: healthy
+- Stage: `Turn E`
+- Run ID: `20260318T041151Z-03ee32956103`
+- Status: healthy after scoped portal alignment
 
-## Current Alignment
+## Current Health
 
-- `docs/sawmill/FMWK-900-sawmill-smoke.md` reflects Turn BC completion for run `20260312T061949Z-6a7e9d45269b`: Turn A, Turn B, and Turn C are marked `DONE`, with Turn D and Turn E still pending.
-- `docs/validate_portal_map.py` passes in the current working tree (`PASS: 64 entries, 0 errors`).
-- BC-relevant mirrors checked in this pass are in sync with source truth; no manual mirror repair was required.
-- `mkdocs.yml` nav targets exist in the checked scope (`ALL_NAV_TARGETS_EXIST`).
-- `catalog-info.yaml` remains consistent with repo reality: one `Component` named `brain-factory` with `backstage.io/techdocs-ref: dir:.`.
+- `docs/sawmill/FMWK-900-sawmill-smoke.md` reflects Turn E completion for run `20260318T041151Z-03ee32956103`; the stage table shows `Turn E (Eval) | PASS`.
+- `python3 docs/validate_portal_map.py` passes (`16 entries, 0 errors`).
+- Turn E mirrors in `docs/spec-packs/FMWK-900-sawmill-smoke/` are synced for `EVALUATION_REPORT` and `EVALUATION_ERRORS`; previously mirrored Turn B-D artifacts remain aligned.
+- `mkdocs.yml` nav targets resolve to existing files, including the Turn E additions under `FMWK-900-sawmill-smoke`.
+- `catalog-info.yaml` matches the current repo surface; no catalog changes were required.
+- The latest run status file remains `state: running` during the portal stage, while `EVALUATION_REPORT.md` records `Final verdict: PASS`; no source-truth conflict was introduced by portal alignment.
 
 ## Known Drift
 
-- No Turn BC portal drift remains in the checked scope.
-- Broader portal audit findings in `sawmill/PORTAL_AUDIT_RESULTS.md` remain outside this stage-scoped repair pass.
+- No Turn E portal drift remains in scope after the mirror refresh.

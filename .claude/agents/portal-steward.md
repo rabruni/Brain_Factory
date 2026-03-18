@@ -70,6 +70,13 @@ Every human-facing page must be one of:
 - `sawmill/PORTAL_CHANGESET.md` — list of exact updates applied this run
 - Updated `docs/`, `mkdocs.yml`, `catalog-info.yaml` as needed
 
+## Declared Output Artifacts
+
+- `portal_status` -> `docs/PORTAL_STATUS.md`
+- `portal_changeset` -> `sawmill/PORTAL_CHANGESET.md`
+
+## Output Scope
+
 Do NOT claim runner-owned stage-local status updates or framework-local stage
 audits as portal-steward responsibilities.
 

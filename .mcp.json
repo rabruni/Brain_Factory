@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "techdocs": {
+      "command": "/opt/homebrew/bin/python3.12",
+      "args": ["mcp_techdocs.py"],
+      "cwd": "/Users/raymondbruni/Cowork/Brain_Factory"
+    }
+  }
+}

@@ -25,6 +25,7 @@ It is a portal/status view, not runtime authority.
 | R-001 | Artifact policy fields still partly metadata | Incomplete policy enforcement from registry fields alone | Incrementally promote metadata fields to runtime checks |
 | R-002 | Freshness checks are mtime-based | Regeneration proof is weaker than content attestations | Add hash/content-based regeneration evidence |
 | R-003 | Narrative drift can reappear over time | Agents may get mixed signals later | Keep lint check mandatory for runtime-adjacent doc updates |
+| R-004 | Registry Bypass via Environment Overrides | Shadow Intelligence: documented backends (YAML) are silently superseded by environment variables | Warn or block when registry defaults are overridden; require explicit flags for overrides |
 
 ## Required Verification Before Declaring Runtime-Doc Pass
 

@@ -1,19 +1,14 @@
 ---
-title: "FWK-0 — The Framework Framework (ROUGH DRAFT)"
-status: DRAFT — NOT AUTHORITY
-version: "0.2"
-last_updated: "2026-02-26"
+title: "FWK-0 — The Framework Framework"
+status: AUTHORITY
+version: "1.0.0"
+last_updated: "2026-03-17"
 author: "Ray Bruni + Claude"
 audience: "Builder agents authoring frameworks for DoPeJarMo. Humans reviewing framework design."
 depends_on:
   - NORTH_STAR.md
   - BUILDER_SPEC.md
   - OPERATIONAL_SPEC.md
-notes: >
-  This is a rough draft capturing decisions made during design sessions.
-  It is NOT an authority document. It will be refined, validated, and
-  promoted to authority status through review. Outstanding questions
-  are tracked in FWK-0-OPEN-QUESTIONS.md.
 ---
 
 # FWK-0 — The Framework Framework
@@ -95,6 +90,11 @@ FMWK-003-memory/SPEC-001-learning/PC-001-consolidation/
 
 A file's provenance is readable from its path without opening any metadata file.
 
+Canonical framework identifier rule:
+- The full framework identifier used in directories, path resolution, `TASK.md`, registries, and agent-authored documents is `FMWK-NNN-name` (for example, `FMWK-001-ledger`).
+- The numeric portion `FMWK-NNN` is the ID component only.
+- When any document references a framework by identifier for path-bearing purposes, it MUST use the full form.
+
 ### Uniqueness Rules
 
 - Framework IDs are globally unique across the system.
@@ -103,7 +103,42 @@ A file's provenance is readable from its path without opening any metadata file.
 - Prompt Contract IDs are unique within their parent framework.
 - The combination of framework ID + spec pack ID + pack ID + filename is the globally unique identifier for any file in the governed filesystem.
 
-> **OPEN QUESTION:** Are IDs purely sequential, or should they be content-addressed (hash-derived)? Sequential is simpler. Content-addressed gives you collision-free IDs across independent builders. See FWK-0-OPEN-QUESTIONS.md.
+### ID Assignment Model
+
+Builder proposes ID at authoring time in `framework.json`. Gates validate uniqueness at install time.
+
+- **Authoring time:** Builder agent declares the ID in the staging directory (e.g., `FMWK-050-my-framework`). The proposal is declarative — written in `framework.json`. No lock, no central registry, no coordination needed. Multiple builders can author in parallel with overlapping ID proposals.
+- **Install time:** Package Lifecycle validates: "Is this ID already installed?" If yes → reject as duplicate, builder resubmits with a different ID. If no → install and reserve the ID. Ledger records `framework_installed` event with the assigned ID.
+- **Forward-compatible:** Can migrate to content-addressed IDs later without changing on-disk format.
+
+### Reserved Ranges
+
+| Range | Layer | Purpose |
+|-------|-------|---------|
+| 001–009 | KERNEL | Core primitives (6 frameworks currently) |
+| 010–019 | Layer 1 | DoPeJarMo OS frameworks |
+| 020–029 | Layer 2 | DoPeJar product frameworks |
+| 030+ | Extensions | Future agents and capabilities |
+
+Must not skip a number within a reserved range. If a framework fails to build, its ID stays reserved until explicitly reclaimed.
+
+### Naming Regex
+
+```
+Framework ID:  ^FMWK-[0-9]{3}$
+Name component: ^[a-z][a-z0-9-]{1,63}$
+Full directory: FMWK-NNN-name
+
+Spec Pack ID:  ^SPEC-[0-9]{3}$
+Full directory: SPEC-NNN-name
+
+Pack ID:       ^PC-[0-9]{3}$
+Full directory: PC-NNN-name
+```
+
+### Rename Policy
+
+Frameworks are not renamed. Create a new framework and migrate consumers. Old framework deprecated via Ledger. The cost of non-renameability is deliberate: human-readable paths and path-readable provenance outweigh rename flexibility.
 
 ---
 
@@ -189,7 +224,71 @@ Every framework contains a `framework.json` at its root directory.
 }
 ```
 
-> **OPEN QUESTION:** What is the concrete structure of a governance rule? Is it declarative (checked by gates) or executable (code that runs during validation)? See FWK-0-OPEN-QUESTIONS.md.
+#### Governance Rule Enforcement Model
+
+Governance rules use a two-tier enforcement model:
+
+**Tier 1 — Mechanical checks (KERNEL gates):**
+- `gate-check` — Schema validation at install time. Synchronous, deterministic. If check fails, package is rejected.
+- `architectural-boundary` — Structural constraint enforced by dependency inspection. Example: "no direct immudb dependency."
+- `ownership-check` — Verified through Ledger event replay (post-install audit). Cold-storage CLI can validate without kernel.
+
+**Tier 2 — Cognitive checks (Layer 1+ gates):**
+- `code-review` — HO1 work order evaluates code quality.
+- `output-evaluation` — HO1 work order evaluates outputs against criteria.
+- `behavioral-assessment` — HO1 work order evaluates behavioral properties.
+
+KERNEL gates use mechanical checks only. Cognitive tier is added when HO1 is operational (Layer 1+). Both tiers must pass for a rule to be satisfied.
+
+**Governance rule categories:** structural, boundary, quality, process, ownership, behavioral, affect.
+
+**Expanded example (`framework.json` governance_rules):**
+
+```json
+{
+  "governance_rules": [
+    {
+      "rule_id": "GOV-001",
+      "description": "All learning artifacts must be consolidated before reaching 10 items",
+      "category": "data-quality",
+      "scope": "applies-to: PC-001-consolidation",
+      "enforcement": {
+        "type": "gate-check",
+        "gate_stage": "pack-install",
+        "check_type": "schema-validation",
+        "schema_reference": "PC-004-learning-quality/consolidation-acceptance-criteria.json"
+      },
+      "audit_note": "Prevents runaway artifact accumulation."
+    },
+    {
+      "rule_id": "GOV-002",
+      "description": "All Ledger writes must go through Write Path, not direct append",
+      "category": "write-integrity",
+      "scope": "applies-to: FMWK-003",
+      "enforcement": {
+        "type": "architectural-boundary",
+        "boundary_check": "no-pack-declares-direct-immudb-dependency",
+        "validated_by": "dependency resolver at install time"
+      },
+      "audit_note": "Architectural constraint. No module pack can declare immudb as direct dependency."
+    },
+    {
+      "rule_id": "GOV-003",
+      "description": "Memory learning artifacts are owned by this framework; no other framework may modify them",
+      "category": "ownership",
+      "scope": "applies-to: PC-001, PC-002",
+      "enforcement": {
+        "type": "ownership-check",
+        "enforced_by": "gate-pack-validation-ownership",
+        "ledger_verification": "every artifact in this pack's write events must credit FMWK-003"
+      },
+      "audit_note": "Verified through Ledger event replay."
+    }
+  ]
+}
+```
+
+**Cold-storage note:** Cold-storage validation runs mechanical checks only. Cognitive checks require a running HO1 and are not available from cold storage.
 
 ### 3.2 Filesystem — Where Frameworks Live
 
@@ -341,7 +440,7 @@ Each pack type has additional requirements beyond the base schema:
 
 **protocol_definition** — Contains interface contracts that other frameworks can consume. Gate checks: every file declares an interface_id that matches the parent framework's interfaces.exposes entries.
 
-> **OPEN QUESTION:** Should pack types be structurally different schemas (different required fields per type) or a base schema with a type flag and type-specific validation in gates? See FWK-0-OPEN-QUESTIONS.md.
+Single `pack.json` schema with type flag. Type-specific validation runs in gates, not in the schema itself. New pack types are registered by extension frameworks (see Section 9).
 
 ### 5.3 Filesystem — Where Packs Live
 
@@ -361,9 +460,7 @@ Each pack type has additional requirements beyond the base schema:
 - Every pack gets exactly one directory under its parent spec pack.
 - The directory name encodes the pack ID and human-readable name.
 - `pack.json` sits at the pack directory root.
-- All pack files are immediate children of the pack directory (no subdirectories within a pack).
-
-> **OPEN QUESTION:** Should packs allow subdirectories for complex module packs (e.g., Python packages with __init__.py)? Or must all files be flat within the pack directory? See FWK-0-OPEN-QUESTIONS.md.
+- Pack files may include subdirectories. File paths in `pack.json` are relative paths (e.g., `src/handler.py`). Hashes cover every file. Ownership applies to every file. Gate validation discovers files recursively.
 
 ### 5.4 Gate — Pack Validation
 
@@ -519,6 +616,8 @@ Any failure at any step → entire package rejected. All frameworks in the packa
 
 Every install lifecycle action writes events to the Ledger. These events are what make cold-storage validation possible.
 
+**Versioning policy:** Replace in place. No version directories on filesystem. Rollback reconstructs from Ledger replay. The Ledger is the source of truth for version history.
+
 | Event Type | When | Fields |
 |------------|------|--------|
 | `package_install_started` | Package submitted to install lifecycle | package_id, framework_ids[], version, timestamp |
@@ -528,10 +627,14 @@ Every install lifecycle action writes events to the Ledger. These events are wha
 | `ownership_recorded` | Ownership entries created for framework's files | package_id, framework_id, file_count, timestamp |
 | `package_install_complete` | All frameworks installed, system verified | package_id, framework_ids[], version, timestamp |
 | `package_install_rolled_back` | System gate failed, all frameworks reverted | package_id, reason, timestamp |
+| `framework_upgrade_started` | Version comparison passed, replacement begins | package_id, framework_id, old_version, new_version, timestamp |
+| `framework_upgrade_complete` | New version in place, ownership updated | package_id, framework_id, new_version, file_count, timestamp |
+| `rollback_initiated` | Operator or gate triggers rollback | package_id, framework_id, target_version, reason, timestamp |
+| `rollback_complete` | Previous version reconstructed from Ledger | package_id, framework_id, restored_version, timestamp |
 | `package_uninstall_started` | Removal initiated | package_id, framework_ids[], timestamp |
 | `package_uninstall_complete` | All frameworks removed, ownership cleared, system verified | package_id, framework_ids[], timestamp |
 
-> **OPEN QUESTION:** Uninstall process — does removal run gates in reverse? Does it check for dependent frameworks before allowing removal? See FWK-0-OPEN-QUESTIONS.md.
+**Uninstall process:** Reverse dependency check is a prerequisite — if dependent frameworks exist, reject uninstall. Then: remove files → clear ownership → append uninstall events → system gate verifies filesystem consistency after removal.
 
 ### 7.4 Dependency Resolution
 
@@ -548,6 +651,30 @@ The install lifecycle checks:
 3. Every consumed interface (from framework.json interfaces.consumes) has a provider — either among installed frameworks or within the same package.
 
 If any dependency is not met, the package is rejected before gate checks run.
+
+### Topological Sort for Multi-Framework Packages
+
+**Algorithm:** Kahn's algorithm (or DFS-based) on the internal dependency graph.
+
+1. Read all frameworks in the package.
+2. Extract dependencies: for each framework, read `framework.json`, collect internal dependencies.
+3. Topological sort.
+4. Cycle detection: if topological sort fails → reject package with `circular_dependency` reason.
+5. Install in sorted order: each framework goes through full gate sequence before the next starts.
+6. If any framework's gates fail → reject entire package (atomic).
+
+**KERNEL example (install order):**
+
+```
+1. FMWK-001 (ledger)         — no internal dependencies
+2. FMWK-002 (write-path)     — depends on 001
+3. FMWK-003 (orchestration)  — depends on 001, 002
+   FMWK-005 (graph)          — depends on 001, 002 (parallel with 003 in future)
+4. FMWK-004 (execution)      — depends on 003
+5. FMWK-006 (package-lifecycle) — depends on 001, FWK-0
+```
+
+**Parallelization:** Deferred to Layer 1+. v1 installs sequentially in sorted order — simple, deterministic.
 
 ---
 
@@ -629,6 +756,81 @@ Frameworks do not call each other directly. All inter-framework communication fl
 
 No framework has a direct function call to another framework. Reading published artifacts (protocol definitions, schemas) from the governed filesystem is permitted — that's reading published specifications, not calling functions. Runtime data exchange flows through primitives only.
 
+WebSocket is KERNEL infrastructure (analogous to the TCP/IP stack), not a framework. The kernel process listens on `:8080` for operator and agent connections. Agent Interface (Layer 1 framework) provides interactive capabilities over those connections. If Agent Interface is removed, the operator retains CLI access.
+
+### 8.5 KERNEL Activation Sequence
+
+After KERNEL installation completes and all files are on disk with hashes verified, the following activation sequence brings the kernel to operational state:
+
+```
+1. STOP OLD KERNEL (if running)
+   └── Drain in-flight work orders
+   └── Snapshot Graph to /snapshots/
+   └── Append SESSION_END to Ledger
+   └── Close all WebSocket connections
+
+2. VALIDATE KERNEL INTEGRITY (cold-storage validation)
+   └── CLI tool connects directly to immudb
+   └── Walks the framework chain: FMWK-001 through FMWK-006
+   └── Verifies each file's hash against Ledger
+   └── Confirms no ownership conflicts
+   └── If any check fails → operator must diagnose before proceeding
+
+3. LOAD GRAPH FROM SNAPSHOT (if exists)
+   └── Most recent snapshot from /snapshots/
+   └── Load into RAM (ephemeral)
+   └── If no snapshot (first boot) → create empty Graph
+
+4. REPLAY LEDGER FROM SNAPSHOT POINT
+   └── Read all events after snapshot timestamp from immudb
+   └── Fold each event into Graph
+   └── Result: Graph is current state as of latest event
+
+5. VALIDATE COMPOSITION
+   └── Read all framework.json files from /governed
+   └── Build dependency graph
+   └── Verify: every consumed interface has a provider
+   └── Verify: no circular dependencies
+   └── If any check fails → operator sees which framework is broken
+
+6. INITIALIZE WRITE PATH
+   └── Create connection to immudb gRPC
+   └── Set synchronous mode
+   └── Test connection: append a ping event, confirm received
+   └── If connection fails → kernel cannot start, hard stop
+
+7. INITIALIZE HO1 (EXECUTION)
+   └── Attempt connection to Ollama at localhost:11434
+   └── If Ollama not available → log warning, continue with degraded service
+
+8. INITIALIZE ZITADEL (IDENTITY)
+   └── Attempt connection to OIDC endpoint
+   └── If Zitadel not available → log error, operator cannot authenticate
+
+9. BUILD COMPOSITION REGISTRY (in-memory)
+   └── Iterate all frameworks in /governed
+   └── Extract interfaces from framework.json
+   └── Build maps: framework_id → exposes/consumes → [interfaces]
+
+10. START WEBSOCKET SERVER
+    └── Listen on :8080
+    └── Routes: /operator, /user, /internal
+
+11. OPERATOR CONFIRMATION
+    └── Operator connects and authenticates
+    └── Operator confirms: "System ready"
+
+12. PROCEED TO PHASE 3 (DoPeJarMo Agent Interface installation)
+    └── Operator installs first governed package via CLI
+    └── Composition registry updates with new framework
+```
+
+**Recovery from partial failure:**
+- Step 5 (composition) fails → operator sees broken framework, can rollback or reinstall
+- Step 6 (Write Path) fails → kernel cannot start, operator restarts immudb
+- Step 7 (HO1) fails → kernel starts with degraded service (no local LLM), recovers without restart
+- Step 8 (Zitadel) fails → kernel starts, operator cannot authenticate, must restart Zitadel
+
 ---
 
 ## 9. Hierarchy Extensibility
@@ -650,7 +852,37 @@ When the hierarchy evolves, existing frameworks may not conform to the new struc
 
 The intent is that the governance quality stays consistent or improves over time. The hierarchy can evolve without breaking existing provenance chains.
 
-> **OPEN QUESTION:** What is the concrete mechanism for a hierarchy extension? Does it modify FWK-0's schemas directly (dangerous — changes the foundation), or does it add supplementary schemas that extend FWK-0 (safer — additive only)? See FWK-0-OPEN-QUESTIONS.md.
+**FWK-0 immutability:** FWK-0 is immutable after GENESIS. Extensions are additive only — separate frameworks that reference FWK-0 but do not modify it. If FWK-0 itself needs to change, a new version is installed as a new package (the Ledger records the transition).
+
+**Concrete extension example:**
+
+```json
+{
+  "id": "FMWK-040",
+  "name": "container-extension",
+  "extends_framework": "FMWK-000",
+  "new_pack_types": [
+    {
+      "pack_type": "container-pack",
+      "schema_reference": "PC-001-container-schema/container-pack-schema.json",
+      "gate_checks": [
+        {
+          "check_name": "container-image-valid",
+          "enforced_by": "FMWK-040-container-extension/PC-002-gates/container-validation.json"
+        }
+      ]
+    }
+  ]
+}
+```
+
+When FMWK-040 is installed:
+1. FWK-0 gates validate FMWK-040's own structure (it is a normal framework).
+2. FMWK-040 registers itself as an extension (`extension_registered` event in Ledger).
+3. Future package validators read Ledger and compose gate checks: FWK-0 gates + FMWK-040 gates.
+4. FWK-0 is unchanged; new capabilities are layered on top.
+
+**Grandfather clause:** Frameworks installed under FWK-0 v1.0.0 remain valid under v1.0.0 rules. If FWK-0 updates to v2.0.0, new frameworks validate against v2.0.0 gates. Cold-storage validator respects version boundaries.
 
 ---
 
@@ -693,6 +925,26 @@ The build environment provides:
   - `validate <path>` — run gate checks against a layer or full package (dry run)
   - `package <framework-path>` — assemble manifest.json, compute total_sha256
 
+#### Mock Provider Architecture
+
+Mock providers replace real services via Docker adapter. Builders see no difference — same APIs, same ports.
+
+- **Mock Ollama** (HTTP `:11434`) — same REST API, canned responses by prompt hash. No actual LLM call.
+- **Mock Ledger** (gRPC `:3322`) — in-memory event store, immediate ACK. Events stored in RAM, discarded after test.
+- **Mock Graph** — accepts fold events, responds to queries. In-memory state.
+
+Key property: a framework tested against mocks should work against real services with high confidence. This holds if mock implementations are deterministic, respect the same schemas, and fail fast on invalid inputs.
+
+#### Test Tiers
+
+| Tier | What it tests | Pass condition |
+|------|--------------|----------------|
+| Smoke | Does the framework install? Do gates pass? | `validate` returns clean |
+| Integration | Do prompt contracts execute correctly? | Prompt executes via mock Ollama, result folds into mock Graph |
+| E2E | Does a full turn work with this framework active? | System produces output without deadlock or error |
+
+**Prompt contract testing:** 5-stage validation — structural schema, template sanity, schema consistency, mock execution, integration with HO1. Structural + mock execution sufficient for KERNEL build.
+
 ### 10.3 Quality Measures as Test Suites
 
 Quality measure packs (type: `quality_measure`) are not just validation schemas checked at install time. They are structured test definitions that builder agents execute during the build loop.
@@ -733,7 +985,7 @@ External agents (Claude, Codex, or any future LLM agent) can use DoPeJarMo as a 
 
 The external agent doesn't need to understand DoPeJarMo's internal architecture. It needs to know how to say "remember this." The protocol definition for external agent integration defines the submission interface.
 
-> **OPEN QUESTION:** What is the minimal integration protocol for external agents? Event submission API? Structured format? Authentication? See FWK-0-OPEN-QUESTIONS.md.
+External agent integration protocol is deferred to Layer 1 (FMWK-010-agent-interface). FWK-0 does not constrain the protocol design. The interface contract will be defined as a protocol definition pack within the Agent Interface framework.
 
 ---
 
@@ -790,6 +1042,64 @@ FWK-0 passes its own gates:
 - FWK-0's own package manifest (used during GENESIS bootstrap) passes the package gate
 
 If any of these checks fail, FWK-0 is incomplete. The self-referential test is the acceptance criterion for FWK-0 itself.
+
+### GENESIS Bootstrap Ceremony
+
+GENESIS is a ceremony, not automation. The root of trust is human verification.
+
+```
+1. CREATE DOCKER VOLUMES
+   ├── /governed/           (empty, pristine)
+   ├── /staging/            (empty, ungoverned)
+   ├── /snapshots/          (empty, no initial snapshot)
+   └── immudb ledger_data   (empty, ready for events)
+
+2. INITIALIZE IMMUDB
+   ├── Start ledger container
+   ├── Wait for gRPC ready on :3322
+   ├── Append special event: genesis_started (timestamp, version)
+   └── Root of hash chain established
+
+3. CREATE GOVERNED FILESYSTEM STRUCTURE
+   └── mkdir -p /governed/FMWK-000-framework/SPEC-001-hierarchy/
+       ├── PC-001-schemas/
+       ├── PC-002-gate-definitions/
+       ├── PC-003-filesystem-convention/
+       ├── PC-004-install-events/
+       └── PC-005-composition/
+
+4. POPULATE FWK-0 FILES (hand-verified, copied from source repo)
+
+5. COMPUTE AND VERIFY HASHES
+   ├── For every file: compute SHA256, record in parent pack.json
+   └── Independent human checks hashes against source
+
+6. ASSEMBLE SELF-REFERENTIAL PACKAGE
+   ├── Create manifest.json (in staging, not /governed)
+   └── Hand-verify total_sha256
+
+7. RECORD BOOTSTRAP EVENTS TO LEDGER
+   ├── genesis_started
+   ├── framework_installed: FMWK-000
+   ├── ownership_recorded: FMWK-000, all files
+   └── genesis_complete: timestamp, root_event_hash
+
+8. BUILD COMPOSITION REGISTRY (in-memory)
+   └── Read all framework.json files from /governed (just FMWK-000)
+
+9. BOOTSTRAP KERNEL PROCESS
+   ├── Start kernel container
+   ├── Load Graph (empty on first boot)
+   ├── Replay Ledger events
+   ├── Validate FWK-0's own gates (self-referential check)
+   └── If validation fails → hard stop, operator intervention
+
+10. OPERATOR CONFIRMATION
+    └── Manually verify: Ledger has genesis events, /governed exists,
+        kernel accepting connections → proceed to KERNEL phase
+```
+
+**Key insight:** GENESIS is NOT automated because the root of trust requires human verification. If GENESIS were automated, verifying the automation creates infinite regress. The bootstrap circularity (FWK-0 defines gates, FWK-0 is validated by its own gates) is resolved by hand-verification: "I as a human opened framework.json, checked its content, recomputed its hash, confirmed it matches."
 
 ---
 
@@ -903,15 +1213,8 @@ The build process is not an afterthought. Builder agents (and eventually DoPeJar
 
 Every previous build failed because builder agents over-indexed on governance and lost the product. The governance is plumbing. Nobody builds a house because they love plumbing. They build it because they need water to work reliably. If you are reading FWK-0 and thinking "governance system" — stop. Read NORTH_STAR's Drift Warning. This is a memory system that happens to need governance.
 
-### B.9 — Pragmatic Decisions for 48-Hour Sprint
+### B.9 — Pragmatic Decisions (Now Integrated)
 
-Seven must-resolve questions were analyzed and given concrete v1 answers (captured in FWK-0-PRAGMATIC-RESOLUTIONS.md). Key decisions:
-- ID assignment: builder proposes, gates validate uniqueness at install, reserved ranges prevent collisions
-- Governance rules: declarative JSON with three enforcement types (gate-check, architectural-boundary, ownership-check)
-- Versioning: replace in place, rollback from Ledger replay
-- KERNEL decomposition: 6 frameworks (ledger, write-path, orchestration, execution, graph, package-lifecycle). CLI merged into package-lifecycle per decomposition standard (Section 3.0).
-- Paths: ID+name (FMWK-NNN-name), rename = new framework
-- Hierarchy extension: additive only, FWK-0 is immutable after GENESIS
-- Multi-framework dependency: topological sort, cycle detection
+Seven must-resolve questions and seven critical gaps were analyzed, answered, and approved (2026-02-28). These decisions are now integrated into the main document sections. See Sections 2 (ID conventions), 3.1 (governance rules), 7.3 (versioning/events), 7.4 (dependency resolution), 8.4–8.5 (composition/activation), 9 (extensibility), 10.2 (build environment), and 11 (GENESIS bootstrap) for the authoritative text.
 
-Seven new gaps were also surfaced: GENESIS bootstrap sequence, builder context window budget, mock provider architecture, KERNEL activation sequence, WebSocket ownership (KERNEL infrastructure, not framework), prompt contract testing strategy, and capability discovery/registration.
+Original analysis preserved in `FWK-0-PRAGMATIC-RESOLUTIONS.md` and `FWK-0-OPEN-QUESTIONS.md` (historical record).

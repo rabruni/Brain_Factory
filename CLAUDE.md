@@ -22,7 +22,7 @@ When you encounter ambiguity, resolve it by walking UP:
 | `architecture/NORTH_STAR.md` | Design authority | WHY — resolves all ambiguity |
 | `architecture/BUILDER_SPEC.md` | Build authority | WHAT — primitive definitions |
 | `architecture/OPERATIONAL_SPEC.md` | Operational authority | HOW — runtime behavior |
-| `architecture/FWK-0-DRAFT.md` | Framework authority | Framework schemas, gates, filesystem |
+| `architecture/FWK-0-DRAFT.md` | Framework authority (v1.0.0) | Framework schemas, gates, filesystem, bootstrap |
 | `architecture/BUILD-PLAN.md` | Current plan | What gets built, in what order |
 | `architecture/AGENT_CONSTRAINTS.md` | Agent governance | How agents stay on track |
 

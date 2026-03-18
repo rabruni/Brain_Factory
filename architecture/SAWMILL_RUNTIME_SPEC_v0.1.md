@@ -328,6 +328,8 @@ Missing, malformed, or contradictory evidence MUST invalidate the run.
 
 `builder_evidence.json` is REQUIRED for Turn D build completion.
 
+All evidence hash fields in this section MUST use `sha256:<64hex>` format.
+
 It MUST contain:
 
 - `run_id`
@@ -359,6 +361,8 @@ Each `behaviors[]` entry MUST contain:
 
 `reviewer_evidence.json` is REQUIRED for Turn D review completion.
 
+All evidence hash fields in this section MUST use `sha256:<64hex>` format.
+
 It MUST contain:
 
 - `run_id`
@@ -381,6 +385,8 @@ It MUST contain:
 ### 4.3 `evaluator_evidence.json`
 
 `evaluator_evidence.json` is REQUIRED for Turn E completion.
+
+All evidence hash fields in this section MUST use `sha256:<64hex>` format.
 
 It MUST contain:
 

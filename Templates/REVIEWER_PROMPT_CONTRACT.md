@@ -37,11 +37,20 @@ Your task:
 Output requirements:
 1. Write [REVIEW_REPORT_PATH]
 2. Write [REVIEW_ERRORS_PATH]
-3. Include exactly one line in REVIEW_REPORT.md:
-   Builder Prompt Contract Version Reviewed: [BUILDER_CONTRACT_VERSION]
+3. Write `reviewer_evidence.json` with:
+   - `run_id`
+   - `attempt`
+   - `q13_answers_hash` in `sha256:<64hex>` format
+   - `builder_prompt_contract_version_reviewed`
+   - `reviewer_prompt_contract_version`
+   - `findings`
+   - `verdict`
+   - `failure_code`
 4. Include exactly one line in REVIEW_REPORT.md:
+   Builder Prompt Contract Version Reviewed: [BUILDER_CONTRACT_VERSION]
+5. Include exactly one line in REVIEW_REPORT.md:
    Reviewer Prompt Contract Version: [REVIEWER_CONTRACT_VERSION]
-5. End REVIEW_REPORT.md with exactly one line:
+6. End REVIEW_REPORT.md with exactly one line:
    Review verdict: PASS
    Review verdict: RETRY
    Review verdict: ESCALATE

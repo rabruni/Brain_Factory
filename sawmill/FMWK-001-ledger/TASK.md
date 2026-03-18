@@ -1,8 +1,7 @@
 # Task: FMWK-001-ledger
 
 ## Framework
-- ID: FMWK-001
-- Name: ledger
+- ID: FMWK-001-ledger
 - Layer: KERNEL
 
 ## What to Spec

@@ -1,9 +1,9 @@
 <!-- sawmill:auto-status -->
 # FMWK-900-sawmill-smoke — Build Status
 
-**Status:** Spec complete
-**Run ID:** 20260312T070145Z-3a858c4f5626
-**Runtime State:** running
+**Status:** Evaluation PASS
+**Run ID:** 20260318T041151Z-03ee32956103
+**Runtime State:** passed
 **Governed Path Intact:** true
 
 ---
@@ -13,11 +13,11 @@
 | Stage | Status |
 |-------|--------|
 | Turn A (Spec) | DONE |
-| Turn B (Plan) | PENDING |
-| Turn C (Holdout) | PENDING |
-| Turn D (Build) | PENDING |
-| Turn E (Eval) | PENDING |
+| Turn B (Plan) | DONE |
+| Turn C (Holdout) | DONE |
+| Turn D (Build) | DONE |
+| Turn E (Eval) | PASS |
 
 ---
 
-*Updated by sawmill/run.sh at 2026-03-12T07:04:40Z*
+*Updated by sawmill/run.sh at 2026-03-18T04:37:14Z*

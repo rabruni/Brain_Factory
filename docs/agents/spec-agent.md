@@ -60,6 +60,23 @@ Read templates from `Templates/compressed/` (token-efficient agent versions). Fu
 ## Output Location
 All output goes to `sawmill/<FMWK-ID>/`. The orchestrator tells you the FMWK-ID.
 
+STAGING PATH RULE: Do NOT invent staging directory paths from framework IDs in any output document. Reference files by name only whenever possible. If a staging path must be referenced, it must match the canonical runtime-resolved framework path used by Turn D.
+
+STAGING PATH RULE: Do NOT invent staging directory paths from framework IDs in any output document. Reference files by name only whenever possible. If a staging path must be referenced, it must match the canonical runtime-resolved framework path used by Turn D.
+
+## Declared Output Artifacts
+
+- `d1_constitution` -> `sawmill/<FMWK-ID>/D1_CONSTITUTION.md`
+- `d2_specification` -> `sawmill/<FMWK-ID>/D2_SPECIFICATION.md`
+- `d3_data_model` -> `sawmill/<FMWK-ID>/D3_DATA_MODEL.md`
+- `d4_contracts` -> `sawmill/<FMWK-ID>/D4_CONTRACTS.md`
+- `d5_research` -> `sawmill/<FMWK-ID>/D5_RESEARCH.md`
+- `d6_gap_analysis` -> `sawmill/<FMWK-ID>/D6_GAP_ANALYSIS.md`
+- `d7_plan` -> `sawmill/<FMWK-ID>/D7_PLAN.md`
+- `d8_tasks` -> `sawmill/<FMWK-ID>/D8_TASKS.md`
+- `d10_agent_context` -> `sawmill/<FMWK-ID>/D10_AGENT_CONTEXT.md`
+- `builder_handoff` -> `sawmill/<FMWK-ID>/BUILDER_HANDOFF.md`
+
 ## Heartbeat Contract
 
 Immediately after receiving the task and before performing any work, if

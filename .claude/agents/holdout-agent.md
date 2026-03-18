@@ -40,6 +40,10 @@ STRICT ISOLATION: You read ONLY D2 and D4. Nothing else.
 ## Output Location
 All holdout scenarios go in `.holdouts/<FMWK-ID>/` directory. This directory is excluded from builder agent context.
 
+## Declared Output Artifacts
+
+- `d9_holdout_scenarios` -> `.holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md`
+
 ## Gate
 Coverage matrix covers all P0 and P1 scenarios from D2. Minimum 3 scenarios. The runtime treats this as an automated checkpoint; human review is optional in `--interactive` mode.
 

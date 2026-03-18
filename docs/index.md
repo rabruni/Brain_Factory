@@ -41,5 +41,6 @@ Narrative pages support operator/agent discovery but do not override runtime.
 - How It Works: onboarding, cold start, execution contract, verification
 - Architecture: design/build/operational authorities
 - Agent Roles: runtime role behavior files and mirrors
-- Templates and Build Standards: framework/spec artifacts and standards
-- Framework Builds and Portal Governance: state and evidence surfaces
+- Templates: framework/spec artifacts and standards
+- Frameworks: per-framework status, spec packs, staging code, holdouts
+- Reference: portal governance, system topology, URL registry

@@ -107,6 +107,10 @@ Files missing: [count]
 
 No summary paragraphs. No editorializing. Findings only, with evidence.
 
+## Declared Output Artifacts
+
+- `portal_audit_results` -> `sawmill/PORTAL_AUDIT_RESULTS.md`
+
 ## What You Cannot Do
 
 - Fix anything (report only)

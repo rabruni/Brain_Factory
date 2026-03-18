@@ -48,7 +48,7 @@ Move to next behavior. Repeat.
 ## Step 3: Finalize
 - Run FULL test suite (all components, not just yours)
 - Write Results file per BUILDER_HANDOFF_STANDARD.md
-- Write `sawmill/<FMWK-ID>/builder_evidence.json` with the required run/attempt, per-behavior red→green evidence, full test command/result, changed files, and `RESULTS.md` hash
+- Write `sawmill/<FMWK-ID>/builder_evidence.json` with the required `run_id` and active `attempt`, per-behavior red→green evidence, full test command/result, changed files, and `RESULTS.md` hash using `sha256:<64hex>` format for every hash field
 - Ensure the final passing implementation is written under `staging/<FMWK-ID>/`
 
 ## On Retry (Attempt 2+)
@@ -77,6 +77,17 @@ NEVER read: `.holdouts/*`, `EVALUATION_REPORT.md`, other builders' work.
 - Code: `staging/<FMWK-ID>/`
 - Results: `sawmill/<FMWK-ID>/RESULTS.md`
 - Evidence: `sawmill/<FMWK-ID>/builder_evidence.json`
+
+PATH PRECEDENCE: The staging root injected into the Turn D build prompt is the authoritative path. If D10 or `BUILDER_HANDOFF.md` reference a different staging path, ignore them and use the injected path. Never derive the staging path from document text.
+
+PATH PRECEDENCE: The staging root injected into the Turn D build prompt is the authoritative path. If D10 or `BUILDER_HANDOFF.md` reference a different staging path, ignore them and use the injected path. Never derive the staging path from document text.
+
+## Declared Output Artifacts
+
+- `q13_answers` -> `sawmill/<FMWK-ID>/13Q_ANSWERS.md`
+- `staging_root` -> `staging/<FMWK-ID>/`
+- `results` -> `sawmill/<FMWK-ID>/RESULTS.md`
+- `builder_evidence` -> `sawmill/<FMWK-ID>/builder_evidence.json`
 
 ## Heartbeat Contract
 

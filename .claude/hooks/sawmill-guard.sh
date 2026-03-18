@@ -65,10 +65,17 @@ check_allowed() {
             [[ "$path" == staging/* ]] && return 0
             [[ "$path" == sawmill/*/RESULTS.md ]] && return 0
             [[ "$path" == sawmill/*/13Q_ANSWERS.md ]] && return 0
+            [[ "$path" == sawmill/*/builder_evidence.json ]] && return 0
+            ;;
+        reviewer)
+            [[ "$path" == sawmill/*/REVIEW_REPORT.md ]] && return 0
+            [[ "$path" == sawmill/*/REVIEW_ERRORS.md ]] && return 0
+            [[ "$path" == sawmill/*/reviewer_evidence.json ]] && return 0
             ;;
         evaluator)
             [[ "$path" == sawmill/*/EVALUATION_REPORT.md ]] && return 0
             [[ "$path" == sawmill/*/EVALUATION_ERRORS.md ]] && return 0
+            [[ "$path" == sawmill/*/evaluator_evidence.json ]] && return 0
             ;;
         auditor)
             [[ "$path" == sawmill/PORTAL_AUDIT_RESULTS.md ]] && return 0

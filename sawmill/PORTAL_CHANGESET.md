@@ -1,10 +1,10 @@
 # Portal Changeset
 
-- Run ID: `20260312T061949Z-6a7e9d45269b`
-- Applied stage: `Turn BC`
-- Verified `docs/sawmill/FMWK-900-sawmill-smoke.md` already reflected Turn BC completion for run `20260312T061949Z-6a7e9d45269b`; no edit required.
-- Ran `python3 docs/validate_portal_map.py` and confirmed `PASS: 64 entries, 0 errors`.
-- Checked BC-relevant mirrors and found no drift requiring sync in this pass.
-- Verified `mkdocs.yml` nav targets exist in the checked scope; no nav edit required.
-- Verified `catalog-info.yaml` was consistent with repo state; no edit required.
-- Refreshed `docs/PORTAL_STATUS.md` to the active Turn BC portal state.
+- Synced `docs/spec-packs/FMWK-900-sawmill-smoke/EVALUATION_REPORT.md` from `sawmill/FMWK-900-sawmill-smoke/EVALUATION_REPORT.md`.
+- Synced `docs/spec-packs/FMWK-900-sawmill-smoke/EVALUATION_ERRORS.md` from `sawmill/FMWK-900-sawmill-smoke/EVALUATION_ERRORS.md`.
+- Added Turn E spec-pack nav entries in `mkdocs.yml` for `EVALUATION_REPORT.md` and `EVALUATION_ERRORS.md`.
+- Added Turn E TechDocs URL entries in `docs/TECHDOCS_URLS.md` for the new evaluation mirrors.
+- Refreshed `docs/PORTAL_STATUS.md` for Turn E scoped portal health.
+- Verified `python3 docs/validate_portal_map.py` passes.
+- Verified all current `mkdocs.yml` nav targets exist.
+- Verified `catalog-info.yaml` remains consistent with the current repo surface; no catalog edits were required.

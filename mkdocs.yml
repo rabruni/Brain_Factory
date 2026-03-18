@@ -112,6 +112,12 @@ nav:
               - D8 — Tasks: spec-packs/FMWK-900-sawmill-smoke/D8_TASKS.md
               - D10 — Agent Context: spec-packs/FMWK-900-sawmill-smoke/D10_AGENT_CONTEXT.md
               - Builder Handoff: spec-packs/FMWK-900-sawmill-smoke/BUILDER_HANDOFF.md
+              - 13Q Answers: spec-packs/FMWK-900-sawmill-smoke/13Q_ANSWERS.md
+              - Review Report: spec-packs/FMWK-900-sawmill-smoke/REVIEW_REPORT.md
+              - Review Errors: spec-packs/FMWK-900-sawmill-smoke/REVIEW_ERRORS.md
+              - Results: spec-packs/FMWK-900-sawmill-smoke/RESULTS.md
+              - Evaluation Report: spec-packs/FMWK-900-sawmill-smoke/EVALUATION_REPORT.md
+              - Evaluation Errors: spec-packs/FMWK-900-sawmill-smoke/EVALUATION_ERRORS.md
               - Canary Audit: spec-packs/FMWK-900-sawmill-smoke/CANARY_AUDIT.md
               - Task: spec-packs/FMWK-900-sawmill-smoke/TASK.md
           - Holdouts:
