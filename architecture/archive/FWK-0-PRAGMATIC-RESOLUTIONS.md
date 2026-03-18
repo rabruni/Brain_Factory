@@ -1,12 +1,15 @@
 ---
-title: "FWK-0 Pragmatic Resolutions — 48-Hour Sprint Decisions"
-status: "DECISIONS FOR IMPLEMENTATION"
+title: "FWK-0 Pragmatic Resolutions — 48-Hour Sprint Decisions (HISTORICAL RECORD)"
+status: SUPERSEDED — all decisions merged into FWK-0
+superseded_date: "2026-03-17"
 date: "2026-02-26"
 audience: "Ray, builder agents, operators — needed to unblock GENESIS and KERNEL builds"
 scope: "Resolving the 7 must-resolve questions + surfacing new critical gaps + identifying 48-hour risks"
 ---
 
-# FWK-0 Pragmatic Resolutions — 48-Hour Sprint
+# FWK-0 Pragmatic Resolutions — 48-Hour Sprint (HISTORICAL RECORD)
+
+> **All decisions in this file have been merged into FWK-0-DRAFT.md (2026-03-17) which is now AUTHORITY v1.0.0. This file is retained as historical record. Do not use this file for current decisions.**
 
 ## PART 1: CONCRETE ANSWERS TO THE 7 MUST-RESOLVE QUESTIONS
 

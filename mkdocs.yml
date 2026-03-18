@@ -29,10 +29,9 @@ nav:
       - Agent Constraints: architecture/AGENT_CONSTRAINTS.md
       - Sawmill Analysis: architecture/SAWMILL_ANALYSIS.md
       - FWK-0 Draft: architecture/FWK-0-DRAFT.md
-      - FWK-0 Open Questions: architecture/FWK-0-OPEN-QUESTIONS.md
-      - FWK-0 Pragmatic Resolutions: architecture/FWK-0-PRAGMATIC-RESOLUTIONS.md
   - How It Works:
       - Pipeline Overview: sawmill/PIPELINE_VISUAL.md
+      - Linter Design: sawmill/linter-design.md
       - Agent Onboarding: agent-onboarding.md
       - Cold Start Protocol: sawmill/COLD_START.md
       - Execution Contract: sawmill/EXECUTION_CONTRACT.md
@@ -112,7 +111,6 @@ nav:
               - D7 — Plan: spec-packs/FMWK-900-sawmill-smoke/D7_PLAN.md
               - D8 — Tasks: spec-packs/FMWK-900-sawmill-smoke/D8_TASKS.md
               - D10 — Agent Context: spec-packs/FMWK-900-sawmill-smoke/D10_AGENT_CONTEXT.md
-              - 13Q Answers: spec-packs/FMWK-900-sawmill-smoke/13Q_ANSWERS.md
               - Builder Handoff: spec-packs/FMWK-900-sawmill-smoke/BUILDER_HANDOFF.md
               - Canary Audit: spec-packs/FMWK-900-sawmill-smoke/CANARY_AUDIT.md
               - Task: spec-packs/FMWK-900-sawmill-smoke/TASK.md

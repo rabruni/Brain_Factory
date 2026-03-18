@@ -1,15 +1,18 @@
 ---
-title: "FWK-0 — Open Questions, Guesses, and Concerns"
-status: SCRATCH PAPER — working document
-last_updated: "2026-02-26"
+title: "FWK-0 — Open Questions, Guesses, and Concerns (HISTORICAL RECORD)"
+status: RESOLVED — all questions answered and merged into FWK-0
+resolved_date: "2026-03-17"
+last_updated: "2026-03-17"
 author: "Ray Bruni + Claude"
 purpose: >
-  Track every unresolved question, assumption, and concern about FWK-0.
-  Each item needs a decision before FWK-0 can be promoted to authority status.
-  Items are grouped by category and tagged with severity.
+  Tracked every unresolved question, assumption, and concern about FWK-0.
+  All 7 must-resolve questions and 7 gaps were answered, approved (2026-02-28),
+  and merged into FWK-0-DRAFT.md (2026-03-17). This file is retained as historical record.
 ---
 
-# FWK-0 — Open Questions, Guesses, and Concerns
+# FWK-0 — Open Questions, Guesses, and Concerns (HISTORICAL RECORD)
+
+> **All 7 must-resolve questions and 7 gaps have been answered, approved (2026-02-28), and merged into FWK-0-DRAFT.md (2026-03-17). This file is retained as historical record.**
 
 ---
 

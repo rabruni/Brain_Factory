@@ -385,6 +385,7 @@ def _nav_architecture() -> dict | None:
         ("BUILD-PLAN.md", "Build Plan"),
         ("SDK_DIAGRAMS.md", "Platform SDK Diagrams"),
         ("FRAMEWORK_REGISTRY.md", "Framework Registry"),
+        ("FWK-0-DRAFT.md", "FWK-0 — Framework Framework"),
         ("AGENT_CONSTRAINTS.md", "Agent Constraints"),
         ("SAWMILL_ANALYSIS.md", "Sawmill Analysis"),
     ]
@@ -582,6 +583,21 @@ def _nav_sawmill_source() -> dict | None:
     return {"Sawmill Source": items} if items else None
 
 
+def _nav_archive() -> dict | None:
+    """Archive section — superseded architecture docs retained as history."""
+    archive_dir = DOCS_DIR / "architecture" / "archive"
+    if not archive_dir.exists():
+        return None
+
+    items = []
+    for f in sorted(archive_dir.iterdir()):
+        if f.is_file() and f.suffix == ".md":
+            title = _title_from_stem(f.stem)
+            items.append({title: f"architecture/archive/{f.name}"})
+
+    return {"Archive": items} if items else None
+
+
 def _nav_reference() -> dict | None:
     """Reference — portal governance + system topology merged."""
     ordered = [
@@ -598,6 +614,36 @@ def _nav_reference() -> dict | None:
         if (DOCS_DIR / path).exists()
     ]
     return {"Reference": items} if items else None
+
+
+def _nav_conversations() -> dict | None:
+    """Conversations section — auto-generated transcript index + pages."""
+    conv_dir = DOCS_DIR / "conversations"
+    if not conv_dir.exists():
+        return None
+
+    idx = conv_dir / "index.md"
+    if not idx.exists():
+        return None
+
+    items: list = [{"Index": "conversations/index.md"}]
+
+    # Individual conversations sorted by name (newest first from sync)
+    for f in sorted(conv_dir.iterdir(), reverse=True):
+        if f.is_file() and f.suffix == ".md" and f.name != "index.md":
+            # Extract date from first line if possible, else use stem
+            title = f.stem[:8] + "..." if len(f.stem) > 8 else f.stem
+            try:
+                first_line = f.read_text(errors="replace").split("\n")[0]
+                if first_line.startswith("# Conversation"):
+                    title = first_line[2:].strip()
+                    if len(title) > 60:
+                        title = title[:57] + "..."
+            except Exception:
+                pass
+            items.append({title: f"conversations/{f.name}"})
+
+    return {"Conversations": items} if len(items) > 1 else None
 
 
 # ── Nav assembly ──────────────────────────────────────────────────────
@@ -620,6 +666,8 @@ def _generate_nav() -> list:
         _nav_frameworks(),
         _nav_sawmill_source(),
         _nav_reference(),
+        _nav_archive(),
+        _nav_conversations(),
     ]
 
     for section in sections:
@@ -647,6 +695,13 @@ def _run_sync() -> tuple[int, int]:
     _accum(_sync_tree(
         REPO_ROOT / "architecture",
         DOCS_DIR / "architecture",
+        hardlink_exts=frozenset({".md"}),
+    ))
+
+    # 1b. Architecture archive — synced separately (Archive is in SKIP_DIRS)
+    _accum(_sync_tree(
+        REPO_ROOT / "architecture" / "archive",
+        DOCS_DIR / "architecture" / "archive",
         hardlink_exts=frozenset({".md"}),
     ))
 
@@ -718,7 +773,381 @@ def _run_sync() -> tuple[int, int]:
         DOCS_DIR / "sawmill-source" / "scripts",
     ))
 
+    # 10. Agent roles — .claude/agents/ → docs/agents/
+    _accum(_sync_tree(
+        REPO_ROOT / ".claude" / "agents",
+        DOCS_DIR / "agents",
+        hardlink_exts=frozenset({".md"}),
+    ))
+
+    # 11. Individual root files → docs/
+    ROOT_MIRRORS = {
+        "CLAUDE.md": "institutional-context.md",
+        "PORTAL_TRUTH_MODEL.md": "PORTAL_TRUTH_MODEL.md",
+        "SYSTEM_EXECUTION_PLAN.md": "SYSTEM_EXECUTION_PLAN.md",
+    }
+    for src_name, dst_name in ROOT_MIRRORS.items():
+        src = REPO_ROOT / src_name
+        dst = DOCS_DIR / dst_name
+        if src.exists():
+            if _sync_file_hardlink(src, dst):
+                total_a += 1
+
+    # 12. Individual sawmill .md files → docs/sawmill/
+    SAWMILL_MD_MIRRORS = [
+        "COLD_START.md", "EXECUTION_CONTRACT.md", "AGENT_TRAVERSAL.md",
+    ]
+    for fname in SAWMILL_MD_MIRRORS:
+        src = REPO_ROOT / "sawmill" / fname
+        dst = DOCS_DIR / "sawmill" / fname
+        if src.exists():
+            if _sync_file_hardlink(src, dst):
+                total_a += 1
+
+    # 13. Conversation transcripts → docs/conversations/
+    _sync_conversations()
+
     return total_a, total_r
+
+
+# ── Conversation rendering ───────────────────────────────────────────
+
+import json as _json
+
+CONVERSATIONS_DIR = (
+    Path.home() / ".claude" / "projects"
+    / "-Users-raymondbruni-Cowork-Brain-Factory"
+)
+
+# Max user/assistant turns to render per conversation
+_MAX_TURNS = 150
+# Max characters per message content
+_MAX_MSG_CHARS = 3000
+
+
+def _extract_topic(events: list[dict]) -> str:
+    """Extract a short topic from the first user message."""
+    for e in events:
+        if e.get("type") != "user":
+            continue
+        msg = e.get("message", {})
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            texts = [
+                p.get("text", "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
+            content = " ".join(texts)
+        if not content:
+            continue
+        # First line, truncated
+        first_line = content.split("\n")[0].strip()
+        if len(first_line) > 120:
+            first_line = first_line[:117] + "..."
+        return first_line
+    return "(empty)"
+
+
+def _render_conversation(events: list[dict]) -> str:
+    """Render conversation events as readable Markdown."""
+    lines = []
+    turns = 0
+
+    for e in events:
+        if e.get("type") not in ("user", "assistant"):
+            continue
+
+        msg = e.get("message", {})
+        role = msg.get("role", e.get("type", "unknown"))
+        ts = e.get("timestamp", "")
+        content = msg.get("content", "")
+
+        if isinstance(content, list):
+            parts = []
+            for p in content:
+                if not isinstance(p, dict):
+                    continue
+                if p.get("type") == "text" and p.get("text"):
+                    parts.append(p["text"])
+                elif p.get("type") == "tool_use":
+                    parts.append(f"*[tool: {p.get('name', '?')}]*")
+                elif p.get("type") == "tool_result":
+                    parts.append("*[tool result]*")
+            content = "\n\n".join(parts)
+        elif not isinstance(content, str):
+            continue
+
+        if not content.strip():
+            continue
+
+        if len(content) > _MAX_MSG_CHARS:
+            content = content[:_MAX_MSG_CHARS] + "\n\n*...truncated...*"
+
+        ts_short = ts[:19].replace("T", " ") if ts else ""
+        role_label = "**Ray**" if role == "user" else "**Claude**"
+
+        lines.append(f"### {role_label} — {ts_short}")
+        lines.append("")
+        lines.append(content)
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        turns += 1
+        if turns >= _MAX_TURNS:
+            lines.append(f"*...{len(events)} total events, showing first {_MAX_TURNS} turns...*")
+            break
+
+    return "\n".join(lines)
+
+
+def _sync_conversations():
+    """Generate docs/conversations/ from .jsonl transcript files."""
+    if not CONVERSATIONS_DIR.exists():
+        return
+
+    conv_dir = DOCS_DIR / "conversations"
+    conv_dir.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(
+        CONVERSATIONS_DIR.glob("*.jsonl"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+    index_rows = []
+    generated = set()
+
+    for f in files:
+        session_id = f.stem
+        try:
+            raw = f.read_text()
+            events = [_json.loads(ln) for ln in raw.splitlines() if ln.strip()]
+        except Exception:
+            continue
+
+        if not events:
+            continue
+
+        # Metadata
+        topic = _extract_topic(events)
+        first_ts = ""
+        last_ts = ""
+        user_count = 0
+        asst_count = 0
+        for e in events:
+            ts = e.get("timestamp", "")
+            if ts and not first_ts:
+                first_ts = ts
+            if ts:
+                last_ts = ts
+            if e.get("type") == "user":
+                user_count += 1
+            elif e.get("type") == "assistant":
+                asst_count += 1
+
+        date_str = first_ts[:10] if first_ts else "unknown"
+        time_str = first_ts[11:16] if len(first_ts) > 16 else ""
+
+        # Render page
+        page_name = f"{session_id}.md"
+        page_path = conv_dir / page_name
+        generated.add(page_name)
+
+        header = (
+            f"# Conversation — {date_str} {time_str}\n\n"
+            f"**Session:** `{session_id}`  \n"
+            f"**Date:** {first_ts[:19] if first_ts else '?'} → {last_ts[:19] if last_ts else '?'}  \n"
+            f"**Messages:** {user_count} user, {asst_count} assistant  \n"
+            f"**Topic:** {topic}\n\n---\n\n"
+        )
+        body = _render_conversation(events)
+        content = header + body
+
+        # Only write if changed (compare size as proxy — content can be large)
+        if page_path.exists() and page_path.stat().st_size == len(content.encode()):
+            pass  # likely unchanged
+        else:
+            page_path.write_text(content)
+
+        index_rows.append({
+            "session_id": session_id,
+            "date": date_str,
+            "time": time_str,
+            "topic": topic,
+            "user_msgs": user_count,
+            "asst_msgs": asst_count,
+        })
+
+    # Generate index
+    idx_lines = [
+        "# Conversation Transcripts",
+        "",
+        f"**{len(index_rows)} conversations** from Claude Code sessions.",
+        "",
+        "| Date | Topic | Messages | Session |",
+        "|------|-------|----------|---------|",
+    ]
+    for row in index_rows:
+        link = f"[view](conversations/{row['session_id']}.md)"
+        idx_lines.append(
+            f"| {row['date']} {row['time']} "
+            f"| {row['topic'][:80]} "
+            f"| {row['user_msgs']}u / {row['asst_msgs']}a "
+            f"| {link} |"
+        )
+    idx_lines.append("")
+
+    idx_path = conv_dir / "index.md"
+    idx_content = "\n".join(idx_lines)
+    if not idx_path.exists() or idx_path.read_text() != idx_content:
+        idx_path.write_text(idx_content)
+
+    # Clean up stale pages
+    for existing in conv_dir.iterdir():
+        if existing.is_file() and existing.suffix == ".md" and existing.name != "index.md":
+            if existing.name not in generated:
+                existing.unlink()
+
+
+# ── TechDocs URL generation ──────────────────────────────────────────
+
+BASE_URL = (
+    "https://backstage-api.dopejarmo.com/api/techdocs/static/docs"
+    "/default/component/brain-factory"
+)
+
+
+def _walk_nav(nav_list, section_name=None):
+    """Yield (section, title, docs_path) from nested nav structure.
+
+    Only top-level nav sections become ## headings. Deeper nesting
+    (e.g. per-framework sub-groups) keeps the parent section name.
+    """
+    for item in nav_list:
+        if isinstance(item, dict):
+            for title, content in item.items():
+                if isinstance(content, str):  # leaf — docs path
+                    yield (section_name or "Home", title, content)
+                elif isinstance(content, list):  # nested section
+                    # Only adopt title as section at top level
+                    next_section = section_name if section_name is not None else title
+                    yield from _walk_nav(content, section_name=next_section)
+
+
+def _docs_path_to_url(docs_path):
+    """Convert 'sawmill/COLD_START.md' → '<base>/sawmill/COLD_START/index.html'."""
+    if docs_path == "index.md":
+        return f"{BASE_URL}/index.html"
+    stem = docs_path.rsplit(".md", 1)[0]
+    return f"{BASE_URL}/{stem}/index.html"
+
+
+def _generate_techdocs_urls(nav):
+    """Write docs/TECHDOCS_URLS.md from the nav structure."""
+    lines = [
+        "# TechDocs Static URL Registry",
+        "",
+        "All Brain Factory documentation is available as static HTML — no authentication,",
+        "no JavaScript, no Backstage UI required.",
+        "",
+        "**Base URL:**",
+        "",
+        "```",
+        BASE_URL,
+        "```",
+        "",
+        "Every page follows the pattern: `<base>/<section>/<page>/index.html`",
+        "",
+        "---",
+        "",
+    ]
+
+    current_section = None
+    for section, title, docs_path in _walk_nav(nav):
+        if section != current_section:
+            if current_section is not None:
+                lines.append("")
+            lines.append(f"## {section}")
+            lines.append("")
+            lines.append("| Page | URL |")
+            lines.append("|------|-----|")
+            current_section = section
+        url = _docs_path_to_url(docs_path)
+        lines.append(f"| {title} | [{docs_path.rsplit('.md', 1)[0]}]({url}) |")
+
+    lines.append("")
+
+    out = DOCS_DIR / "TECHDOCS_URLS.md"
+    content = "\n".join(lines)
+    if not out.exists() or out.read_text() != content:
+        out.write_text(content)
+        log.info("Regenerated TECHDOCS_URLS.md")
+
+
+# ── MCP catalog definition generation ────────────────────────────────
+
+def _format_input_schema(schema: dict) -> str:
+    """Format an inputSchema dict as a readable markdown parameter list."""
+    props = schema.get("properties", {})
+    required = set(schema.get("required", []))
+
+    if not props:
+        return "*(none)*"
+
+    parts = []
+    for name, spec in props.items():
+        typ = spec.get("type", "any")
+        desc = spec.get("description", "")
+        default = spec.get("default")
+        req = "**required**" if name in required else f"default: `{default}`" if default is not None else "optional"
+        parts.append(f"`{name}` ({typ}, {req}) — {desc}")
+
+    return "; ".join(parts)
+
+
+def _generate_mcp_catalog_definition(tool_specs: list[dict], server_name: str, run_cmd: str) -> str:
+    """Generate a Markdown API definition from MCP tool specs."""
+    lines = [
+        f"## {server_name} MCP Tools",
+        "",
+        f"**Run:** `{run_cmd}`",
+        "",
+        "| Tool | Description | Parameters |",
+        "|------|-------------|------------|",
+    ]
+    for spec in tool_specs:
+        params = _format_input_schema(spec["inputSchema"])
+        lines.append(f"| `{spec['name']}` | {spec['description']} | {params} |")
+
+    return "\n".join(lines) + "\n"
+
+
+def _generate_mcp_catalog():
+    """Generate docs/api/ definition files from MCP tool specs."""
+    import sys as _sys
+    _sys.path.insert(0, str(REPO_ROOT))
+
+    try:
+        from mcp_techdocs import TOOL_SPECS
+    except Exception:
+        log.warning("Could not import mcp_techdocs.TOOL_SPECS — skipping catalog generation")
+        return
+
+    api_dir = DOCS_DIR / "api"
+    api_dir.mkdir(exist_ok=True)
+
+    content = _generate_mcp_catalog_definition(
+        TOOL_SPECS,
+        "Brain Factory TechDocs",
+        "/opt/homebrew/bin/python3.12 mcp_techdocs.py",
+    )
+
+    out = api_dir / "brain-factory-techdocs-mcp.md"
+    if not out.exists() or out.read_text() != content:
+        out.write_text(content)
+        log.info("Regenerated brain-factory-techdocs-mcp.md")
 
 
 # ── MkDocs hook entry point ──────────────────────────────────────────
@@ -728,6 +1157,8 @@ def on_config(config, **kwargs):
 
     1. Syncs source files into docs/ (hardlinks + wrappers).
     2. Generates nav from docs/ contents and sets it in-memory.
+    3. Generates TECHDOCS_URLS.md from nav.
+    4. Generates MCP catalog API definitions from tool specs.
     """
     try:
         total_added, total_removed = _run_sync()
@@ -738,7 +1169,10 @@ def on_config(config, **kwargs):
                 total_added, total_removed,
             )
 
-        config["nav"] = _generate_nav()
+        nav = _generate_nav()
+        config["nav"] = nav
+        _generate_techdocs_urls(nav)
+        _generate_mcp_catalog()
 
     except Exception:
         log.exception("sync_docs hook failed — building with existing state")
