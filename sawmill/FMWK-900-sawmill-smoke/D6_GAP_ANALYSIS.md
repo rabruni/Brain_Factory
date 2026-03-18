@@ -1,101 +1,117 @@
-# D6: Gap Analysis — sawmill-smoke
-Meta: v:1.0.0 (matches D2/D3/D4) | status:Complete | shared gaps:0 | private gaps:0 | unresolved:0 — MUST be 0 before D7
+# D6: Gap Analysis — sawmill smoke canary
+Meta: v:1.0.0 (matches D2/D3/D4) | status:Complete | shared gaps:0 | private gaps:0 | unresolved:0
 
-## Boundary Analysis (9 categories)
-### 1. Data In — how data enters
-Description: The only input is a zero-argument local function call.
+## Boundary Analysis
+### 1. Data In
+Description: Inputs entering the canary.
 
 | Boundary | Classification | Status |
-| `ping()` invocation | PRIVATE | RESOLVED |
+| --- | --- | --- |
+| Direct call to `ping()` with no arguments | PRIVATE | RESOLVED |
 
 Gaps found: none.
 
-### 2. Data Out — what's produced
-Description: The only output is the literal string `"pong"`.
+### 2. Data Out
+Description: Outputs produced by the canary.
 
 | Boundary | Classification | Status |
-| Return string from `ping()` | PRIVATE | RESOLVED |
+| --- | --- | --- |
+| Literal return value `"pong"` | PRIVATE | RESOLVED |
+| Single unit-test pass/fail result | PRIVATE | RESOLVED |
 
 Gaps found: none.
 
 ### 3. Persistence
-Description: The canary owns no persisted data.
+Description: Stored state or durable artifacts.
 
 | What | Where | Owned By | Status |
-| None | n/a | n/a | RESOLVED |
+| --- | --- | --- | --- |
+| `smoke.py` | staging output | FMWK-900-sawmill-smoke | RESOLVED |
+| `test_smoke.py` | staging output | FMWK-900-sawmill-smoke | RESOLVED |
 
 Gaps found: none.
 
 ### 4. Auth/Authz
-Description: No authentication or authorization boundary exists for this local unit test.
+Description: Access control requirements.
 
 | Boundary | Status |
-| None required | RESOLVED |
+| --- | --- |
+| No authentication or authorization boundary in scope | RESOLVED |
 
 Gaps found: none.
 
 ### 5. External Services
-Description: The task declares zero external dependencies.
+Description: Service dependencies.
 
 | Service | Interface | Status |
-| None | n/a | RESOLVED |
+| --- | --- | --- |
+| None | none | RESOLVED |
 
 Gaps found: none.
 
 ### 6. Configuration
-Description: No runtime configuration is required.
+Description: Runtime or build configuration.
 
 | Config Item | Source | Status |
-| None | n/a | RESOLVED |
+| --- | --- | --- |
+| None required | TASK.md declares no dependencies | RESOLVED |
+| Registry Enforcement | ROLE_REGISTRY.yaml vs Env Overrides | **GAP** |
 
-Gaps found: none.
+Gaps found: 
+1. **Registry Bypass**: The system allows environment variables (e.g., `SAWMILL_BUILD_AGENT`) to silently supersede `ROLE_REGISTRY.yaml` defaults. This creates a "Shadow Intelligence" state where the documented backend does not match the actual execution backend, violating the principle of explicit authority.
 
 ### 7. Error Propagation
-Description: Failures surface as normal import, syntax, or assertion failures during smoke validation.
+Description: How failures surface.
 
 | Error Source | Propagation Path | Status |
-| Broken module or wrong return value | Python runtime -> unit test failure | RESOLVED |
-| Added dependency or extra scope | spec review -> framework rejection | RESOLVED |
+| --- | --- | --- |
+| Import failure | Python import error -> test failure | RESOLVED |
+| Wrong return value | Assertion failure -> test failure | RESOLVED |
+| Scope violation | Review failure -> reject staged output | RESOLVED |
 
 Gaps found: none.
 
 ### 8. Observability
-Description: Observability is limited to unit test pass/fail for the canary.
+Description: What can be observed.
 
 | What | How | Status |
-| Ping behavior correctness | `test_ping` result | RESOLVED |
+| --- | --- | --- |
+| Function behavior | unit test result | RESOLVED |
+| Scope compliance | file inspection | RESOLVED |
 
 Gaps found: none.
 
 ### 9. Resource Accounting
-Description: Resource use is trivial and unmetered beyond normal local Python execution.
+Description: Resource use within scope.
 
 | Resource | Accounting Method | Status |
-| CPU/time for one function call and one test | Local test execution | RESOLVED |
+| --- | --- | --- |
+| Python execution only | single local test run | RESOLVED |
 
 Gaps found: none.
 
-## Clarification Log (CLR-### IDs)
+## Clarification Log
 ### CLR-001
-- Found During: D1, D2
-- Question: Do the mandatory FWK-0 decomposition articles still apply to this non-product canary framework?
-- Options: Apply them minimally to the canary boundary | Omit them because the task is trivial
-- Status (OPEN|RESOLVED|ASSUMED): RESOLVED
-- Blocks: No
+- Found During: D1
+- Question: Should FWK-0 decomposition articles still appear even though this is a canary?
+- Options: include required D1 articles while keeping scope minimal; ignore the role requirement
+- Status: RESOLVED
+- Blocks: no
 
-Resolution: Apply the articles minimally because the role instructions require them for framework D1s, while keeping all content constrained to the trivial canary scope.
+Resolution: Include the required decomposition articles because the spec-agent role mandates them, but constrain them to the exact canary scope from `TASK.md`.
 
 ### CLR-002
-- Found During: D3, D4
-- Question: How should D3 and D4 be satisfied when the task forbids creating real data models and custom error systems?
-- Options: State that no persistent/shared model exists and document only the ephemeral return literal | Invent additional schema/error structures
-- Status (OPEN|RESOLVED|ASSUMED): RESOLVED
-- Blocks: No
+- Found During: D3
+- Question: How should D3 be completed when the task forbids creating a real data model?
+- Options: invent runtime entities; document only the two owned file artifacts
+- Status: RESOLVED
+- Blocks: no
 
-Resolution: Use the smallest possible D3/D4 representation tied directly to the function return and normal test failure behavior.
+Resolution: Document only the two owned file artifacts so D3 stays descriptive without inventing product data.
 
 ## Summary
 | Category | Gaps Found | Shared | Resolved | Remaining |
+| --- | --- | --- | --- | --- |
 | Data In | 0 | 0 | 0 | 0 |
 | Data Out | 0 | 0 | 0 | 0 |
 | Persistence | 0 | 0 | 0 | 0 |

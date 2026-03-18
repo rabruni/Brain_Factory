@@ -1,8 +1,7 @@
 # Task: FMWK-900-sawmill-smoke
 
 ## Framework
-- ID: FMWK-900
-- Name: sawmill-smoke
+- ID: FMWK-900-sawmill-smoke
 - Layer: SYSTEM-TEST
 
 ## What to Spec

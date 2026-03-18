@@ -1,55 +1,75 @@
-# D4: Contracts — sawmill-smoke
+# D4: Contracts — sawmill smoke canary
 Meta: v:1.0.0 (matches D2) | data model: D3 1.0.0 | status:Final
 
 IDs: IN-NNN (inbound), OUT-NNN (outbound), SIDE-NNN (side-effect), ERR-NNN (error).
 
-## Inbound (IN-###)
+## Inbound
 ### IN-001
-- Caller: Local Python caller or unit test
-- Trigger: Invoke `ping()`
-- Scenarios (D2 SC-###): SC-001, SC-002
+- Caller: `test_smoke.py`
+- Trigger: Unit test imports and calls `ping()`
+- Scenarios: D2 SC-001, SC-002
 
 | Field | Type | Required | Description | Constraints |
-| args | Type:none | Req:yes | Desc:`ping()` accepts no arguments | Constraint:must be empty |
+| --- | --- | --- | --- | --- |
+| function_name | Type:string | Req:yes | Invoked symbol | Constraint:must equal `ping` |
+| arguments | Type:list | Req:yes | Call arguments | Constraint:must be empty |
 
-Constraints: Function signature is zero-argument and returns synchronously.
+Constraints: No arguments, no setup, no dependencies.
 
-Example
-```python
-result = ping()
+Example:
+```json
+{
+  "function_name": "ping",
+  "arguments": []
+}
 ```
 
-## Outbound (OUT-###)
+## Outbound
 ### OUT-001
-- Consumer: `test_ping`
-- Scenarios: SC-001, SC-002, SC-003
-- Response Shape (D3 entity ref): E-001 PingReturn
-
-Example success
-```python
-"pong"
+- Consumer: `test_smoke.py`
+- Scenarios: D2 SC-001, SC-002
+- Response Shape: D3 E-001 return value
+- Example success:
+```json
+{
+  "result": "pong"
+}
+```
+- Example failure:
+```json
+{
+  "error": "returned value did not equal pong"
+}
 ```
 
-Example failure
-```text
-ImportError, SyntaxError, or assertion failure if the module/test is broken.
-```
+## Side-Effects
+### SIDE-001
+- Target System: None
+- Trigger: `ping()` execution
+- Scenarios: D2 SC-003, SC-004
+- Write Shape: none
+- Ordering Guarantee: no side effects occur
+- Failure Behavior: not applicable
 
-## Side-Effects (SIDE-###)
-No side effects. This framework performs no writes, network calls, or service interactions.
-
-## Errors (ERR-###)
+## Errors
 ### ERR-001
-- Condition: `smoke.py` cannot be imported or `ping()` does not return `"pong"`.
-- Scenarios: SC-002, SC-004
-- Caller Action: Fail the unit test and stop the smoke validation.
+- Condition: `smoke.py` cannot be imported
+- Scenarios: D2 SC-002, SC-003
+- Caller Action: Fail the test run immediately
 
 ### ERR-002
-- Condition: A dependency or external service is introduced into the canary implementation.
-- Scenarios: SC-003, SC-004
-- Caller Action: Treat as spec violation and reject the framework output.
+- Condition: `ping()` returns any value other than `"pong"`
+- Scenarios: D2 SC-001, SC-002
+- Caller Action: Fail the assertion immediately
+
+### ERR-003
+- Condition: Extra dependencies or extra files are introduced
+- Scenarios: D2 SC-003, SC-004
+- Caller Action: Reject the staged canary as out of scope
 
 ## Error Code Enum
 | Code | Meaning | Retryable |
-| IMPORT_OR_ASSERT_FAILURE | The trivial module/test contract is broken | no |
-| SCOPE_VIOLATION | The canary exceeds task constraints | no |
+| --- | --- | --- |
+| IMPORT_FAILURE | Python could not import `smoke.py` or `ping` | no |
+| WRONG_RETURN | `ping()` returned a value other than `"pong"` | no |
+| SCOPE_VIOLATION | The canary contains forbidden dependencies or artifacts | no |

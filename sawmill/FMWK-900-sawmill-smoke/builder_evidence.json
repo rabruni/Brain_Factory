@@ -1,0 +1,28 @@
+{
+  "run_id": "20260318T041151Z-03ee32956103",
+  "attempt": 1,
+  "handoff_hash": "sha256:ed40553ceeb6e48cca6962e3e52c305435c6b5be5f4666a40f924acf62b57bc2",
+  "q13_answers_hash": "sha256:7510767e73bb149cb0c51a140a25a2fe8e2d2435156db2c297f5309eec2a6540",
+  "behaviors": [
+    {
+      "behavior_id": "test_ping",
+      "failing_test_command": "python3 -m pytest test_smoke.py",
+      "failing_observation": "FAILED test_smoke.py::test_ping - ModuleNotFoundError: No module named 'smoke'",
+      "passing_test_command": "python3 -m pytest test_smoke.py",
+      "passing_observation": "1 passed in 0.00s",
+      "files_touched": [
+        "staging/FMWK-900-sawmill-smoke/test_smoke.py",
+        "staging/FMWK-900-sawmill-smoke/smoke.py"
+      ]
+    }
+  ],
+  "full_test_command": "python3 -m pytest",
+  "full_test_result": "1 passed in 0.00s",
+  "files_changed": [
+    "staging/FMWK-900-sawmill-smoke/test_smoke.py",
+    "staging/FMWK-900-sawmill-smoke/smoke.py",
+    "sawmill/FMWK-900-sawmill-smoke/RESULTS.md",
+    "sawmill/FMWK-900-sawmill-smoke/builder_evidence.json"
+  ],
+  "results_hash": "sha256:c115323f08ce42bde36020c29ef948f5cc3094ebdfbff9c780eb848328a88135"
+}

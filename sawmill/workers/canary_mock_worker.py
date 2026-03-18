@@ -31,7 +31,7 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def file_sha256(path: Path) -> str:
+def _raw_file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(8192), b""):
@@ -39,13 +39,17 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    return f"sha256:{_raw_file_sha256(path)}"
+
+
 def dir_sha256(path: Path) -> str:
     entries: list[str] = []
     for child in sorted(p for p in path.rglob("*") if p.is_file()):
-        entries.append(f"{child.relative_to(path).as_posix()}:{file_sha256(child)}")
+        entries.append(f"{child.relative_to(path).as_posix()}:{_raw_file_sha256(child)}")
     digest = hashlib.sha256()
     digest.update("\n".join(entries).encode("utf-8"))
-    return digest.hexdigest()
+    return f"sha256:{digest.hexdigest()}"
 
 
 def env_path(name: str) -> Path:

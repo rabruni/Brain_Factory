@@ -10,6 +10,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+TRANSIENT_DIR_NAMES = {".pytest_cache", "__pycache__"}
+TRANSIENT_SUFFIXES = {".pyc", ".pyo"}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Sawmill evidence artifacts")
@@ -39,7 +42,7 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def file_sha256(path: Path) -> str:
+def _raw_file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     try:
         with path.open("rb") as handle:
@@ -50,16 +53,24 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    return f"sha256:{_raw_file_sha256(path)}"
+
+
 def dir_sha256(path: Path) -> str:
     if not path.is_dir():
         raise ValueError(f"Missing referenced directory: {path}")
     entries: list[str] = []
     for child in sorted(p for p in path.rglob("*") if p.is_file()):
+        if any(part in TRANSIENT_DIR_NAMES for part in child.parts):
+            continue
+        if child.suffix in TRANSIENT_SUFFIXES:
+            continue
         relative = child.relative_to(path).as_posix()
-        entries.append(f"{relative}:{file_sha256(child)}")
+        entries.append(f"{relative}:{_raw_file_sha256(child)}")
     digest = hashlib.sha256()
     digest.update("\n".join(entries).encode("utf-8"))
-    return digest.hexdigest()
+    return f"sha256:{digest.hexdigest()}"
 
 
 def require_fields(data: dict[str, Any], path: Path, fields: list[str]) -> None:
