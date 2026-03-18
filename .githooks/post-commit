@@ -14,5 +14,6 @@ python3 -m mkdocs build --site-dir /tmp/brain_factory_site --quiet 2>/dev/null |
 # Deploy to Backstage static dir if it exists
 BACKSTAGE_DIR="/Users/raymondbruni/dopejar/node_modules/@backstage/plugin-techdocs-backend/static/docs/default/component/brain-factory"
 if [ -d "$BACKSTAGE_DIR" ]; then
+    rm -rf "$BACKSTAGE_DIR"/*
     cp -r /tmp/brain_factory_site/* "$BACKSTAGE_DIR/" 2>/dev/null || true
 fi
