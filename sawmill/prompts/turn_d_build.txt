@@ -21,8 +21,9 @@ Then STOP.
 
 {{BUILDER_EVIDENCE_PATH}} MUST be valid JSON with these fields:
 - run_id: {{RUN_ID}}
-- handoff_hash: SHA-256 of {{BUILDER_HANDOFF_PATH}}
-- q13_answers_hash: SHA-256 of {{Q13_ANSWERS_PATH}}
+- attempt: {{ATTEMPT}}
+- handoff_hash: {{HANDOFF_HASH}}
+- q13_answers_hash: {{Q13_ANSWERS_HASH}}
 - behaviors: array of objects, each containing
   - behavior_id
   - failing_test_command
@@ -33,4 +34,4 @@ Then STOP.
 - full_test_command
 - full_test_result
 - files_changed
-- results_hash: SHA-256 of {{RESULTS_PATH}}
+- results_hash: SHA-256 of {{RESULTS_PATH}} in `sha256:<64hex>` format (you compute this after writing RESULTS)

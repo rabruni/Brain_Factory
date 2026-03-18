@@ -24,7 +24,8 @@ OUTPUT:
 
 {{REVIEWER_EVIDENCE_PATH}} MUST be valid JSON with these fields:
 - run_id: {{RUN_ID}}
-- q13_answers_hash: SHA-256 of {{Q13_ANSWERS_PATH}}
+- attempt: {{ATTEMPT}}
+- q13_answers_hash: {{Q13_ANSWERS_HASH}}
 - builder_prompt_contract_version_reviewed: {{BUILDER_PROMPT_CONTRACT_VERSION}}
 - reviewer_prompt_contract_version: {{REVIEWER_PROMPT_CONTRACT_VERSION}}
 - findings: array

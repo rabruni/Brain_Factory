@@ -83,12 +83,18 @@ Write BOTH files every run:
 `reviewer_evidence.json` must contain:
 - run_id
 - attempt
-- q13_answers_hash
+- q13_answers_hash (provided in the prompt — copy verbatim)
 - builder_prompt_contract_version_reviewed
 - reviewer_prompt_contract_version
 - findings[]
 - verdict
 - failure_code
+
+## Declared Output Artifacts
+
+- `review_report` -> `sawmill/<FMWK-ID>/REVIEW_REPORT.md`
+- `review_errors` -> `sawmill/<FMWK-ID>/REVIEW_ERRORS.md`
+- `reviewer_evidence` -> `sawmill/<FMWK-ID>/reviewer_evidence.json`
 
 ## Constraints
 - You do not edit the builder handoff.

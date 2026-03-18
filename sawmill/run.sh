@@ -149,6 +149,69 @@ hash_file() {
     shasum -a 256 "$1" | awk '{print $1}'
 }
 
+# Compute hashes using the SAME algorithm as validate_evidence_artifacts.py.
+# This guarantees orchestrator-provided hashes match what the validator checks.
+compute_evidence_hash() {
+    # Usage: compute_evidence_hash file <path>  →  sha256:<hex>
+    #        compute_evidence_hash dir  <path>  →  sha256:<hex>
+    python3 - "$1" "$2" <<'PY'
+import hashlib, sys
+from pathlib import Path
+
+TRANSIENT_DIR_NAMES = {".pytest_cache", "__pycache__"}
+TRANSIENT_SUFFIXES = {".pyc", ".pyo"}
+
+def _raw(p):
+    d = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            d.update(chunk)
+    return d.hexdigest()
+
+mode, path = sys.argv[1], Path(sys.argv[2])
+if mode == "file":
+    print(f"sha256:{_raw(path)}")
+else:
+    entries = []
+    for child in sorted(p for p in path.rglob("*") if p.is_file()):
+        if any(part in TRANSIENT_DIR_NAMES for part in child.parts):
+            continue
+        if child.suffix in TRANSIENT_SUFFIXES:
+            continue
+        entries.append(f"{child.relative_to(path).as_posix()}:{_raw(child)}")
+    d = hashlib.sha256()
+    d.update("\n".join(entries).encode("utf-8"))
+    print(f"sha256:{d.hexdigest()}")
+PY
+}
+
+export_evidence_hashes() {
+    # Pre-compute input hashes for the current step and export as template vars.
+    # Usage: export_evidence_hashes <step>
+    local step="$1"
+    case "$step" in
+        turn_d_review)
+            export Q13_ANSWERS_HASH
+            Q13_ANSWERS_HASH="$(compute_evidence_hash file "$(artifact_path q13_answers)")"
+            log "Pre-computed Q13_ANSWERS_HASH=${Q13_ANSWERS_HASH}"
+            ;;
+        turn_d_build)
+            export HANDOFF_HASH Q13_ANSWERS_HASH
+            HANDOFF_HASH="$(compute_evidence_hash file "$(artifact_path builder_handoff)")"
+            Q13_ANSWERS_HASH="$(compute_evidence_hash file "$(artifact_path q13_answers)")"
+            log "Pre-computed HANDOFF_HASH=${HANDOFF_HASH}"
+            log "Pre-computed Q13_ANSWERS_HASH=${Q13_ANSWERS_HASH}"
+            ;;
+        turn_e_eval)
+            export HOLDOUT_HASH STAGING_HASH
+            HOLDOUT_HASH="$(compute_evidence_hash file "$(artifact_path d9_holdout_scenarios)")"
+            STAGING_HASH="$(compute_evidence_hash dir "$(artifact_path staging_root)")"
+            log "Pre-computed HOLDOUT_HASH=${HOLDOUT_HASH}"
+            log "Pre-computed STAGING_HASH=${STAGING_HASH}"
+            ;;
+    esac
+}
+
 current_status_field() {
     local field="$1"
     python3 - "$STATUS_JSON_PATH" "$field" <<'PY'
@@ -590,6 +653,7 @@ ARTIFACT_REGISTRY_VALIDATOR="sawmill/validate_artifact_registry.py"
 STAGE_ARTIFACT_RESOLVER="sawmill/resolve_stage_artifacts.py"
 PROMPT_REGISTRY="sawmill/PROMPT_REGISTRY.yaml"
 PROMPT_REGISTRY_VALIDATOR="sawmill/validate_prompt_registry.py"
+FACTORY_CONTRACT_VALIDATOR="sawmill/validate_factory_contracts.py"
 PROMPT_RENDERER="sawmill/render_prompt.py"
 TIMEOUT_RUNNER="sawmill/run_with_timeout.py"
 RUNNER="sawmill/runner.py"
@@ -1048,6 +1112,7 @@ invoke_prompt() {
     role_name="$expected_role"
     turn="$(prompt_turn "$prompt_key")"
     attempt="${ATTEMPT:-1}"
+    export ATTEMPT="$attempt"
     CURRENT_EVENT_TURN="$turn"
     CURRENT_EVENT_STEP="$prompt_key"
     CURRENT_EVENT_ROLE="$role_name"
@@ -1098,8 +1163,13 @@ launch_prompt_background() {
     local prompt_key="$3"
     local turn_event_id="$4"
     (
+        local expected_paths=()
+        local artifact_id
         invoke_prompt "$backend" "$role_file" "$prompt_key" "$turn_event_id"
-        validate_prompt_step_success "$prompt_key" "$LAST_AGENT_EXIT_EVENT_ID" "$(prompt_turn "$prompt_key")" "$(basename "$role_file" .md)" "$backend" "${ATTEMPT:-1}" "$(artifact_path "$(prompt_expected_artifacts "$prompt_key" | awk '{print $1}')")"
+        for artifact_id in $(prompt_expected_artifacts "$prompt_key"); do
+            expected_paths+=("$(artifact_path "$artifact_id")")
+        done
+        validate_prompt_step_success "$prompt_key" "$LAST_AGENT_EXIT_EVENT_ID" "$(prompt_turn "$prompt_key")" "$(basename "$role_file" .md)" "$backend" "${ATTEMPT:-1}" "${expected_paths[@]}"
     ) &
 }
 
@@ -2004,6 +2074,7 @@ for f in \
     "$ARTIFACT_REGISTRY" "$ARTIFACT_REGISTRY_VALIDATOR" \
     "$STAGE_ARTIFACT_RESOLVER" \
     "$PROMPT_REGISTRY" "$PROMPT_REGISTRY_VALIDATOR" \
+    "$FACTORY_CONTRACT_VALIDATOR" \
     "$PROMPT_RENDERER" \
     "$PORTAL_MIRROR_SYNCER" \
     "$RUN_STATUS_PROJECTOR" \
@@ -2038,6 +2109,8 @@ if [ ! -f "$(artifact_path task)" ]; then
     fail_preflight "PREFLIGHT_MISSING_TASK" "Missing $(artifact_path task) — create it before running the pipeline."
 fi
 
+factory_contract_output="$(python3 "$FACTORY_CONTRACT_VALIDATOR" 2>&1)" || fail_preflight "PREFLIGHT_CONTRACT_MISMATCH" "$factory_contract_output"
+
 CURRENT_EVENT_TURN="orchestrator"
 CURRENT_EVENT_STEP="preflight"
 CURRENT_EVENT_ROLE="orchestrator"
@@ -2061,7 +2134,8 @@ if should_run_turn A; then
     log "═══ TURN A: Specification (D1-D6) ═══"
     invoke_prompt "$SPEC_AGENT" "$SPEC_ROLE_FILE" turn_a_spec "$local_turn_a_event_id"
     validate_prompt_step_success turn_a_spec "$LAST_AGENT_EXIT_EVENT_ID" "A" "spec-agent" "$SPEC_AGENT" 1 \
-        "$(artifact_path d1_constitution)" "$(artifact_path d6_gap_analysis)"
+        "$(artifact_path d1_constitution)" "$(artifact_path d2_specification)" "$(artifact_path d3_data_model)" \
+        "$(artifact_path d4_contracts)" "$(artifact_path d5_research)" "$(artifact_path d6_gap_analysis)"
     pass "Turn A produced D1-D6"
 
     update_portal_state "$FMWK"
@@ -2194,6 +2268,7 @@ if should_run_turn D; then
         pass "Builder produced 13Q answers"
 
         log "Turn D — Step 1.5: Review 13Q answers"
+        export_evidence_hashes turn_d_review
         invoke_prompt "$REVIEW_AGENT" "$REVIEW_ROLE_FILE" turn_d_review "$TURN_D_EVENT_ID"
         review_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
         if ! require_version_evidence review_report "Builder Prompt Contract Version Reviewed" "$BUILDER_PROMPT_CONTRACT_VERSION"; then
@@ -2241,6 +2316,7 @@ if should_run_turn D; then
         esac
 
         log "Turn D — Step 2: DTT Build"
+        export_evidence_hashes turn_d_build
         invoke_prompt "$BUILD_AGENT" "$BUILD_ROLE_FILE" turn_d_build "$TURN_D_EVENT_ID"
         build_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
         if ! validate_builder_evidence; then
@@ -2273,6 +2349,7 @@ if should_run_turn D; then
 
         log "═══ TURN E: Evaluation ═══"
         TURN_E_EVENT_ID="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$TURN_D_EVENT_ID}" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" "$ATTEMPT" "Turn E started")"
+        export_evidence_hashes turn_e_eval
         invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval "$TURN_E_EVENT_ID"
         eval_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
         if ! validate_evaluator_evidence; then
@@ -2342,6 +2419,7 @@ elif should_run_turn E; then
     log "═══ TURN E: Evaluation ═══"
     TURN_E_EVENT_ID="$(emit_event "turn_started" "started" "none" "${LAST_TURN_COMPLETED_EVENT_ID:-$RUN_STARTED_EVENT_ID}" "E" "turn_e_eval" "evaluator" "$EVAL_AGENT" 1 "Turn E started")"
     ATTEMPT="${ATTEMPT:-1}"
+    export_evidence_hashes turn_e_eval
     invoke_prompt "$EVAL_AGENT" "$EVAL_ROLE_FILE" turn_e_eval "$TURN_E_EVENT_ID"
     eval_agent_exit_event_id="$LAST_AGENT_EXIT_EVENT_ID"
     if ! validate_evaluator_evidence; then
