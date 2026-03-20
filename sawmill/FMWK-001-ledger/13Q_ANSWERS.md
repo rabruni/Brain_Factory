@@ -2,44 +2,73 @@ Builder Prompt Contract Version: 1.0.0
 
 # 13Q Answers — FMWK-001-ledger
 
-## Q1. What am I building?
-I am building `FMWK-001-ledger` as the Ledger primitive: a Python package in `staging/FMWK-001-ledger/` that owns the canonical Ledger event envelope, internal sequence assignment, canonical JSON serialization, SHA-256 hash computation, ordered replay APIs, chain verification in online and offline-export modes, and a Ledger-owned immudb adapter.
+## 1. Scope — what am I building?
+I am building only FMWK-001-ledger: a mechanical, append-only, hash-chained event store that validates approved append requests, assigns the next global sequence inside the ledger boundary, computes canonical event hashes, persists exactly one event synchronously, supports ordered reads/replay, reports the current tip, and verifies chain integrity online or from exported offline event data.
 
-## Q2. What am I NOT building?
-I am not building write-path decision logic, fold logic, Graph state/query behavior, package-lifecycle gates, snapshot file creation/loading, immudb admin surfaces, or any runtime repo changes outside this framework staging root.
+## 2. Scope — what am I NOT building?
+I am not building write-path fold logic, HO3 graph state, HO2 orchestration, package-lifecycle gates, runtime database provisioning, business logic semantics, snapshot file contents, authorization policy, or any payload catalog beyond `node_creation`, `signal_delta`, `package_install`, `session_start`, and `snapshot_created`.
 
-## Q3. What are the D1 boundaries I must honor?
-The Ledger must remain append-only truth, must assign sequence numbers internally, must use one canonical serializer for append and verify, must fail closed on connection/serialization/sequence/corruption faults, and must keep storage transport details behind the Ledger-owned adapter boundary.
-[CRITICAL_REVIEW_REQUIRED]: I am deriving the D1 boundary summary from D10, D2, and the handoff because D1 itself was not in the required reading order for this prompt; the synthesis appears consistent, but it is still an indirect reading.
+## 3. Scope — what are the D1 boundaries?
+ALWAYS: own the canonical event envelope, minimum approved payload validation, internal sequence assignment, canonical UTF-8 JSON hashing, synchronous single-event append, ordered reads/replay, offline/online verification, and `platform_sdk`-backed external concerns.
+ASK FIRST: expand event types, change envelope fields, change hash algorithm or hash format, change the genesis previous-hash constant, reassign payload ownership, define snapshot contents, or alter cold-storage validation assumptions.
+NEVER: delete/rewrite/compact/truncate events, expose direct immudb access or admin operations, accept caller-supplied sequence fields, acknowledge before persistence, emit non-`sha256:<64 lowercase hex>` hashes, or put graph/gate/work-order/LLM logic in ledger code.
 
-## Q4. What public APIs and error surfaces am I implementing?
-Public APIs are `Ledger.append`, `Ledger.read`, `Ledger.read_range`, `Ledger.read_since`, `Ledger.verify_chain`, and `Ledger.get_tip`. Declared typed errors are `LedgerConnectionError`, `LedgerSerializationError`, `LedgerSequenceError`, and `LedgerCorruptionError`.
+## 4. Technical — what public APIs must exist?
+`class Ledger` in `staging/FMWK-001-ledger/ledger/api.py` must expose:
+`append(self, request) -> LedgerEvent`
+`read(self, sequence_number: int) -> LedgerEvent`
+`read_range(self, start: int, end: int) -> list[LedgerEvent]`
+`read_since(self, sequence_number: int) -> list[LedgerEvent]`
+`verify_chain(self, start: int | None = None, end: int | None = None, source_mode: str = "online") -> VerificationResult`
+`get_tip(self, include_hash: bool = True) -> LedgerTip`
 
-## Q5. Where does each implementation piece live?
-Production files live under `staging/FMWK-001-ledger/ledger/`: `__init__.py`, `errors.py`, `models.py`, `serialization.py`, `backend.py`, and `service.py`. Tests live under `staging/FMWK-001-ledger/tests/`: `conftest.py`, `test_models.py`, `test_serialization.py`, `test_append_and_read.py`, `test_verification.py`, `test_connection_failures.py`, and `test_integration_immudb.py`.
+Internal boundaries:
+`schemas.py` validates request and payload shapes only.
+`serialization.py` owns canonical bytes and hash helpers only.
+`store.py` owns persistence, sequencing, tip reads, and reconnect-once only.
+`verify.py` owns online/offline verification only.
 
-## Q6. What exact data-format rules are fixed by the spec?
-Append input must exclude caller-supplied `sequence`, `previous_hash`, and `hash`. Canonical serialization must use JSON with sorted keys, separators `,` and `:`, UTF-8 bytes, `ensure_ascii=false`, nulls included, and the `hash` field excluded from hash input. Hash strings must be exact `sha256:<64 lowercase hex>`. Genesis `previous_hash` is `sha256:` plus 64 zeros. `read_since(-1)` means replay from genesis. `verify_chain` must return the same verdict shape online and offline.
+## 5. Technical — what file locations and package boundary apply?
+Implementation belongs under `staging/FMWK-001-ledger/`.
+Source package: `staging/FMWK-001-ledger/ledger/`
+Tests: `staging/FMWK-001-ledger/tests/`
+Local package docs: `staging/FMWK-001-ledger/README.md`
+Gate/results/evidence artifacts belong under `sawmill/FMWK-001-ledger/`.
 
-## Q7. What packaging/manifests are required?
-The framework package must include the Ledger source, tests, fixtures if needed, and only minimal support files following local repo convention. A framework-local manifest or metadata file is only allowed if the resolved staging root already uses one; I must not invent a packaging system.
-[CRITICAL_REVIEW_REQUIRED]: The handoff intentionally leaves the manifest format conditional on existing local convention, so I should not assume any packaging metadata file exists until I inspect the staging root after reviewer PASS.
+[CRITICAL_REVIEW_REQUIRED]: `BUILDER_HANDOFF.md` Section 4 and Section 9 mention `staging/FMWK-001-ledger/13Q_ANSWERS.md`, but the builder prompt’s declared output artifact and direct instruction require `/Users/raymondbruni/Cowork/Brain_Factory/sawmill/FMWK-001-ledger/13Q_ANSWERS.md`. I am following the prompt-level declared output path because it is the more specific task instruction for this turn.
 
-## Q8. What dependency boundaries and hash/provenance rules matter?
-Runtime dependency boundaries are Python 3.11+, `platform_sdk` for config/secrets/logging, `pytest` for tests, and immudb transport only behind the Ledger adapter. Hash provenance depends on one shared canonical byte-generation path for append and verify so online and offline verification cannot drift.
+## 6. Technical — what exact data formats and error contracts govern the build?
+Ledger Event fields are `event_id`, `sequence`, `event_type`, `schema_version`, `timestamp`, `provenance`, `previous_hash`, `payload`, `hash`.
+`event_id` is UUIDv7 string.
+`schema_version` is `1.0.0`.
+`timestamp` is ISO-8601 UTC with `Z`.
+`provenance.framework_id` stores full `FMWK-NNN-name`.
+Genesis `previous_hash` is `sha256:` plus 64 zeroes.
+Hash strings are exactly `sha256:<64 lowercase hex>`.
+Canonical serialization rules are sorted keys at every level, separators `,` and `:`, UTF-8 encoding, `ensure_ascii=False`, nulls preserved, `hash` excluded from hash input, and floats forbidden in the base envelope.
+Explicit error codes are `LEDGER_CONNECTION_ERROR`, `LEDGER_CORRUPTION_ERROR`, `LEDGER_SEQUENCE_ERROR`, and `LEDGER_SERIALIZATION_ERROR`.
 
-## Q9. What testing burden do I have before claiming completion?
-I need at least 25 tests total, covering every behavior in the handoff test plan, with DTT red-then-green evidence per behavior. Final verification requires `python -m compileall ledger tests`, the full unit suite, targeted append/read and verification commands, the opt-in integration suite, and the staged-package regression command against this framework tests plus `staging/FMWK-900-sawmill-smoke`.
+## 7. Packaging — what package/manifests/hashes are required?
+The package is `PC-001-ledger-core`. Required staged assets are:
+`ledger/__init__.py`, `ledger/errors.py`, `ledger/models.py`, `ledger/schemas.py`, `ledger/serialization.py`, `ledger/store.py`, `ledger/verify.py`, `ledger/api.py`, `tests/test_serialization.py`, `tests/test_store.py`, `tests/test_verify.py`, `tests/test_api.py`, and `README.md`.
+No separate manifest format is introduced here; the builder must record file inventory and SHA256 evidence in `sawmill/FMWK-001-ledger/RESULTS.md`.
 
-## Q10. How does this framework integrate with existing components?
-Upstream callers include FMWK-002 write-path and approved system-event producers for append, plus diagnostics/recovery tooling and FMWK-005 graph rebuild/recovery for reads and verification. Downstream, only the Ledger-owned backend touches immudb, and it must source host/port/database/credentials through `platform_sdk` boundaries rather than hardcoded values.
+## 8. Packaging — what dependencies and dependency limits apply?
+Allowed implementation scope is Python 3.x stdlib plus `platform_sdk` surfaces for config, secrets, logging, and errors, with immudb reachable only through the ledger abstraction boundary. No direct caller exposure of immudb, no forbidden immudb admin operations, no runtime database provisioning, and no new primitives or extra frameworks.
 
-## Q11. Adversarial: what is the most likely scope-drift failure here?
-The highest-risk drift is letting Ledger absorb write-path, graph, or snapshot-management behavior. The guardrail is to keep Ledger limited to storing self-describing events, replaying them in order, and verifying integrity; `snapshot_created` is metadata only, not snapshot file ownership.
+## 9. Testing — how many tests and what verification threshold apply?
+The minimum target is 25+ tests, aligned to SC-001 through SC-011 and the handoff’s named test methods. Required regression commands are the four targeted pytest commands for `test_serialization.py`, `test_store.py`, `test_verify.py`, and `test_api.py`, plus the full package command `PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests`. Completion requires the full staged regression to exit `0`, with no skipped failures against SC-001 through SC-011 coverage.
 
-## Q12. Adversarial: what assumption could make a correct-looking implementation wrong?
-The v1 atomic append mechanism is assumed to be the in-process mutex option under a single-writer architecture. If I implemented a different reservation strategy or tolerated caller-side fallback sequencing, I could pass superficial tests while violating the recorded D6 assumption and the no-forks requirement.
-[CRITICAL_REVIEW_REQUIRED]: The atomicity choice is explicitly an assumption locked in D6 CLR-004 rather than a stronger direct contract statement in the handoff, so reviewer confirmation is useful before implementation.
+## 10. Integration — how does this connect to existing components?
+The ledger is called by FMWK-002 write-path and approved mechanical producers through the ledger abstraction. It is the sole source of truth for acknowledged mutations, while FMWK-005 graph, FMWK-003 orchestration, FMWK-006 package-lifecycle, and cold-storage tools consume the resulting event stream, tip data, or verification results. Integration is mechanical only: the ledger stores and replays events, but does not fold state, evaluate gates, or interpret higher-level behavior.
 
-## Q13. Adversarial: what evidence standard must block me from claiming success?
-I cannot claim success from reasoning alone. I need session-local evidence: failing-then-passing tests for each behavior, pasted command output in `RESULTS.md`, full-suite results, staged-package regression results, and no unverifiable statements such as "should pass" or "probably works."
+## 11. Adversarial — what assumption could cause scope drift if I implement loosely?
+The highest scope-drift risk is smuggling non-ledger semantics into validation or the public facade. If I start interpreting event meaning, defining payload schemas beyond the approved minimum catalog, or adding snapshot content semantics, I would violate D1 Articles 2 and 6.
+
+## 12. Adversarial — what failure mode must never be softened into best effort?
+I must not soften connection, sequence, serialization, or corruption failures into retries beyond the single allowed reconnect-once path or into partial success. Acknowledged must mean durable, and verification must fail closed with explicit ledger errors or `valid=false` plus exact `break_at`.
+
+## 13. Adversarial — where is my understanding still least certain?
+The least certain area is not ledger behavior itself but prompt-contract detail around the reviewer’s exact adversarial question selection and the conflicting 13Q file path references between handoff and prompt artifacts. My implementation understanding is that the framework behavior remains fixed by D1-D8, but the gate artifact path had to be resolved from the direct task instruction.
+
+[CRITICAL_REVIEW_REQUIRED]: I was not given the selected adversarial prompts from `BUILDER_PROMPT_CONTRACT.md` in the required reading set, so Q11-Q13 are answered against the strongest adversarial risks surfaced by D1-D8 and the builder role instead of a quoted contract list. If the reviewer expects different adversarial phrasings, the mismatch is in prompt visibility rather than framework scope understanding.

@@ -1,74 +1,69 @@
 {
-  "run_id": "20260320T061516Z-3f098778cab1",
-  "attempt": 1,
-  "q13_answers_hash": "sha256:c0ff574679f808d2b117bef5187889d88b2b57e7b0149f95a0f4f05aeaffd5a9",
+  "run_id": "20260320T205424Z-45d3202a8b43",
+  "attempt": 2,
+  "q13_answers_hash": "sha256:66d992f7ac013ef3a0d1ae6301ededbcc2150b5c89846463d23118d43f8704a8",
   "builder_prompt_contract_version_reviewed": "1.0.0",
   "reviewer_prompt_contract_version": "1.0.0",
   "findings": [
     {
-      "question": "Q1",
-      "status": "PASS",
-      "detail": "Mission correctly identifies all six Ledger responsibilities and the staging path."
-    },
-    {
-      "question": "Q2",
-      "status": "PASS",
-      "detail": "Exclusions match D2 NOT section exactly."
-    },
-    {
-      "question": "Q3",
-      "status": "PASS",
-      "detail": "CRITICAL_REVIEW_REQUIRED flag — D1 indirect reading. Verified: synthesis maps to D1 Articles 3-8 accurately."
+      "question": "Q1-Q3",
+      "area": "scope_boundaries",
+      "status": "correct",
+      "detail": "Scope, exclusions, and D1 ALWAYS/ASK FIRST/NEVER boundaries match D1 Constitution, D2 Specification, and D10 exactly."
     },
     {
       "question": "Q4",
-      "status": "PASS",
-      "detail": "Six public APIs and four error classes match handoff Section 3 and D4 contracts."
+      "area": "public_apis",
+      "status": "correct",
+      "detail": "Six Ledger methods and four internal module boundaries match D10 Active Components and BUILDER_HANDOFF Section 3."
     },
     {
       "question": "Q5",
-      "status": "PASS",
-      "detail": "All 13 file paths match handoff Section 9."
+      "area": "file_locations",
+      "status": "correct",
+      "detail": "Implementation in staging, gate artifacts in sawmill. CRITICAL_REVIEW_REQUIRED flag on 13Q path conflict resolved: prompt instruction is authoritative for gate artifacts."
     },
     {
       "question": "Q6",
-      "status": "PASS",
-      "detail": "All data format rules match D4 SIDE-002, D3 E-001, D4 IN-001, D4 IN-004, D2 SC-001, D2 SC-004."
+      "area": "data_formats_and_errors",
+      "status": "correct",
+      "detail": "Event fields, hash format, canonical serialization rules, and four error codes match D4 contracts and examples."
     },
     {
       "question": "Q7",
-      "status": "PASS",
-      "detail": "CRITICAL_REVIEW_REQUIRED flag — manifest conditional. Matches handoff Section 5 exactly."
+      "area": "package_manifests",
+      "status": "correct",
+      "detail": "PC-001-ledger-core file inventory and SHA256 evidence plan match handoff Sections 5 and 9."
     },
     {
       "question": "Q8",
-      "status": "PASS",
-      "detail": "Dependency boundaries match handoff Section 5 and D1 Article 5."
+      "area": "dependencies",
+      "status": "correct",
+      "detail": "Python stdlib + platform_sdk + immudb-through-abstraction matches handoff and D1 tooling constraints."
     },
     {
       "question": "Q9",
-      "status": "PASS",
-      "detail": "Testing burden matches handoff Sections 6 and 8 including 25+ minimum and regression."
+      "area": "testing",
+      "status": "correct",
+      "detail": "25+ tests, SC-001 through SC-011, four targeted commands plus full regression match handoff Sections 6 and 8."
     },
     {
       "question": "Q10",
-      "status": "PASS",
-      "detail": "Integration understanding cites specific upstream/downstream frameworks from D4."
+      "area": "integration",
+      "status": "correct",
+      "detail": "Names FMWK-002 as caller and FMWK-003/005/006 as consumers. Mechanical-only integration boundary is specific."
     },
     {
-      "question": "Q11",
-      "status": "PASS",
-      "detail": "Identifies write-path/graph/snapshot absorption as primary drift risk with correct guardrail."
-    },
-    {
-      "question": "Q12",
-      "status": "PASS",
-      "detail": "CRITICAL_REVIEW_REQUIRED flag — D6 CLR-004 atomicity assumption. Verified: Option B approved for v1."
+      "question": "Q11-Q12",
+      "area": "adversarial",
+      "status": "correct",
+      "detail": "Scope drift risk (semantic smuggling, D1 Art 2/6) and failure softening (no partial success, D1 Art 8) correctly identified."
     },
     {
       "question": "Q13",
-      "status": "PASS",
-      "detail": "Evidence standard matches handoff Section 11 — session-local proof, no unverifiable claims."
+      "area": "uncertainty",
+      "status": "acceptable",
+      "detail": "CRITICAL_REVIEW_REQUIRED flag on missing adversarial prompt list resolved: answers demonstrate genuine comprehension from D1-D8 rather than rote compliance."
     }
   ],
   "verdict": "PASS",

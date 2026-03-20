@@ -1,65 +1,28 @@
 {
-  "run_id": "20260318T041151Z-03ee32956103",
-  "attempt": 1,
-  "holdout_hash": "sha256:8e90bd436efb60aa3cd466e621521ea5c2c5886e03561925ff604e0e2e14cbb1",
-  "staging_hash": "sha256:6cb5183b8ffa0cbaf258336547d7bc2daf5aa68941d4b4d46147b7d18d11e339",
+  "attempt": 2,
+  "holdout_hash": "sha256:74cba7ac9ca303a36586aa704fe4285b9be5c78f930baa3e82eeb19569746ad6",
+  "pass_rate": 100.0,
+  "run_id": "20260320T212822Z-3a895a647548",
   "scenarios": [
     {
-      "scenario_id": "HS-001",
-      "name": "ping-returns-pong-from-staged-module",
-      "priority": "P0",
+      "aggregate_result": "PASS",
       "run_results": [
-        {"run": 1, "result": "PASS"},
-        {"run": 2, "result": "PASS"},
-        {"run": 3, "result": "PASS"}
+        "PASS",
+        "PASS",
+        "PASS"
       ],
-      "aggregate_result": "PASS"
+      "scenario_id": "HS-001"
     },
     {
-      "scenario_id": "HS-002",
-      "name": "unit-test-passes-against-staged-output",
-      "priority": "P1",
+      "aggregate_result": "PASS",
       "run_results": [
-        {"run": 1, "result": "PASS"},
-        {"run": 2, "result": "PASS"},
-        {"run": 3, "result": "PASS"}
+        "PASS",
+        "PASS",
+        "PASS"
       ],
-      "aggregate_result": "PASS"
-    },
-    {
-      "scenario_id": "HS-003",
-      "name": "import-failure-surfaces-import-failure-shape",
-      "priority": "P1",
-      "run_results": [
-        {"run": 1, "result": "PASS"},
-        {"run": 2, "result": "PASS"},
-        {"run": 3, "result": "PASS"}
-      ],
-      "aggregate_result": "PASS"
-    },
-    {
-      "scenario_id": "HS-004",
-      "name": "wrong-return-surfaces-wrong-return-shape",
-      "priority": "P1",
-      "run_results": [
-        {"run": 1, "result": "PASS"},
-        {"run": 2, "result": "PASS"},
-        {"run": 3, "result": "PASS"}
-      ],
-      "aggregate_result": "PASS"
-    },
-    {
-      "scenario_id": "HS-005",
-      "name": "staged-output-stays-within-canary-scope",
-      "priority": "P1",
-      "run_results": [
-        {"run": 1, "result": "PASS"},
-        {"run": 2, "result": "PASS"},
-        {"run": 3, "result": "PASS"}
-      ],
-      "aggregate_result": "PASS"
+      "scenario_id": "HS-002"
     }
   ],
-  "verdict": "PASS",
-  "pass_rate": 100
+  "staging_hash": "sha256:c4284dd4f504e21041747316a835e177f158cf3cb246cfab50ecdde8bcb78b77",
+  "verdict": "PASS"
 }

@@ -2,134 +2,130 @@
 Meta: plan: D7 1.0.0 | status:Final | total tasks:8 | parallel opportunities:2
 
 ## MVP Scope
-In scope: all D2 scenarios SC-001 through SC-010. Nothing in D2 is deferred for Turn D because the D6 gate is closed and the framework is foundational. Deferred capabilities remain only the D2 `DEF-001` through `DEF-003` items and must not expand the build beyond the listed event payloads, snapshot metadata contract, and approved v1 atomicity assumption.
+In scope: all D2 Primary and Edge Case scenarios SC-001 through SC-011. No D2 deferred capability is included beyond the approved minimum payload schemas and the ledger-owned `snapshot_created` reference event. Deferred items remain DEF-001 and DEF-002.
 
 ## Tasks (T-### IDs, phased)
+### T-001
+- Phase + name: 0 Foundation | Create package skeleton and typed ledger models
+- Parallel/Serial: Serial
+- Dependency: None
+- Scope: S
+- Scenarios Satisfied: D2 SC-003, SC-006, SC-007
+- Contracts Implemented: D4 OUT-001, OUT-004, OUT-005
+- Acceptance Criteria:
+  1. Create `ledger/__init__.py`, `ledger/errors.py`, and `ledger/models.py`.
+  2. `models.py` defines structures matching D3 E-001 through E-009, including full `FMWK-NNN-name` provenance storage and `sha256:` hash-string constraints.
+  3. `errors.py` defines explicit framework errors for `LEDGER_CONNECTION_ERROR`, `LEDGER_CORRUPTION_ERROR`, `LEDGER_SEQUENCE_ERROR`, and `LEDGER_SERIALIZATION_ERROR`.
+  4. Add at least 4 unit tests proving model construction and error-code mapping.
 
-- Phase 0 Foundation: T-001 Define the package skeleton, typed errors, canonical entities, and shared test fixtures
-  Parallel/Serial: Serial
-  Dependency: None
-  Scope: M
-  Scenarios Satisfied: D2 SC-005, SC-006
-  Contracts Implemented: D4 IN-001, OUT-001, OUT-005, ERR-001, ERR-002, ERR-003, ERR-004
-  Acceptance Criteria:
-  1. Create `ledger/__init__.py`, `ledger/errors.py`, `ledger/models.py`, and `tests/conftest.py`.
-  2. `ledger/models.py` defines `LedgerEvent`, `EventProvenance`, `LedgerTip`, `ChainVerificationResult`, and the minimum payload models from D3 E-003 through E-007.
-  3. Validation rejects missing required envelope fields and caller-controlled `sequence`, `previous_hash`, or `hash` in append requests.
-  4. At least 5 unit tests prove the envelope and payload constraints from D3 and D4.
+### T-002
+- Phase + name: 0 Foundation | Implement payload catalog and append request validation
+- Parallel/Serial: Parallel with T-003 after T-001
+- Dependency: T-001 (typed models must exist before validation logic)
+- Scope: M
+- Scenarios Satisfied: D2 SC-003, SC-007, SC-011
+- Contracts Implemented: D4 IN-001, ERR-004
+- Acceptance Criteria:
+  1. Create `ledger/schemas.py` with validation for approved event types only: `node_creation`, `signal_delta`, `package_install`, `session_start`, `snapshot_created`.
+  2. Validation rejects caller-supplied `sequence`, `previous_hash`, and `hash`.
+  3. Validation preserves D6 assumptions by refusing unsupported future payload schemas rather than inferring them.
+  4. Add at least 6 tests covering valid append requests, snapshot marker payload shape, and serialization-relevant rejection cases.
 
-- Phase 1 Core Logic: T-002 Implement canonical serialization, sequence key mapping, and exact hash helpers
-  Parallel/Serial: Parallel with T-003
-  Dependency: T-001 (needs models and errors)
-  Scope: M
-  Scenarios Satisfied: D2 SC-001, SC-002, SC-004, SC-008, SC-010
-  Contracts Implemented: D4 SIDE-002, OUT-004, ERR-002, ERR-004
-  Acceptance Criteria:
-  1. Create `ledger/serialization.py` with `canonical_event_bytes(event) -> bytes`, `compute_event_hash(event) -> str`, and `event_key(sequence: int) -> str`.
-  2. Canonical serialization uses sorted keys, separators `,` and `:`, UTF-8, `ensure_ascii=False`, excludes `hash` from hash input, and includes explicit `null` fields.
-  3. At least 6 unit tests assert exact-string hash format, all-zero genesis `previous_hash`, Unicode behavior, null handling, and corruption detection support.
+### T-003
+- Phase + name: 0 Foundation | Implement canonical serialization and hash helpers
+- Parallel/Serial: Parallel with T-002 after T-001
+- Dependency: T-001 (model shapes and errors are required first)
+- Scope: M
+- Scenarios Satisfied: D2 SC-001, SC-002, SC-005, SC-008, SC-011
+- Contracts Implemented: D4 SIDE-002, IN-005, ERR-004
+- Acceptance Criteria:
+  1. Create `ledger/serialization.py` with `canonical_event_bytes(...)` and `compute_event_hash(...)`.
+  2. Serialization uses sorted keys, separators `,` and `:`, UTF-8, `ensure_ascii=False`, includes nulls, excludes the `hash` field, and forbids base-envelope floats.
+  3. Define the exact zero-hash genesis constant and `sha256:<64 lowercase hex>` formatting helper.
+  4. Add at least 8 fixture tests proving byte-for-byte canonical output and exact hash equality.
 
-- Phase 1 Core Logic: T-003 Implement the Ledger-owned storage adapter and reconnect-once policy
-  Parallel/Serial: Parallel with T-002
-  Dependency: T-001 (needs errors and fixtures)
-  Scope: M
-  Scenarios Satisfied: D2 SC-003, SC-009
-  Contracts Implemented: D4 IN-002, IN-003, IN-004, IN-006, OUT-002, OUT-003, OUT-005, SIDE-003, ERR-001
-  Acceptance Criteria:
-  1. Create `ledger/backend.py` with connection bootstrap, ordered byte reads, append-by-key, and one-second reconnect-once retry behavior.
-  2. Connection parameters are read through `platform_sdk` configuration/secrets boundaries, not hardcoded.
-  3. Missing database or failed retry raises `LedgerConnectionError`.
-  4. At least 5 unit tests cover read failures, reconnect success, reconnect failure, and ordered byte retrieval.
+### T-004
+- Phase + name: 1 Core Logic | Build append/read/tip storage boundary
+- Parallel/Serial: Serial
+- Dependency: T-002 and T-003 (validated requests and canonical hashing must exist)
+- Scope: L
+- Scenarios Satisfied: D2 SC-001, SC-002, SC-004, SC-006, SC-009, SC-010, SC-011
+- Contracts Implemented: D4 IN-001, IN-002, IN-003, IN-004, IN-006, OUT-001, OUT-002, OUT-003, OUT-005, SIDE-001, SIDE-003, ERR-001, ERR-003, ERR-004
+- Acceptance Criteria:
+  1. Create `ledger/store.py` with methods `append_event(...)`, `read(...)`, `read_range(...)`, `read_since(...)`, and `get_tip(...)`.
+  2. Append logic assigns `sequence=0` and zero `previous_hash` for genesis, then strictly increments from tip thereafter.
+  3. The append critical section uses the D5-selected in-process mutex so tip-read plus write remains atomic within the single-writer model.
+  4. Storage code reads config/secrets/logging through `platform_sdk` surfaces and does not expose direct immudb access to callers.
+  5. Connection handling retries once after a 1-second reconnect delay and surfaces `LEDGER_CONNECTION_ERROR` on final failure.
+  6. Add at least 10 tests covering first append, next append, ordered reads, read-since behavior, get-tip accuracy, connection failure, and sequence-race rejection.
 
-- Phase 2 Ledger Operations: T-004 Implement append with internal sequence assignment and append-only persistence
-  Parallel/Serial: Serial
-  Dependency: T-002 and T-003 (needs hashing and backend)
-  Scope: L
-  Scenarios Satisfied: D2 SC-001, SC-002, SC-005, SC-006, SC-007, SC-008, SC-009
-  Contracts Implemented: D4 IN-001, OUT-001, SIDE-001, SIDE-002, SIDE-003, ERR-001, ERR-002, ERR-003
-  Acceptance Criteria:
-  1. Create `ledger/service.py` and implement `Ledger.append(request) -> tuple[int, LedgerEvent]`.
-  2. Append assigns sequence `0` on genesis and otherwise uses the current tip plus one with the approved v1 single-writer atomicity assumption.
-  3. Caller-supplied sequencing/hash fields are rejected before persistence.
-  4. Sequence conflict raises `LedgerSequenceError`; serialization failure raises `LedgerSerializationError`; connection failure raises `LedgerConnectionError`.
-  5. At least 7 unit tests cover genesis append, subsequent append linkage, `snapshot_created` persistence, and fail-closed behavior.
+### T-005
+- Phase + name: 1 Core Logic | Build online and offline verification path
+- Parallel/Serial: Serial
+- Dependency: T-003 and T-004 (canonical hashing and ordered reads are required)
+- Scope: M
+- Scenarios Satisfied: D2 SC-005, SC-008, SC-011
+- Contracts Implemented: D4 IN-005, OUT-004, SIDE-004, ERR-002, ERR-004
+- Acceptance Criteria:
+  1. Create `ledger/verify.py` with `verify_chain(...)` and a shared `verify_events(...)` helper for online/offline parity.
+  2. Verification recomputes hashes in order, compares `previous_hash` linkage, and returns the first failing sequence as `break_at`.
+  3. Offline verification accepts exported event data only and does not depend on Graph, HO1, HO2, or kernel services.
+  4. Add at least 6 tests covering intact chain verification, corruption at an interior sequence, and online/offline result equivalence.
 
-- Phase 2 Ledger Operations: T-005 Implement exact read, bounded replay, read-since, and tip queries
-  Parallel/Serial: Parallel with T-006
-  Dependency: T-004 (needs stored events)
-  Scope: M
-  Scenarios Satisfied: D2 SC-003, SC-006
-  Contracts Implemented: D4 IN-002, IN-003, IN-004, IN-006, OUT-002, OUT-003, OUT-005
-  Acceptance Criteria:
-  1. `Ledger.read`, `Ledger.read_range`, `Ledger.read_since`, and `Ledger.get_tip` return canonical stored events and ordered results only.
-  2. `read_since(-1)` replays from genesis; `read_range(start, end)` preserves ascending sequence order.
-  3. At least 5 unit tests cover point read, range replay, snapshot boundary replay, and tip behavior.
+### T-006
+- Phase + name: 2 Integration | Wire the public Ledger facade
+- Parallel/Serial: Serial
+- Dependency: T-004 and T-005 (all internals must exist first)
+- Scope: M
+- Scenarios Satisfied: D2 SC-001 through SC-011
+- Contracts Implemented: D4 IN-001 through IN-006, OUT-001 through OUT-005, ERR-001 through ERR-004
+- Acceptance Criteria:
+  1. Create `ledger/api.py` exposing `class Ledger` with methods `append`, `read`, `read_range`, `read_since`, `verify_chain`, and `get_tip`.
+  2. The facade remains orchestration-free and delegates validation, persistence, and verification to the underlying modules without introducing business logic.
+  3. Add at least 5 API-level tests covering approved event append flows and failure propagation.
 
-- Phase 2 Ledger Operations: T-006 Implement online and offline chain verification with first-break reporting
-  Parallel/Serial: Parallel with T-005
-  Dependency: T-002 and T-004 (needs canonical bytes and persisted events)
-  Scope: M
-  Scenarios Satisfied: D2 SC-004, SC-010
-  Contracts Implemented: D4 IN-005, OUT-004, SIDE-002, ERR-004
-  Acceptance Criteria:
-  1. `Ledger.verify_chain` accepts `source_mode` values `online` and `offline_export`.
-  2. Verification recomputes hashes from canonical bytes, not from stored hash chaining alone.
-  3. Corruption reports `valid=false` and the first failing sequence in `break_at`.
-  4. At least 5 unit tests prove parity between online and offline verification and deterministic corruption position reporting.
+### T-007
+- Phase + name: 2 Integration | Add staged package documentation and operator commands
+- Parallel/Serial: Parallel with T-008 after T-006
+- Dependency: T-006 (commands must reflect the implemented surface)
+- Scope: S
+- Scenarios Satisfied: D2 SC-004, SC-005, SC-006
+- Contracts Implemented: D4 IN-002, IN-003, IN-004, IN-005, IN-006
+- Acceptance Criteria:
+  1. Create `README.md` in the framework staging root with package purpose, public methods, and exact local `pytest` commands.
+  2. Document that runtime database creation is out of scope and connection failure is fail-fast.
+  3. Include the offline verification command shape used in tests.
 
-- Phase 3 Validation: T-007 Add opt-in real immudb integration coverage
-  Parallel/Serial: Serial
-  Dependency: T-005 and T-006 (needs public surface complete)
-  Scope: M
-  Scenarios Satisfied: D2 SC-001, SC-002, SC-003, SC-004, SC-009
-  Contracts Implemented: D4 IN-001, IN-002, IN-003, IN-004, IN-005, IN-006, OUT-001, OUT-002, OUT-003, OUT-004, OUT-005, SIDE-001, SIDE-003
-  Acceptance Criteria:
-  1. Create `tests/test_integration_immudb.py` guarded so the default unit suite does not require live immudb.
-  2. Integration tests prove append/read/verify/get_tip behavior against a real immudb instance and explicit failure when the `ledger` database is absent.
-  3. At least 3 integration tests cover happy path, missing database, and reconnect-once behavior.
-
-- Phase 3 Validation: T-008 Run regression, capture builder evidence, and package the framework artifacts
-  Parallel/Serial: Serial
-  Dependency: T-007 (needs implementation complete)
-  Scope: S
-  Scenarios Satisfied: D2 SC-001, SC-002, SC-003, SC-004, SC-005, SC-006, SC-007, SC-008, SC-009, SC-010
-  Contracts Implemented: D4 full contract set as verification evidence
-  Acceptance Criteria:
-  1. Run the full unit suite and any available integration suite with pasted output captured in `RESULTS.md`.
-  2. Record file hashes for every created or modified file and note any spec deviations as `NONE` or explicit blockers.
-  3. Run full regression across all staged packages in the workspace and record whether new failures were introduced.
+### T-008
+- Phase + name: 3 Validation | Run full ledger regression and record evidence
+- Parallel/Serial: Parallel with T-007 after T-006
+- Dependency: T-006 (full implementation must exist)
+- Scope: M
+- Scenarios Satisfied: D2 SC-001 through SC-011
+- Contracts Implemented: all D4 contracts via regression evidence
+- Acceptance Criteria:
+  1. Execute the full staged framework test suite with `PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests`.
+  2. Capture command output in `sawmill/FMWK-001-ledger/RESULTS.md` with per-file SHA256s and regression totals as required by the handoff standard.
+  3. Verify every P1 scenario SC-003, SC-004, SC-005, SC-006, SC-007, SC-010, and SC-011 is explicitly covered by at least one passing test reference in the results artifact.
 
 ## Task Dependency Graph
 ```text
 T-001
-  |\
-  | +--> T-002 --+
-  |              |
-  +--> T-003 --+ |
-               | |
-               v v
-               T-004
-               /   \
-              v     v
-            T-005  T-006
-               \   /
-                v v
-                T-007
-                  |
-                  v
-                T-008
+  ├── T-002 ──┐
+  └── T-003 ──┴── T-004 ─── T-005 ─── T-006 ─── T-007
+                                              └── T-008
 ```
 
 ## Summary
 | Task | Phase | Scope | Serial/Parallel | Scenarios |
-| T-001 | 0 Foundation | M | Serial | SC-005, SC-006 |
-| T-002 | 1 Core Logic | M | Parallel | SC-001, SC-002, SC-004, SC-008, SC-010 |
-| T-003 | 1 Core Logic | M | Parallel | SC-003, SC-009 |
-| T-004 | 2 Ledger Operations | L | Serial | SC-001, SC-002, SC-005, SC-006, SC-007, SC-008, SC-009 |
-| T-005 | 2 Ledger Operations | M | Parallel | SC-003, SC-006 |
-| T-006 | 2 Ledger Operations | M | Parallel | SC-004, SC-010 |
-| T-007 | 3 Validation | M | Serial | SC-001, SC-002, SC-003, SC-004, SC-009 |
-| T-008 | 3 Validation | S | Serial | SC-001, SC-002, SC-003, SC-004, SC-005, SC-006, SC-007, SC-008, SC-009, SC-010 |
+| T-001 | 0 Foundation | S | Serial | SC-003, SC-006, SC-007 |
+| T-002 | 0 Foundation | M | Parallel | SC-003, SC-007, SC-011 |
+| T-003 | 0 Foundation | M | Parallel | SC-001, SC-002, SC-005, SC-008, SC-011 |
+| T-004 | 1 Core Logic | L | Serial | SC-001, SC-002, SC-004, SC-006, SC-009, SC-010, SC-011 |
+| T-005 | 1 Core Logic | M | Serial | SC-005, SC-008, SC-011 |
+| T-006 | 2 Integration | M | Serial | SC-001 through SC-011 |
+| T-007 | 2 Integration | S | Parallel | SC-004, SC-005, SC-006 |
+| T-008 | 3 Validation | M | Parallel | SC-001 through SC-011 |
 
 Total: 8 tasks, 4 phases, 2 parallelizable pairs, 6 serial waves.
-MVP Tasks: T-001, T-002, T-003, T-004, T-005, T-006, T-007, T-008.
+MVP Tasks: T-001, T-002, T-003, T-004, T-005, T-006, T-008.

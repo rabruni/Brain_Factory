@@ -1,8 +1,8 @@
 <!-- sawmill:auto-status -->
 # FMWK-001-ledger — Build Status
 
-**Status:** Evaluation PASS
-**Run ID:** 20260320T202813Z-6935d147c49b
+**Status:** Evaluation FAIL
+**Run ID:** 20260320T205424Z-45d3202a8b43
 **Runtime State:** running
 **Governed Path Intact:** true
 
@@ -16,8 +16,8 @@
 | Turn B (Plan) | DONE |
 | Turn C (Holdout) | DONE |
 | Turn D (Build) | DONE |
-| Turn E (Eval) | PASS |
+| Turn E (Eval) | FAIL |
 
 ---
 
-*Updated by sawmill.run_state at 2026-03-20T20:36:52Z*
+*Updated by sawmill.run_state at 2026-03-20T21:35:41Z*

@@ -1,168 +1,158 @@
 # D6: Gap Analysis — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2/D3/D4) | status:Complete | shared gaps:6 | private gaps:1 | unresolved:0
+Meta: v:1.0.0 (matches D2/D3/D4) | status:Complete | shared gaps:4 | private gaps:0 | unresolved:0 — MUST be 0 before D7
 
 ## Boundary Analysis
-
 ### 1. Data In
-Description: How data enters the Ledger contracts.
+Description: How events and verification requests enter the ledger boundary.
 
 | Boundary | Classification | Status |
-| Append event envelope without caller sequence | SHARED | RESOLVED |
-| Read requests by sequence/range/since | SHARED | RESOLVED |
-| Verification request source mode | SHARED | RESOLVED |
+| Append request envelope without ledger-owned fields | SHARED | RESOLVED |
+| Read/read_range/read_since request shapes | SHARED | RESOLVED |
+| Verify-chain request shape for online/offline use | SHARED | RESOLVED |
+| Unsupported future event payload schemas | SHARED | ASSUMED |
+| Provenance `framework_id` canonical stored format | SHARED | ASSUMED |
 
 Gaps found:
-- GAP-1: Data In | Need: explicit append request shape without caller-controlled sequence/hash | Existing: IN-001 | Gap Description: Source material implied this rule but needed contract extraction | Shared?: YES | Recommendation: lock append request to envelope minus sequence/hash fields | Resolution: RESOLVED in D4 IN-001 | Impact If Unresolved: callers could fork the chain
+- GAP-1: Data In | What Is Needed: ownership rule for event payload schemas beyond minimum approved set | Existing Contract: IN-001, D3 E-001/E-005/E-006/E-007/E-008/E-009 | Gap Description: Source material defers most payload schemas to owning frameworks | Shared? (YES/NO): YES | Recommendation: Limit FMWK-001 to minimum approved payload schemas and require each owning framework to define the rest | Resolution: ASSUMED — deferred event payload schemas remain owned by their respective frameworks per source material and are outside FMWK-001 scope | Impact If Unresolved: Boundary creep and duplicate schema ownership
+- GAP-4: Data In | What Is Needed: canonical event value for `provenance.framework_id` | Existing Contract: IN-001, D3 E-004 | Gap Description: Source material shows schematic `FMWK-NNN` while FWK-0 naming authority uses full identifiers in agent-authored artifacts and path-readable provenance | Shared? (YES/NO): YES | Recommendation: Store full framework identifier `FMWK-NNN-name` in events and treat shorthand references as illustrative placeholders | Resolution: ASSUMED — canonical stored framework IDs use `FMWK-NNN-name` to align ledger provenance with FWK-0 naming authority | Impact If Unresolved: Provenance would drift between ledger records and framework/package filesystem identity
 
 ### 2. Data Out
-Description: What the Ledger produces.
+Description: What the ledger produces for consumers.
 
 | Boundary | Classification | Status |
-| Persisted event return shape | SHARED | RESOLVED |
-| Ordered replay response | SHARED | RESOLVED |
-| Verification result shape | SHARED | RESOLVED |
+| Stored event envelope output | SHARED | RESOLVED |
+| Verification result output | SHARED | RESOLVED |
+| Tip output | SHARED | RESOLVED |
 
 Gaps found:
-- GAP-2: Data Out | Need: exact verification result structure | Existing: OUT-004 | Gap Description: `break_at` needed explicit presence rule | Shared?: YES | Recommendation: define `ChainVerificationResult` with first-failure semantics | Resolution: RESOLVED in D3 E-009 and D4 OUT-004 | Impact If Unresolved: holdout tests could not assert corruption position deterministically
+- None.
 
 ### 3. Persistence
-Description: Where data is stored and who owns each persistence concern.
+Description: Where data is stored and what this framework owns.
 
 | What | Where | Owned By | Status |
-| Ledger events | immudb `ledger` database | FMWK-001 | RESOLVED |
-| Snapshot metadata event | Ledger event stream | FMWK-001 | RESOLVED |
-| Snapshot file contents/format | `/snapshots/` volume | FMWK-005 | ASSUMED |
+| Ledger events | immudb `ledger` database | FMWK-001-ledger | RESOLVED |
+| Snapshot reference events | ledger event stream | FMWK-001-ledger | RESOLVED |
+| Snapshot file contents | `/snapshots/<sequence_number>.snapshot` | FMWK-005-graph | ASSUMED |
 
 Gaps found:
-- GAP-3: Persistence | Need: snapshot ownership boundary | Existing: SC-006, E-007 | Gap Description: Snapshot format was OPEN in source material | Shared?: YES | Recommendation: keep metadata in Ledger, defer file format to FMWK-005 | Resolution: ASSUMED with source-backed justification in D5 RQ-002 and CLR-001 | Impact If Unresolved: Ledger scope could drift into graph storage
+- GAP-2: Persistence | What Is Needed: explicit owner for snapshot file content format | Existing Contract: SC-007, D3 E-009 | Gap Description: Source material marks snapshot format OPEN but approves event marker, path, and replay boundary | Shared? (YES/NO): YES | Recommendation: Keep ledger ownership to snapshot reference event and assign snapshot file content format to FMWK-005 | Resolution: ASSUMED — snapshot file format belongs to FMWK-005 because ledger stores only the marker event, hash, and replay boundary | Impact If Unresolved: Ledger would have to invent graph persistence semantics
 
 ### 4. Auth/Authz
-Description: Authentication and authorization boundaries affecting Ledger access.
+Description: Identity, actor provenance, and access assumptions.
 
 | Boundary | Status |
-| Caller identity is carried as provenance actor category, not enforced by Ledger business logic | RESOLVED |
-| immudb credentials come from config/secrets, not hardcoded in production | RESOLVED |
+| Event provenance actor enum (`system`, `operator`, `agent`) | RESOLVED |
+| Ledger runtime credentials sourced from configuration/secrets, not hardcoded | RESOLVED |
+| Caller authorization policy for who may invoke append/read contracts | ASSUMED |
 
 Gaps found:
-- None beyond configuration extraction.
+- GAP-3: Auth/Authz | What Is Needed: caller authorization enforcement owner | Existing Contract: NONE | Gap Description: Authority docs define actor provenance and config-driven credentials but do not assign authorization logic to the ledger framework | Shared? (YES/NO): YES | Recommendation: Treat caller authorization as external to FMWK-001 and enforced by the runtime/package boundary that exposes the ledger abstraction | Resolution: ASSUMED — FMWK-001 validates provenance shape only; authz remains outside ledger scope because no authority assigns policy evaluation to this framework | Impact If Unresolved: Risk of smuggling policy logic into the storage primitive
 
 ### 5. External Services
-Description: External dependencies and interfaces.
+Description: External systems required by the ledger.
 
 | Service | Interface | Status |
-| immudb | gRPC on configured host/port, database `ledger` | RESOLVED |
-| Offline export | Ledger data file / exported bytes for verification | ASSUMED |
+| immudb | gRPC-backed ledger persistence through ledger abstraction | RESOLVED |
+| platform_sdk config/secrets/logging/errors | SDK imports only | RESOLVED |
 
 Gaps found:
-- GAP-4: External Services | Need: offline verification source definition | Existing: IN-005 | Gap Description: Source material says "Ledger data file" but not export packaging mechanics | Shared?: YES | Recommendation: treat offline verification as operating on exported Ledger bytes produced by tooling, not a new service | Resolution: ASSUMED in CLR-002 | Impact If Unresolved: offline verification tooling contract remains ambiguous
+- None.
 
 ### 6. Configuration
-Description: Runtime-configured values the Ledger depends on.
+Description: Config values the ledger depends on.
 
 | Config Item | Source | Status |
-| immudb host/port/database | `platform_sdk.config` | RESOLVED |
-| immudb credentials | `platform_sdk.config` / secrets | RESOLVED |
-| reconnect delay | source material constant (`1 second`) | RESOLVED |
+| immudb host | platform_sdk config | RESOLVED |
+| immudb port | platform_sdk config | RESOLVED |
+| database name (`ledger`) | platform_sdk config / bootstrap convention | RESOLVED |
+| credentials | platform_sdk config + secrets | RESOLVED |
+| reconnect delay (`1 second`) | framework contract | RESOLVED |
 
 Gaps found:
-- GAP-5: Configuration | Need: local-dev credential handling boundary | Existing: ERR-001 / SIDE-003 | Gap Description: Source material allows default immudb creds locally but forbids production hardcoding | Shared?: NO | Recommendation: document environment-dependent credential sourcing | Resolution: RESOLVED in D4 and CLR-003 | Impact If Unresolved: builder could hardcode production secrets
+- None.
 
 ### 7. Error Propagation
-Description: How failures surface to callers.
+Description: How ledger failures travel to callers.
 
 | Error Source | Propagation Path | Status |
-| Connection failure | Ledger -> caller as `LedgerConnectionError` | RESOLVED |
-| Serialization failure | Ledger -> caller as `LedgerSerializationError` | RESOLVED |
-| Sequence conflict | Ledger -> caller as `LedgerSequenceError` | RESOLVED |
-| Chain corruption | Ledger -> caller as `LedgerCorruptionError`/verification result | RESOLVED |
+| Connection/database absent/disconnect failure | ledger -> caller as `LEDGER_CONNECTION_ERROR` | RESOLVED |
+| Chain corruption | ledger -> caller as `LEDGER_CORRUPTION_ERROR` | RESOLVED |
+| Sequence race/fork risk | ledger -> caller as `LEDGER_SEQUENCE_ERROR` | RESOLVED |
+| Serialization failure | ledger -> caller as `LEDGER_SERIALIZATION_ERROR` | RESOLVED |
 
 Gaps found:
-- GAP-6: Error Propagation | Need: corruption reporting semantics | Existing: ERR-004, OUT-004 | Gap Description: source material provided validity/break position but not enum mapping | Shared?: YES | Recommendation: keep verification result plus `LEDGER_CORRUPTION_ERROR` enum for callers that surface typed failures | Resolution: RESOLVED in D4 | Impact If Unresolved: callers cannot consistently halt on corruption
+- None.
 
 ### 8. Observability
-Description: What must be measurable or inspectable about Ledger behavior.
+Description: What the ledger must expose for diagnostics.
 
 | What | How | Status |
-| Append success/failure by contract outcome | Returned result/error, higher-layer logging | RESOLVED |
 | Chain validity and first break point | `verify_chain` result | RESOLVED |
-| Tip visibility | `get_tip` contract | RESOLVED |
+| Tip sequence/hash | `get_tip` result | RESOLVED |
+| Provenance on every event | E-001/E-004 fields | RESOLVED |
 
 Gaps found:
-- None. The Ledger owns contract outputs, not a separate operational log format.
+- None.
 
 ### 9. Resource Accounting
-Description: Storage and connection resources the Ledger consumes.
+Description: How ledger resource use is bounded or reported.
 
 | Resource | Accounting Method | Status |
-| Disk growth | Append-only Ledger size; managed externally by Storage Management | RESOLVED |
-| Connection count | Single persistent gRPC connection | RESOLVED |
-| Write latency | Synchronous append acknowledgment | RESOLVED |
+| Write durability latency | synchronous append acknowledgement boundary | RESOLVED |
+| Connection count | single persistent gRPC connection | RESOLVED |
+| Disk growth | external storage-management framework under pressure | RESOLVED |
 
 Gaps found:
-- GAP-7: Resource Accounting | Need: atomic append mechanism selection | Existing: SIDE-001 | Gap Description: source material allowed multiple implementation options | Shared?: YES | Recommendation: choose the simplest approved v1 option and record it | Resolution: ASSUMED as Option B in D5 RQ-001 and CLR-004 | Impact If Unresolved: builder blocks on atomicity choice
+- None.
 
 ## Clarification Log
-
 ### CLR-001
-- Found During: D2, D3, D5
-- Question: Does FMWK-001 define snapshot file format or only record snapshot metadata?
-- Options: A) Ledger defines snapshot format now; B) Ledger records metadata only and FMWK-005 owns file format
-- Status (OPEN|RESOLVED|ASSUMED): RESOLVED
+- Found During: D4, D5
+- Question: Which atomicity mechanism should satisfy the required tip-read plus write critical section?
+- Options: `ExecAll`; in-process mutex; `VerifiedSet`
+- Status (OPEN|RESOLVED|ASSUMED): ASSUMED
 - Blocks: No
 
-Resolution:
-- Option B. Source material explicitly marks snapshot format OPEN and tied to FMWK-005 needs. FMWK-001 owns the `snapshot_created` event payload only.
+Resolution note: Source material lists all three as acceptable options and explicitly marks in-process locking acceptable under the single-writer architecture. D5 selects the mutex assumption to close the spec without expanding runtime scope.
 
 ### CLR-002
-- Found During: D2, D4, D6
-- Question: What exactly does "offline verification" operate on?
-- Options: A) Running immudb instance only; B) exported Ledger data/bytes with no runtime services
+- Found During: D2, D3, D6
+- Question: Who owns snapshot file contents and format?
+- Options: Ledger; Graph; shared ownership
 - Status (OPEN|RESOLVED|ASSUMED): ASSUMED
 - Blocks: No
 
-Resolution:
-- Option B. NORTH_STAR and OPERATIONAL_SPEC require cold-storage validation without cognitive runtime, and source material says offline verification requires only the Ledger data file. The exact export packaging is left to tooling, not to FMWK-001.
+Resolution note: Snapshot reference event, path convention, and replay boundary are approved for FMWK-001. Snapshot file contents remain FMWK-005-owned because source material marks format OPEN and ties it to graph needs.
 
 ### CLR-003
-- Found During: D1, D4, D6
-- Question: How should immudb credentials be handled across local and production environments?
-- Options: A) Hardcode defaults everywhere; B) allow local defaults, require config/secrets for production
-- Status (OPEN|RESOLVED|ASSUMED): RESOLVED
-- Blocks: No
-
-Resolution:
-- Option B. Source material explicitly approves default credentials for local development only and requires config-driven credentials in production.
-
-### CLR-004
-- Found During: D4, D5, D6
-- Question: Which atomic append strategy is the v1 default?
-- Options: A) `ExecAll`; B) in-process mutex; C) `VerifiedSet`
+- Found During: D1, D2, D6
+- Question: Who enforces caller authorization for ledger operations?
+- Options: Ledger; runtime boundary exposing ledger; package-lifecycle
 - Status (OPEN|RESOLVED|ASSUMED): ASSUMED
 - Blocks: No
 
-Resolution:
-- Option B for v1. The source material explicitly marks it acceptable under the single-writer architecture, which is itself stated in the authority docs. This assumption is recorded for builder execution and can be revisited if concurrency requirements change.
+Resolution note: No authority document assigns policy evaluation to the ledger primitive. FMWK-001 validates provenance shape only and leaves authz to the runtime boundary that exposes ledger contracts.
 
-### CLR-005
-- Found During: D3, D5
-- Question: Should install lifecycle event naming use `framework_install` or `framework_installed`?
-- Options: A) `framework_install`; B) `framework_installed`
-- Status (OPEN|RESOLVED|ASSUMED): RESOLVED
+### CLR-004
+- Found During: D3, D6
+- Question: What exact identifier format should `provenance.framework_id` use in stored events?
+- Options: short `FMWK-NNN`; full `FMWK-NNN-name`; allow both
+- Status (OPEN|RESOLVED|ASSUMED): ASSUMED
 - Blocks: No
 
-Resolution:
-- Option B. FWK-0's Ledger event catalog is the authoritative source for install lifecycle naming, so `framework_installed` is adopted and the local wording mismatch is treated as a source-material inconsistency.
+Resolution note: FWK-0 names `FMWK-NNN-name` as the full framework identifier for agent-authored artifacts and provenance-readable paths. Stored event provenance therefore uses the full identifier, while shorter forms in source examples are treated as schematic shorthand.
 
 ## Summary
 | Category | Gaps Found | Shared | Resolved | Remaining |
-| Data In | 1 | 1 | 1 | 0 |
-| Data Out | 1 | 1 | 1 | 0 |
+| Data In | 2 | 2 | 2 | 0 |
+| Data Out | 0 | 0 | 0 | 0 |
 | Persistence | 1 | 1 | 1 | 0 |
-| Auth/Authz | 0 | 0 | 0 | 0 |
-| External Services | 1 | 1 | 1 | 0 |
-| Configuration | 1 | 0 | 1 | 0 |
-| Error Propagation | 1 | 1 | 1 | 0 |
+| Auth/Authz | 1 | 1 | 1 | 0 |
+| External Services | 0 | 0 | 0 | 0 |
+| Configuration | 0 | 0 | 0 | 0 |
+| Error Propagation | 0 | 0 | 0 | 0 |
 | Observability | 0 | 0 | 0 | 0 |
-| Resource Accounting | 1 | 1 | 1 | 0 |
+| Resource Accounting | 0 | 0 | 0 | 0 |
 
 Gate verdict: PASS (zero open)

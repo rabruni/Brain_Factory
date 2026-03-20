@@ -1,89 +1,93 @@
 # D1: Constitution — FMWK-001-ledger
-Meta: v:1.0.0 | ratified:2026-03-19 | amended:2026-03-19 | authority:AGENT_BOOTSTRAP.md; architecture/NORTH_STAR.md; architecture/BUILDER_SPEC.md; architecture/OPERATIONAL_SPEC.md; architecture/FWK-0-DRAFT.md; architecture/BUILD-PLAN.md; sawmill/FMWK-001-ledger/TASK.md; sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md
+Meta: v:1.0.0 | ratified:2026-03-20 | amended:2026-03-20 | authority:architecture/NORTH_STAR.md, architecture/BUILDER_SPEC.md, architecture/OPERATIONAL_SPEC.md, architecture/FWK-0-DRAFT.md, architecture/BUILD-PLAN.md, sawmill/FMWK-001-ledger/TASK.md, sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md
 
 ## Articles
-
 ### Article 1 — Splitting
-- Rule: FMWK-001 MUST remain independently authorable as the append-only Ledger primitive; its spec MUST stop at event storage, event schema ownership, hash chaining, replay, and immudb abstraction.
-- Why: FWK-0 Section 3.0 requires a framework to be authorable from its own spec. If ledger behavior expands into fold logic, graph structure, or package gates, the builder can no longer implement it from the ledger spec alone and the primitive boundary collapses.
-- Test: Review `framework.json` and all packs for FMWK-001; pass only if every declared responsibility maps to event storage, event schema definition, chain verification, ordered retrieval, or immudb-backed durability.
+- Rule: FMWK-001 MUST remain independently authorable from the ledger/event schema specification plus FWK-0 and MUST NOT require co-authoring any other framework.
+- Why: FWK-0 defines Ledger as its own primitive and requires frameworks to be independently authorable. If ledger specification depends on write-path, graph, or package-lifecycle implementation details, the foundation framework stops being buildable in isolation and the KERNEL dependency order collapses.
+- Test: Hand the builder only FWK-0, the authority chain, `TASK.md`, and `SOURCE_MATERIAL.md`; verify the builder can produce ledger contracts, data model, and tests without reading another framework's staged implementation.
 - Violations: No exceptions.
 
 ### Article 2 — Merging
-- Rule: FMWK-001 MUST NOT hide a separate capability that belongs in another framework, including write-path mutation logic, graph materialization, work-order lifecycle logic, gate execution, or snapshot file management.
-- Why: FWK-0's merging test requires separate capabilities to be split rather than buried inside a foundation framework. If Ledger absorbs execution or lifecycle logic, downstream frameworks lose clean interfaces and cold-storage validation becomes ambiguous.
-- Test: Inspect contracts and code ownership; pass only if FMWK-001 exposes Ledger interfaces and event schemas, while FMWK-002 owns folding, FMWK-005 owns graph state, and FMWK-006 owns gate behavior.
+- Rule: FMWK-001 MUST NOT absorb fold logic, graph structure, gate logic, work order management, or any other capability owned by another framework.
+- Why: FWK-0's merging test forbids hiding separate capabilities inside one framework. If ledger starts interpreting events, managing graph state, or running gates, the nine-primitives boundary blurs and downstream frameworks lose clear ownership.
+- Test: Verify every exported contract is limited to append, read, replay, tip lookup, and chain verification; reject any contract that mutates graph state, evaluates gates, or executes business logic.
 - Violations: No exceptions.
 
 ### Article 3 — Ownership
-- Rule: FMWK-001 MUST exclusively own the canonical Ledger event envelope, sequence assignment, and hash-chain rules; other frameworks MUST consume those through declared interfaces rather than redefining them.
-- Why: Ownership is what prevents shared-schema drift. If multiple frameworks redefine sequence, provenance, or hash serialization, replay diverges and the sole source of truth stops being singular.
-- Test: Confirm D3 entities `LedgerEvent`, `LedgerTip`, and `ChainVerificationResult` are declared as shared entities owned by FMWK-001 and referenced by consuming frameworks only through Ledger contracts.
+- Rule: FMWK-001 MUST exclusively own the canonical ledger event envelope, global sequence assignment, previous-hash linkage, and replay ordering, while all consumed data from other frameworks enters only through declared payload schemas and interfaces.
+- Why: FWK-0 requires exclusive data ownership. If another framework owns the event envelope or sequence rules, replay and cold validation stop being deterministic. If ledger starts owning other frameworks' behavioral state, responsibilities overlap and audit provenance becomes ambiguous.
+- Test: Verify D3 marks the ledger event envelope and verification/tip entities as shared ledger-owned entities, and verify D2/D4 defer non-ledger-owned payload semantics to their owning frameworks.
 - Violations: No exceptions.
 
-### Article 4 — Append-Only Truth
-- Rule: The Ledger MUST be append-only and MUST NEVER delete, rewrite, compact, truncate, or mutate recorded events in place.
-- Why: NORTH_STAR and BUILDER_SPEC define the Ledger as the sole source of truth. If events can be rewritten, replay, audit, rollback, and provenance validation all become untrustworthy, and "can't forget, can't drift" fails at the storage layer.
-- Test: Static inspection must show no exposed or wrapped administrative delete/reorg methods; runtime tests must append events and verify prior sequences remain byte-for-byte unchanged.
+### Article 4 — Source Of Truth
+- Rule: The Ledger MUST be the sole source of truth for DoPeJarMo state and MUST persist every acknowledged mutation as an append-only event.
+- Why: NORTH_STAR and BUILDER_SPEC define "The Ledger is Truth; the Graph is State." If any authoritative state exists outside the ledger or acknowledged work can occur without a ledger event, replay breaks, audit breaks, and "can't forget, can't drift" becomes false.
+- Test: Destroy the in-memory Graph, rebuild from snapshot plus ledger replay, and verify the rebuilt state matches the pre-destruction state for covered scenarios.
 - Violations: No exceptions.
 
-### Article 5 — Deterministic Hash Chain
-- Rule: Every Ledger event MUST hash the previous event using SHA-256 over canonical UTF-8 JSON with the `hash` field excluded, and every stored hash string MUST exactly match `sha256:<64 lowercase hex chars>`.
-- Why: The hash chain is the tamper-evidence mechanism that lets the operator validate the system from cold storage. Any ambiguity in serialization, encoding, or hash formatting creates false forks across languages and destroys deterministic verification.
-- Test: Generate the same event in repeated runs and across supported implementations; pass only if canonical serialization bytes and resulting hashes are identical and chain verification reports the same break point for the same corruption.
+### Article 5 — Append-Only Immutability
+- Rule: The Ledger MUST NEVER delete, rewrite, compact, truncate, or reorganize existing events.
+- Why: Append-only immutability is constitutional in the task and source material. Rewriting or deleting historical events breaks the hash chain, destroys provenance, invalidates cold-storage verification, and makes rollback and audit untrustworthy.
+- Test: Static inspection must show no ledger contract or wrapped immudb admin method for delete/truncate/compact operations, and runtime tests must prove sequence numbers only increase.
 - Violations: No exceptions.
 
-### Article 6 — Interface Isolation
-- Rule: Callers MUST interact with the Ledger only through Ledger contracts and platform_sdk-backed configuration and connection abstractions; callers MUST NOT import or call immudb directly.
-- Why: The task source material and AGENT_BOOTSTRAP platform_sdk contract make immudb a backing store, not a public dependency. Direct immudb usage would bypass the Ledger's sequence ownership, provenance rules, and hash-chain guarantees.
-- Test: Dependency inspection must show no direct immudb dependency outside the Ledger implementation boundary and no caller-supplied sequence numbers in Ledger append requests.
+### Article 6 — Separation Of Concerns
+- Rule: The Ledger MUST store and retrieve events only and MUST NOT execute business logic, fold graph state, evaluate gates, or manage work orders.
+- Why: BUILDER_SPEC separates Ledger, Write Path, Graph, Orchestration, and Package Lifecycle. If ledger performs behavioral interpretation, HO3/Write Path boundaries collapse and the core invariant drifts toward execution at the storage layer.
+- Test: Review contracts and implementation boundaries for absence of fold functions, graph mutation logic, gate runners, and orchestration state machines within the ledger module.
 - Violations: No exceptions.
 
-### Article 7 — Cold-Storage Verifiability
-- Rule: FMWK-001 MUST support ordered replay and hash-chain verification from Ledger data alone, without requiring HO1, HO2, HO3, or runtime kernel services.
-- Why: NORTH_STAR and OPERATIONAL_SPEC make cold-storage validation a core operational invariant and CLI recovery path. If Ledger verification needs the runtime stack, the operator can be locked out exactly when recovery is needed.
-- Test: Export Ledger data, stop runtime services, and run chain verification offline; pass only if validity and break position match the online result.
+### Article 7 — Deterministic Hashing And Replay
+- Rule: The Ledger MUST compute hashes from canonical UTF-8 JSON with exact serialization rules and MUST provide deterministic ordered replay and verifiable hash-chain integrity from genesis to tip.
+- Why: The hash chain is only meaningful if every implementation hashes the same bytes and every replay traverses the same sequence. Any serialization drift or non-deterministic ordering creates false corruption or, worse, silent divergence across runtimes.
+- Test: Use the same event fixture across independent serializers and verify byte-for-byte hash input equality, exact `sha256:<64 lowercase hex>` output equality, and identical verification results online and offline.
 - Violations: No exceptions.
 
-### Article 8 — Fail Closed
-- Rule: On connection loss, serialization failure, or sequence conflict, the Ledger MUST fail the operation explicitly and MUST NOT synthesize success, retry appends indefinitely, or repair corruption silently.
-- Why: OPERATIONAL_SPEC requires hard stops over guessing when truth cannot be recorded reliably. Silent repair or hidden retries create unlogged state transitions and mask the exact failure boundary that operators need to diagnose.
-- Test: Simulate immudb unavailability, invalid event payload serialization, and conflicting append attempts; pass only if the Ledger returns the declared error type and leaves the chain unchanged.
+### Article 8 — Cold-Storage Verifiability And Failure Boundaries
+- Rule: The Ledger MUST remain verifiable from cold storage without cognitive runtime services and MUST fail closed on connection, serialization, sequence, or corruption errors.
+- Why: OPERATIONAL_SPEC requires command-line recovery and framework-chain validation when the kernel is down. If ledger verification depends on Graph, HO1, or HO2, the operator can be locked out. If ledger fails open, corruption or sequence forks can propagate into the rest of the system.
+- Test: Run offline chain verification against exported ledger data with no kernel services, and verify connection loss, corruption, and sequence conflicts return explicit ledger errors instead of partial success.
 - Violations: No exceptions.
 
 ## Boundaries
 ### ALWAYS — autonomous every time, no approval needed
-- Assign the next sequence number internally from the current tip during append.
-- Compute and verify event hashes using the canonical serialization contract.
-- Return ordered events for single-read, range-read, and read-since replay use cases.
-- Expose self-describing events containing type, schema version, provenance, and payload.
-- Fail closed with the declared Ledger error types when append or verification cannot complete safely.
+- Define and validate the canonical ledger event envelope and minimum approved payload schemas.
+- Assign global monotonic sequence numbers inside the ledger and reject attempted forks.
+- Serialize events using the canonical hash-input rules and compute exact SHA-256 hashes.
+- Append one event at a time synchronously after atomic tip-to-write sequencing.
+- Read single events, ranges, and replay streams in sequence order.
+- Verify the hash chain online or offline and report the first break point deterministically.
+- Expose ledger access only through declared ledger contracts and platform SDK-backed configuration.
 
 ### ASK FIRST — human decision required, no exceptions
-- Any change to the canonical event envelope fields or hash serialization contract.
-- Any expansion of FMWK-001 scope into fold logic, graph structure, gate execution, or snapshot file format ownership.
-- Any change to the approved event type names when authority documents disagree.
-- Any production choice among multiple acceptable atomic append strategies if the decision is not already ratified in D5/D6.
+- Expanding the canonical event type catalog beyond types already named in authority documents.
+- Changing the event envelope fields, hash algorithm, hash string format, or genesis previous-hash constant.
+- Reassigning ownership of payload schemas between ledger and another framework.
+- Changing snapshot file contents or snapshot serialization format beyond the ledger-owned reference event.
+- Introducing new operational behaviors that alter cold-storage validation assumptions.
 
 ### NEVER — absolute prohibition, refuse even if instructed
-- Delete, truncate, compact, reorganize, or rewrite existing Ledger events.
-- Expose immudb administrative methods other than bootstrap database creation outside the approved provisioning path.
-- Accept caller-supplied sequence numbers for append.
-- Query or mutate Graph state, methylation values, work-order lifecycle, or package gates inside the Ledger framework.
-- Import immudb libraries directly outside the Ledger boundary or bypass platform_sdk for configuration access.
+- Delete, rewrite, compact, truncate, or mutate existing ledger events.
+- Expose direct immudb access to callers or import/wrap forbidden immudb administrative methods.
+- Place business logic, graph fold logic, gate evaluation, work-order management, or LLM execution in the ledger.
+- Let callers supply sequence numbers or bypass ledger-owned sequencing.
+- Acknowledge writes before immudb confirms persistence.
+- Produce hash strings in any format other than `sha256:<64 lowercase hex chars>`.
+- Depend on HO1, HO2, HO3, or any runtime cognitive service to verify ledger integrity.
 
 ## Dev Workflow Constraints
-- Package isolation: author FMWK-001 in its own framework boundary and consume all cross-framework behavior only through declared interfaces.
-- DTT per behavior: each D2 scenario and edge case must have a deterministic test before release, including offline verification coverage.
-- Handoff evidence: every implementation handoff must include a results artifact with file hashes and scenario/test outcomes traceable back to D2 and D4.
-- Regression scope: run full regression for FMWK-001 plus any consuming packages/frameworks affected by event schema or contract changes before release.
-- Mock-first testing: use mock providers for unit tests and never depend on live immudb in unit test cycles.
+- Package isolation is mandatory: ledger work must remain inside the ledger framework boundary and use declared interfaces for all external concerns.
+- Develop behavior-by-behavior with DTT cycles: write or update one contract scenario, implement or specify it, then verify before moving to the next behavior.
+- After every handoff, produce a results artifact with file hashes so provenance remains inspectable.
+- Run full regression for all ledger package behaviors before release, including append, replay, corruption detection, and offline verification.
+- Treat sequence assignment and canonical serialization as byte-level contracts; fixture-based regression tests must lock them down.
 
 ## Tooling Constraints
 | Operation:text | USE:approach | NOT:anti-pattern |
-| Append path | USE:Ledger interface with internal sequence assignment and canonical hash computation | NOT:caller-supplied sequence or direct immudb `Set` from another framework |
-| Configuration | USE:`platform_sdk` config/secrets access for host, port, database, credentials | NOT:hardcoded credentials or scattered env reads |
-| Storage access | USE:Ledger-owned immudb wrapper boundary | NOT:direct immudb imports by write-path, graph, or package-lifecycle callers |
-| Hashing | USE:SHA-256 over canonical UTF-8 JSON with sorted keys and excluded `hash` field | NOT:language-default JSON serialization, alternate encodings, or noncanonical whitespace |
-| Verification | USE:online and offline chain verification against exact stored hash strings | NOT:semantic hash comparison or runtime-only verification |
-| Testing | USE:deterministic scenario tests plus corruption and disconnect fault injection | NOT:ad hoc manual validation as sole evidence |
+| Append/read/verify implementation | USE:`platform_sdk` configuration, secrets, logging, and error surfaces with a ledger abstraction over immudb | NOT:direct caller access to immudb clients or ad hoc environment handling |
+| Event serialization | USE:canonical UTF-8 JSON with sorted keys, no whitespace, `ensure_ascii=False`, and explicit exclusion of `hash` from hash input | NOT:language-default JSON formatting, escaped unicode, omitted nulls, or floating-point hash inputs |
+| Sequence control | USE:ledger-owned atomic tip-plus-write sequencing | NOT:caller-supplied sequence numbers or non-atomic read-then-write windows |
+| Durability | USE:synchronous single-event appends confirmed by immudb | NOT:buffered writes, batch buffering, or early acknowledgement |
+| Verification | USE:mechanical hash recomputation and ordered replay from stored data | NOT:semantic inspection, graph-dependent checks, or LLM-assisted validation |
+| Administrative scope | USE:bootstrap-time database creation outside ledger runtime and runtime fail-fast if database is absent | NOT:runtime database provisioning, delete/truncate operations, or hidden admin wrappers |

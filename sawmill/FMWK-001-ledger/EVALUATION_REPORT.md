@@ -1,105 +1,103 @@
 # Evaluation Report — FMWK-001-ledger
 
-Run ID: `20260320T202813Z-6935d147c49b`
-Attempt: 1
-Date: 2026-03-20
+Run ID: 20260320T205424Z-45d3202a8b43
+Attempt: 2
+Holdout hash: sha256:0283f98318cbfa55bfc767896c987a1f4384bcb6a83419665b36636f4578e080
+Staging hash: sha256:0fb62e5bca70e8584ec9068c58c38be2861392dcd3ec9e44a1a3b76777cf635a
 
-## Holdout Hashes
+## Run Order
 
-- holdout_hash: `sha256:b1f1c423dbcf4cd9987632c7b4ca825934a1f6bafc58918c51d7eb8fcb7cc33c`
-- staging_hash: `sha256:f10f26900f3a0bc7c21e2bc29fe4884e0e29bb861ca59e1de859729399c9f9ee`
+P0 first, then P1. Per D9 protocol: HS-001, HS-002, HS-004, HS-005, HS-003.
 
-## P0 Scenarios
+## Results
 
-### HS-001 — genesis-and-monotonic-append (P0)
-
-| Run | Result |
-|-----|--------|
-| 1   | PASS   |
-| 2   | PASS   |
-| 3   | PASS   |
-
-**Aggregate: PASS (3/3)**
-
-Checks verified:
-- Genesis append: sequence_number=0, sequence=0, previous_hash is all-zero genesis hash, hash matches sha256 format
-- Monotonic next append: sequence_number=1, sequence=1, previous_hash equals first event hash
-- Self-describing envelope: all required fields present (event_id, event_type, schema_version, timestamp, provenance, payload)
-- Tip visibility: sequence_number=1, hash equals second event hash
-
-### HS-003 — verify-parity-and-corruption-detection (P0)
+### HS-001 — genesis-append-populates-ledger-owned-fields (P0)
 
 | Run | Result |
 |-----|--------|
-| 1   | PASS   |
-| 2   | PASS   |
-| 3   | PASS   |
+| 1 | PASS |
+| 2 | PASS |
+| 3 | PASS |
 
-**Aggregate: PASS (3/3)**
+Aggregate: **PASS** (3/3)
 
-Checks verified:
-- Online verification: valid=true, start=0, end=3, no break_at
-- Offline verification: valid=true, start=0, end=3, no break_at (parity with online)
-- Corruption detection: valid=false, break_at=2, start=0, end=3 (deterministic first break at corrupted sequence)
+All checks passed: genesis sequencing (sequence 0, zero previous_hash), envelope completion (all required fields present), caller immutability (ledger-owned fields populated by framework), hash format (sha256: prefix + 64 hex chars).
 
-## P1 Scenarios
-
-### HS-002 — ordered-replay-across-snapshot-boundary (P1)
+### HS-002 — sequential-append-read-replay-and-tip-remain-linear (P0)
 
 | Run | Result |
 |-----|--------|
-| 1   | PASS   |
-| 2   | PASS   |
-| 3   | PASS   |
+| 1 | FAIL |
+| 2 | FAIL |
+| 3 | FAIL |
 
-**Aggregate: PASS (3/3)**
+Aggregate: **FAIL** (0/3)
 
-Checks verified:
-- Read one: sequence=2, event_type=snapshot_created, non-empty payload object
-- Ordered bounded replay: 4 events with ascending sequences [0,1,2,3] and correct event types
-- Replay after snapshot boundary: only sequence 3 (signal_delta) returned for read_since(2)
+Execute phase aborted: first append (node_creation event) rejected by `schemas.py:validate_payload` with `LEDGER_SERIALIZATION_ERROR: initial_state must be an object`. The holdout payload contains `{node_id, node_type, subject_id}` but the builder's schema requires `initial_state` (a Mapping) as a mandatory field for `node_creation` events. No verify checks reached.
 
-### HS-004 — serialization-rejection-preserves-tip (P1)
+### HS-004 — verify-chain-reports-first-corruption-boundary (P0)
 
 | Run | Result |
 |-----|--------|
-| 1   | PASS   |
-| 2   | PASS   |
-| 3   | PASS   |
+| 1 | FAIL |
+| 2 | FAIL |
+| 3 | FAIL |
 
-**Aggregate: PASS (3/3)**
+Aggregate: **FAIL** (0/3)
 
-Checks verified:
-- Error response: error_code=LEDGER_SERIALIZATION_ERROR, non-empty message, no success fields
-- Tip unchanged: sequence_number and hash identical before and after rejected append
+Execute phase aborted: third append (package_install event) rejected by `schemas.py:validate_payload` with `LEDGER_SERIALIZATION_ERROR: framework_id must be a non-empty string`. The holdout payload contains `{package_id, version, action}` but the builder's schema requires `framework_id`, `install_scope`, and `manifest_hash` as mandatory fields for `package_install` events. First two appends (session_start, signal_delta) succeeded. No verify checks reached.
 
-### HS-005 — connection-failure-and-sequence-conflict-are-explicit (P1)
+### HS-005 — append-and-tip-fail-with-contract-shaped-errors (P0)
 
 | Run | Result |
 |-----|--------|
-| 1   | PASS   |
-| 2   | PASS   |
-| 3   | PASS   |
+| 1 | PASS |
+| 2 | PASS |
+| 3 | PASS |
 
-**Aggregate: PASS (3/3)**
+Aggregate: **PASS** (3/3)
 
-Checks verified:
-- Connection error: error_code=LEDGER_CONNECTION_ERROR, non-empty message, no events payload
-- Sequence error: error_code=LEDGER_SEQUENCE_ERROR, non-empty message, no success fields
-- No fork/no hidden write: tip sequence_number and hash unchanged across both failures
+All checks passed: sequence error shape (LEDGER_SEQUENCE_ERROR with message), connection error shape (LEDGER_CONNECTION_ERROR with message), serialization error shape (LEDGER_SERIALIZATION_ERROR with message for float delta), no partial writes (tip unchanged after all three error types).
+
+### HS-003 — online-and-offline-verification-agree-on-intact-ledger (P1)
+
+| Run | Result |
+|-----|--------|
+| 1 | FAIL |
+| 2 | FAIL |
+| 3 | FAIL |
+
+Aggregate: **FAIL** (0/3)
+
+Execute phase aborted: second append (package_install event) rejected by `schemas.py:validate_payload` with `LEDGER_SERIALIZATION_ERROR: framework_id must be a non-empty string`. Same root cause as HS-004. No verify checks reached.
 
 ## Summary
 
-| Scenario | Priority | Aggregate | Runs |
-|----------|----------|-----------|------|
-| HS-001   | P0       | PASS      | 3/3  |
-| HS-003   | P0       | PASS      | 3/3  |
-| HS-002   | P1       | PASS      | 3/3  |
-| HS-004   | P1       | PASS      | 3/3  |
-| HS-005   | P1       | PASS      | 3/3  |
+| Scenario | Priority | Aggregate |
+|----------|----------|-----------|
+| HS-001 | P0 | PASS |
+| HS-002 | P0 | FAIL |
+| HS-004 | P0 | FAIL |
+| HS-005 | P0 | PASS |
+| HS-003 | P1 | FAIL |
 
-- P0 gate: PASS (2/2 scenarios)
-- P1 gate: PASS (3/3 scenarios)
-- Overall pass rate: 5/5 (100%)
+- P0 pass: 2/4 (HS-001, HS-005)
+- P1 pass: 0/1
+- Overall pass rate: 2/5 = 40%
 
-Final verdict: PASS
+## Gate Check
+
+- All P0 pass: NO (HS-002, HS-004 failed)
+- All P1 pass: NO (HS-003 failed)
+- Overall >= 90%: NO (40%)
+
+## Root Cause Summary
+
+Two distinct schema over-constraints in `staging/FMWK-001-ledger/ledger/schemas.py:validate_payload`:
+
+1. **node_creation**: requires `initial_state` as a mandatory Mapping. Holdout payloads (from D4 contracts) do not include `initial_state`.
+2. **package_install**: requires `framework_id`, `install_scope`, and `manifest_hash` as mandatory fields. Holdout payloads (from D4 contracts) include only `package_id`, `version`, and `action`.
+
+These schema constraints reject valid contract-conforming payloads, causing 3 of 5 scenarios to abort during the execute phase before any verification checks run.
+
+Final verdict: FAIL

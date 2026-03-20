@@ -1,7 +1,7 @@
 # Canary Audit — FMWK-001-ledger
 
 Stage: Turn E
-Date: 2026-03-20T20:36:52Z
+Date: 2026-03-20T21:35:42Z
 Pass: 38
 Fail: 0
 
@@ -39,13 +39,13 @@ Fail: 0
 | PASS | evaluation_errors exists |
 | PASS | evaluation_report exists |
 | PASS | evaluator_evidence exists |
-| PASS | Portal: Turn E PASS |
+| PASS | Portal: Turn E FAIL |
 | PASS | Portal says A DONE → Turn A complete |
 | PASS | Portal says B DONE → Turn B complete |
 | PASS | Portal says C DONE → Turn C complete |
 | PASS | Portal says D DONE → Turn D complete |
-| PASS | Portal says E PASS → Turn E complete |
-| PASS | Portal says E PASS → evaluation verdict PASS |
+| PASS | Portal says E FAIL → Turn E complete |
+| PASS | Portal says E FAIL → evaluation verdict FAIL |
 | PASS | catalog-info.yaml exists |
 ## Verdict
 

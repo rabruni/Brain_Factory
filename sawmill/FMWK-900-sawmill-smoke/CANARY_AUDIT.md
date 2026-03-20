@@ -1,8 +1,8 @@
 # Canary Audit — FMWK-900-sawmill-smoke
 
 Stage: Turn E
-Date: 2026-03-18T04:37:14Z
-Pass: 44
+Date: 2026-03-20T21:28:36Z
+Pass: 38
 Fail: 0
 
 ## Results
@@ -10,8 +10,6 @@ Fail: 0
 | Status | Check |
 |--------|-------|
 | PASS | Status page exists |
-| PASS | mkdocs.yml references FMWK-900-sawmill-smoke |
-| PASS | PORTAL_MAP.yaml references FMWK-900-sawmill-smoke |
 | PASS | d1_constitution exists |
 | PASS | d2_specification exists |
 | PASS | d3_data_model exists |
@@ -48,14 +46,7 @@ Fail: 0
 | PASS | Portal says D DONE → Turn D complete |
 | PASS | Portal says E PASS → Turn E complete |
 | PASS | Portal says E PASS → evaluation verdict PASS |
-| PASS | PORTAL_STATUS.md exists |
-| PASS | PORTAL_CHANGESET.md exists |
-| PASS | validate_portal_map.py passes |
 | PASS | catalog-info.yaml exists |
-| PASS | portal-steward ran for this stage |
-| INFO | PORTAL_STATUS.md changed this stage |
-| INFO | PORTAL_CHANGESET.md changed this stage |
-
 ## Verdict
 
-**PASS** — all 44 checks passed
+**PASS** — all 38 checks passed

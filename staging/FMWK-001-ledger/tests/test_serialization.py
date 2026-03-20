@@ -1,88 +1,102 @@
-from __future__ import annotations
-
-from ledger.models import EventProvenance, LedgerEvent
-from ledger.serialization import canonical_event_bytes, compute_event_hash
+from ledger.errors import LedgerSerializationError
+from ledger.models import LedgerEvent, Provenance
+from ledger.serialization import ZERO_HASH, canonical_event_bytes, compute_event_hash
 
 
 def _event_with_payload(payload: dict) -> LedgerEvent:
     return LedgerEvent(
-        event_id="0195b7fc-c29c-7c2f-a4da-8f6d2eb6d1a1",
-        sequence=4,
-        event_type="node_creation",
+        event_id="0195b8d1-6d8d-7ef9-9c6a-4bd29ca2dce4",
+        sequence=0,
+        event_type="session_start",
         schema_version="1.0.0",
-        timestamp="2026-03-19T23:11:12Z",
-        provenance=EventProvenance(
-            framework_id="FMWK-004",
-            pack_id="PC-002-signal-logging",
-            actor="agent",
+        timestamp="2026-03-20T20:20:00Z",
+        provenance=Provenance(
+            framework_id="FMWK-001-ledger",
+            pack_id="PC-001-ledger-core",
+            actor="system",
         ),
-        previous_hash="sha256:" + ("1" * 64),
+        previous_hash=ZERO_HASH,
         payload=payload,
-        hash="sha256:" + ("2" * 64),
+        hash="sha256:b2bbde319c7c9677b6d6816d9b422c8ec9787c6d0ca7f64444f0715a8ca54ac8",
     )
 
 
-def test_canonical_event_bytes_sorted_keys() -> None:
+def test_serialization_uses_sorted_keys_without_whitespace() -> None:
     event = _event_with_payload(
         {
-            "metadata": {"zeta": 1, "alpha": 2},
-            "node_type": "intent",
-            "node_id": "node-intent-dining-recall",
-            "lifecycle_state": "LIVE",
+            "subject_id": "ray",
+            "session_id": "session-0195b8d1",
+            "started_by": "operator",
+            "session_kind": "operator",
         }
     )
 
-    payload_section = canonical_event_bytes(event).decode("utf-8")
-    assert (
-        payload_section.index('"lifecycle_state"')
-        < payload_section.index('"metadata"')
-        < payload_section.index('"node_id"')
-        < payload_section.index('"node_type"')
+    assert canonical_event_bytes(event) == (
+        b'{"event_id":"0195b8d1-6d8d-7ef9-9c6a-4bd29ca2dce4","event_type":"session_start",'
+        b'"payload":{"session_id":"session-0195b8d1","session_kind":"operator","started_by":"operator","subject_id":"ray"},'
+        b'"previous_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000000",'
+        b'"provenance":{"actor":"system","framework_id":"FMWK-001-ledger","pack_id":"PC-001-ledger-core"},'
+        b'"schema_version":"1.0.0","sequence":0,"timestamp":"2026-03-20T20:20:00Z"}'
     )
-    assert payload_section.index('"alpha"') < payload_section.index('"zeta"')
 
 
-def test_canonical_event_bytes_uses_utf8_no_ascii_escape() -> None:
+def test_serialization_excludes_hash_field_from_hash_input() -> None:
+    event = _event_with_payload({"session_id": "session-0195b8d1", "session_kind": "operator", "subject_id": "ray", "started_by": "operator"})
+    changed_hash = LedgerEvent(**{**event.__dict__, "hash": "sha256:" + ("f" * 64)})
+
+    assert canonical_event_bytes(event) == canonical_event_bytes(changed_hash)
+
+
+def test_serialization_preserves_nulls_and_utf8_literals() -> None:
     event = _event_with_payload(
         {
-            "node_id": "cafe",
-            "node_type": "intent",
-            "lifecycle_state": "LIVE",
-            "metadata": {"title": "caf\u00e9"},
+            "session_id": "session-0195b8d1",
+            "session_kind": "operator",
+            "subject_id": None,
+            "started_by": "opérateur",
         }
     )
 
-    encoded = canonical_event_bytes(event)
-    assert "caf\u00e9" in encoded.decode("utf-8")
-    assert b"\\u00e9" not in encoded
+    rendered = canonical_event_bytes(event)
+
+    assert b"null" in rendered
+    assert "opérateur".encode("utf-8") in rendered
+    assert b"\\u00e9" not in rendered
 
 
-def test_canonical_event_bytes_keeps_null_fields() -> None:
+def test_compute_event_hash_returns_sha256_prefixed_lowercase_hex() -> None:
     event = _event_with_payload(
         {
-            "node_id": "node-intent-dining-recall",
-            "node_type": "intent",
-            "lifecycle_state": "LIVE",
-            "metadata": {"title": None},
+            "session_id": "session-0195b8d1",
+            "session_kind": "operator",
+            "subject_id": "ray",
+            "started_by": "operator",
         }
     )
 
-    encoded = canonical_event_bytes(event).decode("utf-8")
-    assert '"title":null' in encoded
+    assert compute_event_hash(event) == "sha256:ad32f4a54aa9b4275341886715eadfa6a52ad3f1ba83c3e0fc7cae6978bfe0dc"
 
 
-def test_compute_event_hash_exact_prefix_and_length() -> None:
-    event = _event_with_payload(
-        {
-            "node_id": "node-intent-dining-recall",
-            "node_type": "intent",
-            "lifecycle_state": "LIVE",
-            "metadata": {},
-        }
-    )
-
-    digest = compute_event_hash(event)
-    assert digest.startswith("sha256:")
-    assert len(digest) == 71
-    assert digest[7:].islower()
-    assert event.hash == "sha256:" + ("2" * 64)
+def test_serialization_rejects_unhashable_float_in_base_envelope() -> None:
+    try:
+        canonical_event_bytes(
+            {
+                "event_id": "0195b8d1-6d8d-7ef9-9c6a-4bd29ca2dce4",
+                "sequence": 0.5,
+                "event_type": "session_start",
+                "schema_version": "1.0.0",
+                "timestamp": "2026-03-20T20:20:00Z",
+                "provenance": {
+                    "framework_id": "FMWK-001-ledger",
+                    "pack_id": "PC-001-ledger-core",
+                    "actor": "system",
+                },
+                "previous_hash": ZERO_HASH,
+                "payload": {"session_id": "session-0195b8d1"},
+                "hash": "sha256:b2bbde319c7c9677b6d6816d9b422c8ec9787c6d0ca7f64444f0715a8ca54ac8",
+            }
+        )
+    except LedgerSerializationError as error:
+        assert "float" in str(error)
+    else:
+        raise AssertionError("expected serialization error")

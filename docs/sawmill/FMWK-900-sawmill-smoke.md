@@ -2,8 +2,8 @@
 # FMWK-900-sawmill-smoke — Build Status
 
 **Status:** Evaluation PASS
-**Run ID:** 20260318T041151Z-03ee32956103
-**Runtime State:** passed
+**Run ID:** 20260320T212822Z-3a895a647548
+**Runtime State:** running
 **Governed Path Intact:** true
 
 ---
@@ -20,4 +20,4 @@
 
 ---
 
-*Updated by sawmill/run.sh at 2026-03-18T04:37:14Z*
+*Updated by sawmill.run_state at 2026-03-20T21:28:36Z*

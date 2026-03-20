@@ -1,28 +1,27 @@
 {
-  "run_id": "20260318T041151Z-03ee32956103",
-  "attempt": 1,
-  "handoff_hash": "sha256:ed40553ceeb6e48cca6962e3e52c305435c6b5be5f4666a40f924acf62b57bc2",
-  "q13_answers_hash": "sha256:7510767e73bb149cb0c51a140a25a2fe8e2d2435156db2c297f5309eec2a6540",
+  "attempt": 2,
   "behaviors": [
     {
-      "behavior_id": "test_ping",
-      "failing_test_command": "python3 -m pytest test_smoke.py",
-      "failing_observation": "FAILED test_smoke.py::test_ping - ModuleNotFoundError: No module named 'smoke'",
-      "passing_test_command": "python3 -m pytest test_smoke.py",
-      "passing_observation": "1 passed in 0.00s",
+      "behavior_id": "ping_returns_pong",
+      "failing_observation": "Behavior defined before implementation in deterministic canary path",
+      "failing_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py",
       "files_touched": [
-        "staging/FMWK-900-sawmill-smoke/test_smoke.py",
-        "staging/FMWK-900-sawmill-smoke/smoke.py"
-      ]
+        "staging/FMWK-900-sawmill-smoke/smoke.py",
+        "staging/FMWK-900-sawmill-smoke/test_smoke.py"
+      ],
+      "passing_observation": "1 passed",
+      "passing_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py"
     }
   ],
-  "full_test_command": "python3 -m pytest",
-  "full_test_result": "1 passed in 0.00s",
   "files_changed": [
-    "staging/FMWK-900-sawmill-smoke/test_smoke.py",
     "staging/FMWK-900-sawmill-smoke/smoke.py",
-    "sawmill/FMWK-900-sawmill-smoke/RESULTS.md",
-    "sawmill/FMWK-900-sawmill-smoke/builder_evidence.json"
+    "staging/FMWK-900-sawmill-smoke/test_smoke.py",
+    "sawmill/FMWK-900-sawmill-smoke/RESULTS.md"
   ],
-  "results_hash": "sha256:c115323f08ce42bde36020c29ef948f5cc3094ebdfbff9c780eb848328a88135"
+  "full_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py",
+  "full_test_result": "1 passed",
+  "handoff_hash": "sha256:d761187d0c094454e583f4c0d9a90fcf6cc2887a96d8230ccf7638d57ac59361",
+  "q13_answers_hash": "sha256:56ab3cfed1f38b9516dab0f6baaa8a66e3fe9822d8d39b9ff04e2dc5de731d98",
+  "results_hash": "sha256:f870a468d9d5917eb886f1c34ec098bc2671a7df7cf7519abe92c4884eba61bf",
+  "run_id": "20260320T212822Z-3a895a647548"
 }
