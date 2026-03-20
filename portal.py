@@ -530,6 +530,76 @@ def load_run_events(run_path):
     return events
 
 
+# ── Event classification for Activity Feed ───────────────────────────────────
+
+SIGNIFICANT_EVENTS = {
+    "run_started", "preflight_passed", "preflight_failed",
+    "turn_started", "prompt_rendered", "agent_invoked", "agent_exited",
+    "output_verified", "evidence_validated", "gate_passed",
+    "turn_completed", "turn_failed",
+    "run_completed", "run_failed",
+    "review_verdict_recorded", "evaluation_verdict_recorded",
+    "retry_started",
+}
+
+NOISE_EVENTS = {"agent_liveness_observed"}
+
+
+def classify_events(events):
+    """Split events into significant and noise (heartbeat spam)."""
+    significant = []
+    noise = []
+    for ev in events:
+        if ev.get("event_type") in NOISE_EVENTS:
+            noise.append(ev)
+        else:
+            significant.append(ev)
+    return significant, noise
+
+
+def aggregate_heartbeats(noise_events):
+    """Aggregate heartbeat noise into one summary per step."""
+    by_step = {}
+    for ev in noise_events:
+        step = ev.get("raw", {}).get("step", ev.get("turn", "?"))
+        role = ev.get("role", "?")
+        key = f"{step}:{role}"
+        if key not in by_step:
+            by_step[key] = {
+                "step": step,
+                "role": role,
+                "count": 0,
+                "progress_count": 0,
+                "first_ts": ev.get("timestamp", ""),
+                "last_ts": ev.get("timestamp", ""),
+                "last_summary": "",
+            }
+        by_step[key]["count"] += 1
+        by_step[key]["last_ts"] = ev.get("timestamp", "")
+        summary = ev.get("summary", "")
+        by_step[key]["last_summary"] = summary
+        if "progressing" in summary or "progress" in summary:
+            by_step[key]["progress_count"] += 1
+    return list(by_step.values())
+
+
+def compute_duration(start_ts, end_ts):
+    """Compute human-readable duration between two ISO timestamps."""
+    try:
+        start = datetime.datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+        end = datetime.datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+        delta = end - start
+        secs = int(delta.total_seconds())
+        if secs < 60:
+            return f"{secs}s"
+        elif secs < 3600:
+            return f"{secs // 60}m {secs % 60}s"
+        else:
+            return f"{secs // 3600}h {(secs % 3600) // 60}m"
+    except Exception:
+        return "?"
+
+
 def clean_preview(text):
     """Clean up conversation preview text — strip prompt fragments and formatting artifacts."""
     if not text:
@@ -710,32 +780,12 @@ if page == "📋 Workspace":
     st.divider()
 
     cli_icon_map = {"claude": "🟣", "codex": "🟢", "gemini": "🔵", "human": "👤"}
-    type_icon_map = {"plan": "📐", "results": "📦", "review": "🔍", "prompt": "💬",
-                     "handoff": "🤝", "question": "❓", "context": "📎"}
-
-    def render_flow_line(it):
-        """Render the visual flow: sender → portal → recipient with status."""
-        from_agent = it.get("from_agent", it.get("from_cli", "?"))
-        from_cli = it.get("from_cli", "?")
-        to = it.get("to", "?")
-        status = it.get("status", "?")
-        si = status_icons.get(status, "•")
-        # Determine recipient CLI from registered agents
-        to_cli = "?"
-        for a in ws.list_agents():
-            if a["name"] == to:
-                to_cli = a["cli"]
-                break
-        if to == "human":
-            to_cli = "human"
-        from_ci = cli_icon_map.get(from_cli, "•")
-        to_ci = cli_icon_map.get(to_cli, "•")
-        return f"{from_ci} **{from_agent}** → {si} Portal → {to_ci} **{to}**"
+    cli_avatar_map = {"claude": "🟣", "codex": "🟢", "gemini": "🔵", "human": "👤"}
 
     # ── Render as threads ────────────────────────────────────────────────
     threads = ws.list_threads()
 
-    # Split into active (has sent/in_progress items) and archive (all complete)
+    # Split active vs archive
     active_threads = []
     archive_threads = []
     for t in threads:
@@ -745,68 +795,68 @@ if page == "📋 Workspace":
         else:
             archive_threads.append(t)
 
-    all_threads_to_render = []
     if active_threads:
         st.subheader(f"Active ({len(active_threads)})")
-        all_threads_to_render.extend(active_threads)
 
     if archive_threads:
-        with st.expander(f"Archive ({len(archive_threads)} completed conversations)"):
+        with st.expander(f"Archive ({len(archive_threads)} completed)"):
             for t in archive_threads:
                 st.caption(f"💬 {t['summary'][:50]} — {', '.join(t['participants'])} · {t['latest'][:16]}")
 
-    if all_threads_to_render:
-        for thread in all_threads_to_render:
-            tid = thread["thread_id"]
-            participants = ", ".join(thread["participants"])
-            msg_count = thread["message_count"]
-            latest = thread["latest"][:16] if thread["latest"] else ""
-            summary = thread["summary"]
+    if active_threads:
+        # Thread selector in sidebar
+        thread_names = [f"{t['summary'][:40]} ({len(t['items'])} msgs)" for t in active_threads]
+        selected_idx = st.sidebar.selectbox("Conversation", range(len(active_threads)),
+            format_func=lambda i: thread_names[i], key="ws_thread_select")
 
-            with st.expander(f"💬 **{summary}** — {participants} · {msg_count} messages · {latest}"):
-                # Render each turn in the thread chronologically
-                for it in thread["items"]:
-                    item_id = it.get("id", "?")
-                    item_type = it.get("type", "?")
-                    from_agent = it.get("from_agent", it.get("from_cli", "?"))
-                    from_cli = it.get("from_cli", "?")
-                    to = it.get("to", "?")
-                    item_summary = it.get("summary", "")
-                    created = it.get("created_at", "")[:16]
-                    content = it.get("content", "")
-                    ti = type_icon_map.get(item_type, "📋")
-                    fci = cli_icon_map.get(from_cli, "👤")
+        thread = active_threads[selected_idx]
+        tid = thread["thread_id"]
+        participants = ", ".join(thread["participants"])
+        msg_count = thread["message_count"]
 
-                    # Turn header
-                    status = it.get("status", "?")
-                    si = status_icons.get(status, "•")
-                    with st.expander(f"{fci} **{from_agent}** → {to} · {si} {status} · {created}  \n{item_summary}", expanded=False):
-                        if content:
-                            st.markdown(content)
+        st.markdown(f"**{thread['summary']}** — {participants} · {msg_count} messages")
+        st.divider()
 
-                # Reply box at the bottom of the thread
-                st.markdown("---")
-                last_item = thread["items"][-1] if thread["items"] else None
-                last_id = last_item.get("id", "") if last_item else ""
-                # Pre-populate route with thread participants (minus human)
-                default_route = [p for p in thread["participants"] if p != "human"]
-                reply_text = st.text_area("Reply", key=f"reply_{tid}", placeholder="Write a prompt, instructions, or feedback...", height=150)
-                route_to = st.multiselect("Route to", ws.get_routable_targets(), default=default_route, key=f"route_thread_{tid}")
-                if st.button("📨 Send", key=f"send_thread_{tid}"):
-                    to_str = ",".join(route_to) if route_to else "any"
-                    if reply_text:
-                        ws.create_item(
-                            item_type="prompt", from_cli="human", to=to_str,
-                            summary=reply_text[:80], content=reply_text,
-                            from_agent="human", reply_to=last_id)
-                    elif route_to and last_item:
-                        ws.route_item(last_id, to_str, actor="human")
-                    if reply_text or route_to:
-                        st.rerun()
-    else:
+        # ── Chat messages (auto-refreshing fragment) ──────────────────
+        @st.fragment(run_every=5)
+        def render_chat():
+            # Re-fetch thread on every fragment run
+            fresh_thread = ws.get_thread(tid)
+            for it in fresh_thread:
+                from_agent = it.get("from_agent", it.get("from_cli", "?"))
+                from_cli = it.get("from_cli", "?")
+                content = it.get("content", "")
+                summary = it.get("summary", "")
+                created = it.get("created_at", "")[:16]
+                status = it.get("status", "?")
+                si = status_icons.get(status, "•")
+                avatar = cli_avatar_map.get(from_cli, "🤖")
+
+                role = "user" if from_agent == "human" else "assistant"
+                with st.chat_message(role, avatar=avatar):
+                    with st.expander(f"**{from_agent}** · {created} · {si}", expanded=True):
+                        st.markdown(content or summary)
+
+        render_chat()
+
+        # ── Reply controls ────────────────────────────────────────────
+        st.divider()
+        default_route = [p for p in thread["participants"] if p != "human"]
+        route_to = st.multiselect("Route to", ws.get_routable_targets(), default=default_route, key=f"route_{tid}")
+
+        last_item = thread["items"][-1] if thread["items"] else None
+        last_id = last_item.get("id", "") if last_item else ""
+
+        if reply_text := st.chat_input("Type a message...", key=f"chat_{tid}"):
+            to_str = ",".join(route_to) if route_to else "any"
+            ws.create_item(
+                item_type="prompt", from_cli="human", to=to_str,
+                summary=reply_text[:80], content=reply_text,
+                from_agent="human", reply_to=last_id)
+            st.rerun()
+
+    elif not archive_threads:
         st.info("No conversations yet. Create one above or tell an agent to post to the workspace.")
-        st.markdown("**How to use:** Tell any agent to post to the workspace via MCP. Example:")
-        st.code('Use the post_to_workspace tool to post your plan for human approval.', language="text")
 
     # ── Invite Tokens ─────────────────────────────────────────────────────
     st.divider()
@@ -948,10 +998,11 @@ if page == "📊 Activity Feed":
                 state_icon = {"running": "🟡", "passed": "🟢", "failed": "🔴"}.get(run_state, "⚪")
 
                 with st.expander(f"{state_icon} **{fw}** — `{rid[:16]}…` — {run_ts} — {ev_count} events"):
-                    # Load events ONLY when this run is expanded
                     events = load_run_events(run_info["path"])
+                    significant, noise = classify_events(events)
+                    heartbeat_agg = aggregate_heartbeats(noise)
 
-                    # Extract turns for flow diagram
+                    # ── Stage cards ───────────────────────────────────
                     turns = []
                     seen_turns = set()
                     for ev in events:
@@ -960,35 +1011,65 @@ if page == "📊 Activity Feed":
                             seen_turns.add(t)
                             turn_outcome = "pending"
                             turn_role = ev.get("role", "")
+                            turn_start = ""
+                            turn_end = ""
                             for e2 in events:
-                                if e2.get("turn") == t and e2.get("event_type") in ("turn_completed", "turn_failed"):
-                                    turn_outcome = "passed" if e2.get("event_type") == "turn_completed" else "failed"
-                            turns.append({"turn": t, "role": turn_role, "outcome": turn_outcome})
+                                if e2.get("turn") == t:
+                                    if e2.get("event_type") == "turn_started":
+                                        turn_start = e2.get("timestamp", "")
+                                    if e2.get("event_type") in ("turn_completed", "turn_failed"):
+                                        turn_outcome = "passed" if e2.get("event_type") == "turn_completed" else "failed"
+                                        turn_end = e2.get("timestamp", "")
+                            duration = compute_duration(turn_start, turn_end) if turn_start and turn_end else "..."
+                            turns.append({"turn": t, "role": turn_role, "outcome": turn_outcome, "duration": duration})
 
                     if turns:
-                        mermaid_nodes = []
-                        for t in turns:
-                            tid = t["turn"].replace(" ", "_")
-                            label = f"Turn {t['turn']}\\n{t['role']}"
-                            if t["outcome"] == "passed":
-                                mermaid_nodes.append(f"    {tid}[✅ {label}]")
-                            elif t["outcome"] == "failed":
-                                mermaid_nodes.append(f"    {tid}[❌ {label}]")
-                            else:
-                                mermaid_nodes.append(f"    {tid}[⏳ {label}]")
-                        mermaid_edges = [f"    {turns[i]['turn'].replace(' ','_')} --> {turns[i+1]['turn'].replace(' ','_')}" for i in range(len(turns)-1)]
-                        mermaid_styles = []
-                        for t in turns:
-                            tid = t["turn"].replace(" ", "_")
-                            if t["outcome"] == "passed":
-                                mermaid_styles.append(f"    style {tid} fill:#d4edda,stroke:#28a745")
-                            elif t["outcome"] == "failed":
-                                mermaid_styles.append(f"    style {tid} fill:#f8d7da,stroke:#dc3545")
-                            else:
-                                mermaid_styles.append(f"    style {tid} fill:#fff3cd,stroke:#ffc107")
-                        st.markdown(f"```mermaid\ngraph LR\n" + "\n".join(mermaid_nodes + mermaid_edges + mermaid_styles) + "\n```")
+                        stage_cols = st.columns(len(turns))
+                        for col, t in zip(stage_cols, turns):
+                            with col:
+                                bg = {"passed": "🟢", "failed": "🔴", "pending": "🟡"}.get(t["outcome"], "⚪")
+                                st.markdown(f"### {bg} Turn {t['turn']}")
+                                st.caption(f"{t['role']} · {t['duration']}")
 
-                    for ev in events:
+                    # ── Run summary header ────────────────────────────
+                    if events:
+                        first_ts = events[0].get("timestamp", "")
+                        last_ts = events[-1].get("timestamp", "")
+                        total_duration = compute_duration(first_ts, last_ts)
+                        current_turn = ""
+                        current_role = ""
+                        latest_failure = ""
+                        for ev in reversed(events):
+                            if ev.get("turn") and ev.get("turn") != "orchestrator" and not current_turn:
+                                current_turn = ev.get("turn", "")
+                                current_role = ev.get("role", "")
+                            if ev.get("outcome") == "failed" and not latest_failure:
+                                latest_failure = ev.get("summary", "")
+
+                        hcol1, hcol2, hcol3, hcol4 = st.columns(4)
+                        hcol1.metric("Duration", total_duration)
+                        hcol2.metric("Events", f"{len(significant)} + {len(noise)} heartbeats")
+                        hcol3.metric("Current", f"Turn {current_turn}" if current_turn else "—")
+                        if latest_failure:
+                            hcol4.metric("Last Error", latest_failure[:30])
+                        else:
+                            hcol4.metric("Status", run_state)
+
+                    st.divider()
+
+                    # ── Heartbeat summaries (aggregated) ──────────────
+                    if heartbeat_agg:
+                        for hb in heartbeat_agg:
+                            duration = compute_duration(hb["first_ts"], hb["last_ts"])
+                            st.markdown(
+                                f"💓 **{hb['step']}** ({hb['role']}) — "
+                                f"{hb['count']} heartbeats, {hb['progress_count']} progress signals, "
+                                f"{duration}"
+                            )
+
+                    # ── Significant events ─────────────────────────────
+                    st.subheader("Events")
+                    for ev in significant:
                         etype = ev.get("event_type", "?")
                         ei = event_icons.get(etype, "•")
                         role = ev.get("role", "")
@@ -1007,6 +1088,14 @@ if page == "📊 Activity Feed":
                                 render_artifact_links(ev.get("contract_refs", []), "Contracts", f"wf_cr_{eid[:8]}")
                         else:
                             st.markdown(line)
+
+                    # ── Raw heartbeats behind expander ─────────────────
+                    if noise:
+                        with st.expander(f"💓 Show all {len(noise)} heartbeat events"):
+                            for ev in noise:
+                                ts_raw = ev.get("timestamp", "")
+                                time_only = format_timestamp(ts_raw)[11:19] if len(ts_raw) > 11 else ""
+                                st.caption(f"`{time_only}` {ev.get('summary', '')}")
 
         # ── Agent Sessions ────────────────────────────────────────────────
         st.header(f"💬 Agent Sessions ({len(all_convos)})")

@@ -3,8 +3,9 @@ kind: Component
 metadata:
   name: brain-factory
   description: >
-    DoPeJarMo architecture authority — design specs, Sawmill build pipeline,
-    D1-D10 templates, agent roles. Source of truth for all framework specs.
+    DoPeJarMo architecture authority, Sawmill build pipeline, agent workspace,
+    and observability portal. Houses design specs, D1-D10 templates, agent roles,
+    and the shared workspace for cross-agent communication.
   annotations:
     github.com/project-slug: rabruni/Brain_Factory
     dopejarmo.dev/staging-path: staging/
@@ -14,10 +15,16 @@ metadata:
     - architecture
     - dopejarmo
     - sawmill
+    - portal
+    - workspace
   links:
     - url: https://github.com/rabruni/Brain_Factory
       title: GitHub
       icon: github
+    - url: https://portal.dopejarmo.com
+      title: Portal (Streamlit)
+    - url: https://mcp.dopejarmo.com
+      title: MCP Server (HTTP)
 spec:
   type: library
   owner: user:ray-bruni
@@ -36,12 +43,14 @@ kind: API
 metadata:
   name: portal-mcp-api
   description: >
-    MCP server exposing pipeline runs, agent conversations, file browsing,
-    system catalog, and git activity as tools for AI agents. Config-driven
-    so it can be replicated on any agentic system.
+    MCP server exposing pipeline runs, agent conversations, workspace operations,
+    file browsing, system catalog, and git activity as tools for AI agents.
+    19 tools including workspace CRUD, agent onboarding, and heartbeat.
+    Config-driven so it can be replicated on any agentic system.
   tags:
     - mcp
     - portal
+    - workspace
     - observability
     - dopejarmo
 spec:
