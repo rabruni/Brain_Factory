@@ -1,872 +1,456 @@
 # D9: Holdout Scenarios — FMWK-001-ledger
-Meta: v:1.0.0 | contracts:D4 v1.0.0 | status:Final | author:Holdout Agent | last run:Not yet executed
+Meta: v:1.0.0 | contracts: D4 1.0.0 | status:Final | author:Codex holdout-agent | last run:Not yet executed
 CRITICAL: Builder agent MUST NOT see these scenarios before completing their work.
 
----
+## Scenarios (HS-### IDs, minimum 3: happy path + error path + integration)
+Evaluator note: all bash below assumes the evaluator exports contract adapters as shell commands. Required adapters are `LEDGER_RESET_CMD`, `LEDGER_APPEND_CMD`, `LEDGER_READ_CMD`, `LEDGER_READ_RANGE_CMD`, `LEDGER_READ_SINCE_CMD`, `LEDGER_VERIFY_CMD`, `LEDGER_TIP_CMD`, `LEDGER_EXPORT_CMD`, `LEDGER_CORRUPT_CMD`, and `LEDGER_FAULT_CMD`.
 
-## Environment Variables
-
-Set before running any scenario:
-
-```
-LEDGER_MODULE         # default: ledger   — importable Python module path
-IMMUDB_HOST           # default: localhost
-IMMUDB_TEST_USER      # default: immudb
-IMMUDB_TEST_PASS      # default: immudb
-```
-
----
-
-## HS-001: Append Assigns Chain Fields; Caller Receives Integer Sequence
-
+### HS-001
 ```yaml
 component: FMWK-001-ledger
-scenario: hs-001-append-chain-linkage
+scenario: genesis-and-monotonic-append
 priority: P0
-validates: SC-001, SC-002, SC-006, SC-007
-contracts: IN-001, OUT-001, SIDE-001, SIDE-002
+validates: [SC-001, SC-002, SC-005]
+contracts: [IN-001, IN-006, OUT-001, OUT-005, SIDE-001, SIDE-002]
 type: Happy path
 ```
 
-**Setup**
-
+Setup:
 ```bash
-docker pull codenotary/immudb:latest
-docker run -d --name hs001-immudb -p 13322:3322 codenotary/immudb:latest
-sleep 5
-# Create test database using immudb SDK directly (NOT via Ledger module — test infrastructure only)
-python3 - <<'PYEOF'
-from immudb import ImmudbClient
-c = ImmudbClient("localhost:13322")
-c.login(b"immudb", b"immudb")
-c.createDatabase(b"ledger_hs001")
-c.logout()
-print("Setup OK: ledger_hs001 database created")
-PYEOF
-```
-
-**Execute**
-
-```bash
-python3 - <<'PYEOF'
-import os, sys, json, importlib, hashlib
-
-mod = importlib.import_module(os.environ.get('LEDGER_MODULE', 'ledger'))
-Ledger = mod.Ledger
-
-l = Ledger()
-l.connect({
-    "host": os.environ.get('IMMUDB_HOST', 'localhost'),
-    "port": 13322,
-    "database": "ledger_hs001",
-    "username": os.environ.get('IMMUDB_TEST_USER', 'immudb'),
-    "password": os.environ.get('IMMUDB_TEST_PASS', 'immudb'),
-})
-
-ev0 = {
-    "event_id": "01950000-0000-7000-8000-000000000000",
-    "event_type": "session_start",
-    "schema_version": "1.0.0",
-    "timestamp": "2026-03-01T00:00:00Z",
-    "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-    "payload": {"session_id": "s0"},
-}
-ev1 = {
-    "event_id": "01950000-0000-7000-8000-000000000001",
-    "event_type": "session_start",
-    "schema_version": "1.0.0",
-    "timestamp": "2026-03-01T00:00:01Z",
-    "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-    "payload": {"session_id": "s1"},
-}
-
-seq0 = l.append(ev0)
-seq1 = l.append(ev1)
-
-r0 = l.read(seq0)
-r1 = l.read(seq1)
-
-with open('/tmp/hs001_results.json', 'w') as f:
-    json.dump({
-        "seq0": seq0,
-        "seq1": seq1,
-        "seq0_type": type(seq0).__name__,
-        "r0": r0,
-        "r1": r1,
-    }, f)
-print("Execute OK")
-PYEOF
-```
-
-**Verify**
-
-| Check | What to Examine | PASS Condition | FAIL Condition |
-|-------|----------------|----------------|----------------|
-| V1 | Type of seq0 | `isinstance(seq0, int)` | None, dict, str, or any non-int |
-| V2 | seq0 value | `seq0 == 0` | Any other value |
-| V3 | seq1 value | `seq1 == 1` | Any other value |
-| V4 | Genesis sentinel — exact string | `r0['previous_hash'] == "sha256:" + "0"*64` | Wrong prefix, wrong length, uppercase, any deviation |
-| V5 | Hash format r0 | matches `^sha256:[0-9a-f]{64}$` | Wrong case, wrong prefix, wrong length |
-| V6 | Chain linkage r1→r0 | `r1['previous_hash'] == r0['hash']` | Any mismatch |
-| V7 | Independent hash recompute r0 | recomputed hash (per SIDE-002) equals `r0['hash']` | Stored hash does not match content |
-
-```bash
-python3 - <<'PYEOF'
-import json, hashlib, re, sys
-
-with open('/tmp/hs001_results.json') as f:
-    d = json.load(f)
-
-seq0 = d['seq0']
-seq1 = d['seq1']
-r0 = d['r0']
-r1 = d['r1']
-GENESIS_SENTINEL = "sha256:" + "0" * 64
-HASH_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
-
-def recompute_hash(event_dict):
-    """Recompute expected hash per SIDE-002 exactly — independent of builder code."""
-    ev = {k: v for k, v in event_dict.items() if k != 'hash'}
-    canon = json.dumps(ev, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-    return "sha256:" + hashlib.sha256(canon.encode('utf-8')).hexdigest()
-
-failures = []
-
-if d['seq0_type'] != 'int':
-    failures.append(f"V1: seq0 type={d['seq0_type']!r}, expected int")
-if seq0 != 0:
-    failures.append(f"V2: seq0={seq0!r}, expected 0")
-if seq1 != 1:
-    failures.append(f"V3: seq1={seq1!r}, expected 1")
-if r0.get('previous_hash') != GENESIS_SENTINEL:
-    failures.append(f"V4: genesis sentinel mismatch: {r0.get('previous_hash')!r} (must be exactly 'sha256:' + 64 zeros)")
-if not HASH_RE.match(r0.get('hash', '')):
-    failures.append(f"V5: r0 hash format invalid: {r0.get('hash')!r}")
-if r1.get('previous_hash') != r0.get('hash'):
-    failures.append(f"V6: chain broken — r1.previous_hash={r1.get('previous_hash')!r} != r0.hash={r0.get('hash')!r}")
-
-expected_hash = recompute_hash(r0)
-if r0.get('hash') != expected_hash:
-    failures.append(f"V7: independent hash mismatch — stored={r0.get('hash')!r}, recomputed={expected_hash!r}")
-
-if failures:
-    print("FAIL:\n" + "\n".join(failures))
-    sys.exit(1)
-print("PASS: HS-001")
-sys.exit(0)
-PYEOF
-```
-
-**Cleanup**
-
-```bash
-docker rm -f hs001-immudb
-rm -f /tmp/hs001_results.json
-```
-
----
-
-## HS-002: read_since Returns Ordered Gapless Slice; Empty at Tip; Snapshot Event Written Correctly
-
-```yaml
-component: FMWK-001-ledger
-scenario: hs-002-read-since-tip-snapshot
-priority: P0
-validates: SC-003, SC-008, SC-009
-contracts: IN-004, IN-006, OUT-002, OUT-004
-type: Happy path + Integration
-```
-
-**Setup**
-
-```bash
-docker run -d --name hs002-immudb -p 13323:3322 codenotary/immudb:latest
-sleep 5
-python3 - <<'PYEOF'
-from immudb import ImmudbClient
-c = ImmudbClient("localhost:13323")
-c.login(b"immudb", b"immudb")
-c.createDatabase(b"ledger_hs002")
-c.logout()
-print("Setup OK")
-PYEOF
-```
-
-**Execute**
-
-```bash
-python3 - <<'PYEOF'
-import os, json, importlib
-
-mod = importlib.import_module(os.environ.get('LEDGER_MODULE', 'ledger'))
-Ledger = mod.Ledger
-
-l = Ledger()
-l.connect({
-    "host": os.environ.get('IMMUDB_HOST', 'localhost'),
-    "port": 13323,
-    "database": "ledger_hs002",
-    "username": os.environ.get('IMMUDB_TEST_USER', 'immudb'),
-    "password": os.environ.get('IMMUDB_TEST_PASS', 'immudb'),
-})
-
-# SC-009: check empty ledger tip BEFORE any writes
-tip_empty = l.get_tip()
-
-# Write 20 events (sequences 0-19)
-for i in range(20):
-    ev = {
-        "event_id": f"01950001-0000-7000-8000-{i:012x}",
-        "event_type": "session_start",
-        "schema_version": "1.0.0",
-        "timestamp": "2026-03-01T00:00:00Z",
-        "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-        "payload": {"index": i},
+set -euo pipefail
+: "${LEDGER_RESET_CMD:?}"
+: "${LEDGER_APPEND_CMD:?}"
+: "${LEDGER_TIP_CMD:?}"
+export HOLDOUT_TMP="$(mktemp -d)"
+sh -lc "$LEDGER_RESET_CMD"
+cat > "$HOLDOUT_TMP/event-1.json" <<'EOF'
+{
+  "event_id": "0195b7fc-c29c-7c2f-a4da-8f6d2eb6d1a1",
+  "event_type": "node_creation",
+  "schema_version": "1.0.0",
+  "timestamp": "2026-03-19T23:50:00Z",
+  "provenance": {
+    "framework_id": "FMWK-002",
+    "pack_id": "PC-001-fold-engine",
+    "actor": "system"
+  },
+  "payload": {
+    "node_id": "node-intent-dining-recall",
+    "node_type": "intent",
+    "lifecycle_state": "LIVE",
+    "metadata": {
+      "title": "Find Sarah's restaurant recommendation"
     }
-    l.append(ev)
-
-tip_after = l.get_tip()
-
-# SC-003: read events after sequence 9 (expect events 10-19)
-events_since_9 = l.read_since(9)
-
-# SC-003 edge: at tip — must return empty list, not error
-events_at_tip = l.read_since(19)
-
-# SC-003 edge: read_since(-1) should return all 20 events (sequences > -1)
-events_since_neg1 = l.read_since(-1)
-
-# SC-008: append a snapshot_created event and read it back
-snap_ev = {
-    "event_id": "01950001-0000-7001-8000-000000000000",
-    "event_type": "snapshot_created",
-    "schema_version": "1.0.0",
-    "timestamp": "2026-03-01T01:00:00Z",
-    "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-    "payload": {
-        "snapshot_path": "/snapshots/19.snapshot",
-        "snapshot_hash": "sha256:" + "a" * 64,
-        "snapshot_sequence": 19,
-    },
+  }
 }
-snap_seq = l.append(snap_ev)
-snap_event = l.read(snap_seq)
-
-with open('/tmp/hs002_results.json', 'w') as f:
-    json.dump({
-        "tip_empty": tip_empty,
-        "tip_after": tip_after,
-        "events_since_9": events_since_9,
-        "events_at_tip": events_at_tip,
-        "events_since_neg1_count": len(events_since_neg1),
-        "snap_seq": snap_seq,
-        "snap_event": snap_event,
-    }, f)
-print("Execute OK")
-PYEOF
+EOF
+cat > "$HOLDOUT_TMP/event-2.json" <<'EOF'
+{
+  "event_id": "0195b7fd-c29c-7c2f-a4da-8f6d2eb6d1a2",
+  "event_type": "signal_delta",
+  "schema_version": "1.0.0",
+  "timestamp": "2026-03-19T23:51:00Z",
+  "provenance": {
+    "framework_id": "FMWK-004",
+    "pack_id": "PC-002-signal-logging",
+    "actor": "agent"
+  },
+  "payload": {
+    "node_id": "node-intent-dining-recall",
+    "delta": "1",
+    "reason": "active_intent_hit",
+    "intent_id": "intent-dining-recall"
+  }
+}
+EOF
 ```
 
-**Verify**
+Execute:
+```bash
+set -euo pipefail
+cat "$HOLDOUT_TMP/event-1.json" | sh -lc "$LEDGER_APPEND_CMD" > "$HOLDOUT_TMP/append-1.json"
+cat "$HOLDOUT_TMP/event-2.json" | sh -lc "$LEDGER_APPEND_CMD" > "$HOLDOUT_TMP/append-2.json"
+printf '{}' | sh -lc "$LEDGER_TIP_CMD" > "$HOLDOUT_TMP/tip.json"
+```
+
+Verify:
 
 | Check | What to Examine | PASS Condition | FAIL Condition |
-|-------|----------------|----------------|----------------|
-| V1 | Empty ledger tip — sequence_number | `== -1` | Any other value |
-| V2 | Empty ledger tip — hash | `== ""` | Non-empty string |
-| V3 | tip_after.sequence_number | `== 19` | Not 19 |
-| V4 | tip_after.hash format | matches `^sha256:[0-9a-f]{64}$` | Wrong format |
-| V5 | events_since_9 count | `len == 10` | != 10 (gap, dup, or missing) |
-| V6 | events_since_9 first sequence | `== 10` | != 10 |
-| V7 | events_since_9 last sequence | `== 19` | != 19 |
-| V8 | Strict ascending — no gaps | every `seq[i+1] == seq[i] + 1` | Any gap or inversion |
-| V9 | read_since(tip) returns empty | `events_at_tip == []` | Non-empty list |
-| V10 | read_since(-1) returns all 20 | `count == 20` | != 20 |
-| V11 | snap_event.sequence | `== 20` | != 20 |
-| V12 | snap_event payload — snapshot_path | present | Missing key |
-| V13 | snap_event payload — snapshot_hash | present | Missing key |
-| V14 | snap_event payload — snapshot_sequence | present and `== 19` | Missing or wrong value |
+| --- | --- | --- | --- |
+| Genesis append shape | `append-1.json` | `sequence_number=0`, `event.sequence=0`, `event.previous_hash` is the all-zero genesis hash, and `event.hash` matches `sha256:<64 hex>` | Any field missing, wrong value, or generic success shape |
+| Monotonic next append | `append-2.json` vs `append-1.json` | `sequence_number=1`, `event.sequence=1`, and `event.previous_hash` equals the first event hash | Gap, fork, or incorrect linkage |
+| Self-describing envelope | both append results | `event_id`, `event_type`, `schema_version`, `timestamp`, `provenance`, `payload`, `sequence`, `previous_hash`, and `hash` all exist | Envelope omits required stored fields |
+| Tip visibility | `tip.json` | `sequence_number=1` and `hash` equals the second event hash after synchronous append | Tip lags the second append or shape is wrong |
 
 ```bash
-python3 - <<'PYEOF'
-import json, re, sys
+set -euo pipefail
+jq -e '
+  .sequence_number == 0 and
+  .event.sequence == 0 and
+  .event.previous_hash == "sha256:0000000000000000000000000000000000000000000000000000000000000000" and
+  (.event.hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.event | has("event_id")) and
+  (.event | has("event_type")) and
+  (.event | has("schema_version")) and
+  (.event | has("timestamp")) and
+  (.event | has("provenance")) and
+  (.event | has("payload"))
+' "$HOLDOUT_TMP/append-1.json" >/dev/null
 
-with open('/tmp/hs002_results.json') as f:
-    d = json.load(f)
+jq -e --slurp '
+  .[1].sequence_number == 1 and
+  .[1].event.sequence == 1 and
+  .[1].event.previous_hash == .[0].event.hash and
+  (.[1].event.hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.[1].event | has("event_id")) and
+  (.[1].event | has("event_type")) and
+  (.[1].event | has("schema_version")) and
+  (.[1].event | has("timestamp")) and
+  (.[1].event | has("provenance")) and
+  (.[1].event | has("payload"))
+' "$HOLDOUT_TMP/append-1.json" "$HOLDOUT_TMP/append-2.json" >/dev/null
 
-tip_e = d['tip_empty']
-tip_a = d['tip_after']
-ev9 = d['events_since_9']
-at_tip = d['events_at_tip']
-snap = d['snap_event']
-HASH_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
-failures = []
-
-# V1, V2: empty ledger tip shape (D4 OUT-004 explicit contract)
-if tip_e.get('sequence_number') != -1:
-    failures.append(f"V1: empty tip sequence_number={tip_e.get('sequence_number')!r}, expected -1")
-if tip_e.get('hash') != "":
-    failures.append(f"V2: empty tip hash={tip_e.get('hash')!r}, expected empty string")
-
-# V3, V4: tip after 20 writes
-if tip_a.get('sequence_number') != 19:
-    failures.append(f"V3: tip.sequence_number={tip_a.get('sequence_number')!r}, expected 19")
-if not HASH_RE.match(tip_a.get('hash', '')):
-    failures.append(f"V4: tip hash format invalid: {tip_a.get('hash')!r}")
-
-# V5-V8: read_since(9) ordering and completeness
-if len(ev9) != 10:
-    failures.append(f"V5: events_since_9 count={len(ev9)}, expected 10")
-elif ev9[0].get('sequence') != 10:
-    failures.append(f"V6: first event sequence={ev9[0].get('sequence')!r}, expected 10")
-elif ev9[-1].get('sequence') != 19:
-    failures.append(f"V7: last event sequence={ev9[-1].get('sequence')!r}, expected 19")
-else:
-    for i in range(len(ev9) - 1):
-        if ev9[i + 1]['sequence'] != ev9[i]['sequence'] + 1:
-            failures.append(f"V8: gap/inversion at index {i}: {ev9[i]['sequence']} -> {ev9[i+1]['sequence']}")
-            break
-
-# V9: at-tip returns empty list (not error)
-if at_tip != []:
-    failures.append(f"V9: at-tip not empty: {at_tip!r} — must be [] per D4 IN-004")
-
-# V10: read_since(-1) returns all 20
-if d['events_since_neg1_count'] != 20:
-    failures.append(f"V10: read_since(-1) count={d['events_since_neg1_count']}, expected 20")
-
-# V11-V14: snapshot event
-if snap.get('sequence') != 20:
-    failures.append(f"V11: snap sequence={snap.get('sequence')!r}, expected 20")
-payload = snap.get('payload', {})
-for field in ('snapshot_path', 'snapshot_hash', 'snapshot_sequence'):
-    if field not in payload:
-        failures.append(f"V12/V13/V14: snap payload missing field {field!r}")
-if payload.get('snapshot_sequence') != 19:
-    failures.append(f"V14: snap payload.snapshot_sequence={payload.get('snapshot_sequence')!r}, expected 19")
-
-if failures:
-    print("FAIL:\n" + "\n".join(failures))
-    sys.exit(1)
-print("PASS: HS-002")
-sys.exit(0)
-PYEOF
+jq -e --slurp '
+  .[1].sequence_number == 1 and
+  .[1].hash == .[0].event.hash
+' "$HOLDOUT_TMP/append-2.json" "$HOLDOUT_TMP/tip.json" >/dev/null
 ```
 
-**Cleanup**
-
+Cleanup:
 ```bash
-docker rm -f hs002-immudb
-rm -f /tmp/hs002_results.json
+rm -rf "$HOLDOUT_TMP"
 ```
 
----
-
-## HS-003: verify_chain Returns Exact VerifyChainResult Shape on Corruption; Functions Without Kernel
-
+### HS-002
 ```yaml
 component: FMWK-001-ledger
-scenario: hs-003-chain-verify-corruption-shape
-priority: P0
-validates: SC-004, SC-005, SC-EC-001
-contracts: IN-005, OUT-003, ERR-002
-type: Error path + Side-effect verification
+scenario: ordered-replay-across-snapshot-boundary
+priority: P1
+validates: [SC-003, SC-006]
+contracts: [IN-001, IN-002, IN-003, IN-004, OUT-001, OUT-002, OUT-003]
+type: Integration
 ```
 
-**SC-005 isolation note**: This test imports ONLY the Ledger module and immudb SDK — no FMWK-002, FMWK-003, FMWK-004, FMWK-005, HO1, HO2, or Graph services are imported or started. The subprocess environment mimics cold-storage CLI verification.
-
-**Setup**
-
+Setup:
 ```bash
-docker run -d --name hs003-immudb -p 13324:3322 codenotary/immudb:latest
-sleep 5
-python3 - <<'PYEOF'
-from immudb import ImmudbClient
-c = ImmudbClient("localhost:13324")
-c.login(b"immudb", b"immudb")
-c.createDatabase(b"ledger_hs003")
-c.logout()
-print("Setup OK")
-PYEOF
+set -euo pipefail
+: "${LEDGER_RESET_CMD:?}"
+: "${LEDGER_APPEND_CMD:?}"
+: "${LEDGER_READ_CMD:?}"
+: "${LEDGER_READ_RANGE_CMD:?}"
+: "${LEDGER_READ_SINCE_CMD:?}"
+export HOLDOUT_TMP="$(mktemp -d)"
+sh -lc "$LEDGER_RESET_CMD"
+cat > "$HOLDOUT_TMP/events.jsonl" <<'EOF'
+{"event_id":"0195b7f0-1111-7c2f-a4da-8f6d2eb6d100","event_type":"session_start","schema_version":"1.0.0","timestamp":"2026-03-19T23:00:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-003-session-events","actor":"system"},"payload":{"session_id":"sess-operator-0001","actor_id":"operator-ray","channel":"operator","started_at":"2026-03-19T23:00:00Z"}}
+{"event_id":"0195b7f1-1111-7c2f-a4da-8f6d2eb6d101","event_type":"node_creation","schema_version":"1.0.0","timestamp":"2026-03-19T23:01:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-001-fold-engine","actor":"system"},"payload":{"node_id":"node-sarah-french","node_type":"memory","lifecycle_state":"LIVE","metadata":{"title":"Sarah restaurant note"}}}
+{"event_id":"0195b7f2-1111-7c2f-a4da-8f6d2eb6d102","event_type":"snapshot_created","schema_version":"1.0.0","timestamp":"2026-03-19T23:02:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-004-snapshot","actor":"system"},"payload":{"snapshot_sequence":2,"snapshot_path":"/snapshots/2.snapshot","snapshot_hash":"sha256:1111111111111111111111111111111111111111111111111111111111111111","created_at":"2026-03-19T23:02:00Z"}}
+{"event_id":"0195b7f3-1111-7c2f-a4da-8f6d2eb6d103","event_type":"signal_delta","schema_version":"1.0.0","timestamp":"2026-03-19T23:03:00Z","provenance":{"framework_id":"FMWK-004","pack_id":"PC-002-signal-logging","actor":"agent"},"payload":{"node_id":"node-sarah-french","delta":"1","reason":"active_intent_hit","intent_id":"intent-dining-recall"}}
+EOF
+while IFS= read -r line; do
+  printf '%s\n' "$line" | sh -lc "$LEDGER_APPEND_CMD" >/dev/null
+done < "$HOLDOUT_TMP/events.jsonl"
 ```
 
-**Execute**
-
+Execute:
 ```bash
-python3 - <<'PYEOF'
-# ISOLATION: import ONLY ledger module and immudb SDK.
-# No other FMWK modules. Simulates cold-storage CLI context (SC-005).
-import os, json, importlib
-
-mod = importlib.import_module(os.environ.get('LEDGER_MODULE', 'ledger'))
-Ledger = mod.Ledger
-
-l = Ledger()
-l.connect({
-    "host": os.environ.get('IMMUDB_HOST', 'localhost'),
-    "port": 13324,
-    "database": "ledger_hs003",
-    "username": os.environ.get('IMMUDB_TEST_USER', 'immudb'),
-    "password": os.environ.get('IMMUDB_TEST_PASS', 'immudb'),
-})
-
-# Write 6 events (sequences 0-5)
-for i in range(6):
-    ev = {
-        "event_id": f"01950002-0000-7000-8000-{i:012x}",
-        "event_type": "session_start",
-        "schema_version": "1.0.0",
-        "timestamp": "2026-03-01T00:00:00Z",
-        "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-        "payload": {"idx": i},
-    }
-    l.append(ev)
-
-# Verify intact chain before corruption (must be valid)
-result_intact = l.verify_chain(start=0, end=5)
-
-# Corrupt event 3: overwrite its key in immudb with a wrong hash.
-# immudb is append-only per-key (versioned); the latest version is returned on GET.
-# Writing a new version of key "000000000003" with a tampered hash field
-# causes verify_chain() to see a hash that does not match recomputed content.
-# This uses immudb SDK directly — test infrastructure, NOT Ledger module.
-from immudb import ImmudbClient
-ci = ImmudbClient("localhost:13324")
-ci.login(b"immudb", b"immudb")
-ci.useDatabase(b"ledger_hs003")
-
-key = b"000000000003"
-raw = ci.get(key)
-event3 = json.loads(raw.value.decode('utf-8'))
-# Tamper: replace stored hash with a wrong value (preserves all other fields)
-event3["hash"] = "sha256:" + "d" * 63 + "0"   # invalid — will not match content
-corrupted_bytes = json.dumps(
-    event3, sort_keys=True, separators=(',', ':'), ensure_ascii=False
-).encode('utf-8')
-ci.set(key, corrupted_bytes)
-ci.logout()
-
-# verify_chain on full range — must detect corruption at event 3
-result_corrupted = l.verify_chain(start=0, end=5)
-
-# verify_chain on clean sub-range (events 0-2) — must still pass
-result_clean_range = l.verify_chain(start=0, end=2)
-
-with open('/tmp/hs003_results.json', 'w') as f:
-    json.dump({
-        "result_intact": result_intact,
-        "result_corrupted": result_corrupted,
-        "result_clean_range": result_clean_range,
-    }, f)
-print("Execute OK")
-PYEOF
+set -euo pipefail
+printf '{"sequence_number":2}' | sh -lc "$LEDGER_READ_CMD" > "$HOLDOUT_TMP/read-one.json"
+printf '{"start":0,"end":3}' | sh -lc "$LEDGER_READ_RANGE_CMD" > "$HOLDOUT_TMP/read-range.json"
+printf '{"sequence_number":2}' | sh -lc "$LEDGER_READ_SINCE_CMD" > "$HOLDOUT_TMP/read-since.json"
 ```
 
-**Verify**
+Verify:
 
 | Check | What to Examine | PASS Condition | FAIL Condition |
-|-------|----------------|----------------|----------------|
-| V1 | Intact chain — valid | `result_intact['valid'] == True` | False or missing |
-| V2 | Corrupted result — 'valid' key present | `'valid' in result_corrupted` | Missing key |
-| V3 | Corrupted result — valid == False | `result_corrupted['valid'] == False` | True (corruption undetected) |
-| V4 | Corrupted result — 'break_at' key present | `'break_at' in result_corrupted` | **Missing — D4 shape violation. Code throwing a generic exception satisfies a weak test but violates OUT-003.** |
-| V5 | Corrupted result — break_at == 3 | `result_corrupted['break_at'] == 3` | Any other integer |
-| V6 | Clean sub-range passes | `result_clean_range['valid'] == True` | False (overcorrection past the corruption point) |
-| V7 | verify_chain does not raise | result returned as dict, no exception | Exception propagated to caller instead of returned result |
+| --- | --- | --- | --- |
+| Read one stored event | `read-one.json` | Returns a `LedgerEvent` whose `sequence=2` and `event_type=snapshot_created` | Wrong event, missing event wrapper, or reordered data |
+| Ordered bounded replay | `read-range.json` | Returns four events with ascending sequences `[0,1,2,3]` and unchanged stored event types | Missing events, reordered results, or mutated envelopes |
+| Replay after snapshot boundary | `read-since.json` | Returns only events with `sequence > 2`; for this fixture the sole event is sequence `3` | Includes boundary event `2`, skips sequence `3`, or reorders data |
+| Snapshot boundary presence | `read-one.json` | Snapshot event exposes non-empty `payload` object for replay boundary metadata | Snapshot stored without payload metadata |
 
 ```bash
-python3 - <<'PYEOF'
-import json, sys
+set -euo pipefail
+jq -e '
+  (.event.sequence == 2) and
+  (.event.event_type == "snapshot_created") and
+  (.event.payload | type == "object") and
+  ((.event.payload | keys | length) > 0)
+' "$HOLDOUT_TMP/read-one.json" >/dev/null
 
-with open('/tmp/hs003_results.json') as f:
-    d = json.load(f)
+jq -e '
+  (.events | length == 4) and
+  ([.events[].sequence] == [0,1,2,3]) and
+  ([.events[].event_type] == ["session_start","node_creation","snapshot_created","signal_delta"])
+' "$HOLDOUT_TMP/read-range.json" >/dev/null
 
-intact = d['result_intact']
-corrupted = d['result_corrupted']
-clean_r = d['result_clean_range']
-failures = []
-
-# V1
-if intact.get('valid') is not True:
-    failures.append(f"V1: intact chain not valid: {intact!r}")
-
-# V2, V3, V4, V5 — these are the mandatory D4 contract shape checks
-if 'valid' not in corrupted:
-    failures.append(f"V2: 'valid' key missing from result: {corrupted!r}")
-elif corrupted['valid'] is not False:
-    failures.append(f"V3: valid={corrupted['valid']!r}, expected False — corruption undetected")
-
-if 'break_at' not in corrupted:
-    failures.append(
-        f"V4: 'break_at' key MISSING from result — D4 OUT-003 shape violation. "
-        f"A generic exception or bare False satisfies a weak test but not the D4 contract. "
-        f"Result was: {corrupted!r}"
-    )
-elif corrupted['break_at'] != 3:
-    failures.append(f"V5: break_at={corrupted['break_at']!r}, expected 3")
-
-# V6
-if clean_r.get('valid') is not True:
-    failures.append(f"V6: clean sub-range (0-2) failed: {clean_r!r}")
-
-if failures:
-    print("FAIL:\n" + "\n".join(failures))
-    sys.exit(1)
-print("PASS: HS-003")
-sys.exit(0)
-PYEOF
+jq -e '
+  (.events | length == 1) and
+  (.events[0].sequence == 3) and
+  (.events[0].event_type == "signal_delta")
+' "$HOLDOUT_TMP/read-since.json" >/dev/null
 ```
 
-**Cleanup**
-
+Cleanup:
 ```bash
-docker rm -f hs003-immudb
-rm -f /tmp/hs003_results.json
+rm -rf "$HOLDOUT_TMP"
 ```
 
----
-
-## HS-004: Float Payload Raises LedgerSerializationError with Correct Code; No immudb Write
-
+### HS-003
 ```yaml
 component: FMWK-001-ledger
-scenario: hs-004-serialization-error-shape
+scenario: verify-parity-and-corruption-detection
 priority: P0
-validates: SC-001 (failure path)
-contracts: IN-001, SIDE-002, ERR-004
+validates: [SC-004, SC-010]
+contracts: [IN-001, IN-005, OUT-004, SIDE-002, ERR-004]
+type: Integration
+```
+
+Setup:
+```bash
+set -euo pipefail
+: "${LEDGER_RESET_CMD:?}"
+: "${LEDGER_APPEND_CMD:?}"
+: "${LEDGER_VERIFY_CMD:?}"
+: "${LEDGER_EXPORT_CMD:?}"
+: "${LEDGER_CORRUPT_CMD:?}"
+export HOLDOUT_TMP="$(mktemp -d)"
+sh -lc "$LEDGER_RESET_CMD"
+cat > "$HOLDOUT_TMP/events.jsonl" <<'EOF'
+{"event_id":"0195b800-1111-7c2f-a4da-8f6d2eb6d110","event_type":"session_start","schema_version":"1.0.0","timestamp":"2026-03-19T23:10:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-003-session-events","actor":"system"},"payload":{"session_id":"sess-operator-0002","actor_id":"operator-ray","channel":"operator","started_at":"2026-03-19T23:10:00Z"}}
+{"event_id":"0195b801-1111-7c2f-a4da-8f6d2eb6d111","event_type":"node_creation","schema_version":"1.0.0","timestamp":"2026-03-19T23:11:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-001-fold-engine","actor":"system"},"payload":{"node_id":"node-a","node_type":"memory","lifecycle_state":"LIVE","metadata":{"title":"A"}}}
+{"event_id":"0195b802-1111-7c2f-a4da-8f6d2eb6d112","event_type":"signal_delta","schema_version":"1.0.0","timestamp":"2026-03-19T23:12:00Z","provenance":{"framework_id":"FMWK-004","pack_id":"PC-002-signal-logging","actor":"agent"},"payload":{"node_id":"node-a","delta":"1","reason":"active_intent_hit","intent_id":"intent-a"}} 
+{"event_id":"0195b803-1111-7c2f-a4da-8f6d2eb6d113","event_type":"snapshot_created","schema_version":"1.0.0","timestamp":"2026-03-19T23:13:00Z","provenance":{"framework_id":"FMWK-002","pack_id":"PC-004-snapshot","actor":"system"},"payload":{"snapshot_sequence":3,"snapshot_path":"/snapshots/3.snapshot","snapshot_hash":"sha256:2222222222222222222222222222222222222222222222222222222222222222","created_at":"2026-03-19T23:13:00Z"}}
+EOF
+while IFS= read -r line; do
+  printf '%s\n' "$line" | sh -lc "$LEDGER_APPEND_CMD" >/dev/null
+done < "$HOLDOUT_TMP/events.jsonl"
+printf '{"start":0,"end":3,"output_path":"%s"}\n' "$HOLDOUT_TMP/export.jsonl" | sh -lc "$LEDGER_EXPORT_CMD"
+```
+
+Execute:
+```bash
+set -euo pipefail
+printf '{"start":0,"end":3,"source_mode":"online"}' | sh -lc "$LEDGER_VERIFY_CMD" > "$HOLDOUT_TMP/verify-online.json"
+printf '{"start":0,"end":3,"source_mode":"offline_export","input_path":"'"$HOLDOUT_TMP"'/export.jsonl"}' | sh -lc "$LEDGER_VERIFY_CMD" > "$HOLDOUT_TMP/verify-offline.json"
+printf '{"sequence_number":2}' | sh -lc "$LEDGER_CORRUPT_CMD" >/dev/null
+printf '{"start":0,"end":3,"source_mode":"online"}' | sh -lc "$LEDGER_VERIFY_CMD" > "$HOLDOUT_TMP/verify-corrupt.json"
+```
+
+Verify:
+
+| Check | What to Examine | PASS Condition | FAIL Condition |
+| --- | --- | --- | --- |
+| Online/offline parity | `verify-online.json` and `verify-offline.json` | Both return the same success verdict `{valid:true,start:0,end:3}` | Modes disagree or omit contract fields |
+| Corruption result shape | `verify-corrupt.json` | Returns `valid=false`, `break_at=2`, `start=0`, `end=3` | Generic failure, wrong break point, or missing fields |
+| Deterministic first break | `verify-corrupt.json` | First failing sequence is the corrupted sequence, not a later one | Corruption reported late or without `break_at` |
+
+```bash
+set -euo pipefail
+jq -e '.valid == true and .start == 0 and .end == 3 and (has("break_at") | not)' "$HOLDOUT_TMP/verify-online.json" >/dev/null
+jq -e '.valid == true and .start == 0 and .end == 3 and (has("break_at") | not)' "$HOLDOUT_TMP/verify-offline.json" >/dev/null
+
+jq -e '
+  .valid == false and
+  .break_at == 2 and
+  .start == 0 and
+  .end == 3
+' "$HOLDOUT_TMP/verify-corrupt.json" >/dev/null
+```
+
+Cleanup:
+```bash
+rm -rf "$HOLDOUT_TMP"
+```
+
+### HS-004
+```yaml
+component: FMWK-001-ledger
+scenario: serialization-rejection-preserves-tip
+priority: P1
+validates: [SC-008]
+contracts: [IN-001, IN-006, OUT-001, OUT-005, SIDE-002, ERR-002]
 type: Error path
 ```
 
-**Setup**
-
+Setup:
 ```bash
-docker run -d --name hs004-immudb -p 13325:3322 codenotary/immudb:latest
-sleep 5
-python3 - <<'PYEOF'
-from immudb import ImmudbClient
-c = ImmudbClient("localhost:13325")
-c.login(b"immudb", b"immudb")
-c.createDatabase(b"ledger_hs004")
-c.logout()
-print("Setup OK")
-PYEOF
+set -euo pipefail
+: "${LEDGER_RESET_CMD:?}"
+: "${LEDGER_APPEND_CMD:?}"
+: "${LEDGER_TIP_CMD:?}"
+: "${LEDGER_FAULT_CMD:?}"
+export HOLDOUT_TMP="$(mktemp -d)"
+sh -lc "$LEDGER_RESET_CMD"
+cat > "$HOLDOUT_TMP/good-event.json" <<'EOF'
+{
+  "event_id": "0195b810-c29c-7c2f-a4da-8f6d2eb6d120",
+  "event_type": "node_creation",
+  "schema_version": "1.0.0",
+  "timestamp": "2026-03-19T23:20:00Z",
+  "provenance": {
+    "framework_id": "FMWK-002",
+    "pack_id": "PC-001-fold-engine",
+    "actor": "system"
+  },
+  "payload": {
+    "node_id": "node-b",
+    "node_type": "memory",
+    "lifecycle_state": "LIVE",
+    "metadata": {
+      "title": "B"
+    }
+  }
+}
+EOF
+cat "$HOLDOUT_TMP/good-event.json" | sh -lc "$LEDGER_APPEND_CMD" >/dev/null
+printf '{}' | sh -lc "$LEDGER_TIP_CMD" > "$HOLDOUT_TMP/tip-before.json"
+printf '{"mode":"serialization-error-next-append"}' | sh -lc "$LEDGER_FAULT_CMD" >/dev/null
 ```
 
-**Execute**
-
+Execute:
 ```bash
-python3 - <<'PYEOF'
-import os, json, importlib
-
-mod = importlib.import_module(os.environ.get('LEDGER_MODULE', 'ledger'))
-Ledger = mod.Ledger
-LedgerSerializationError = mod.LedgerSerializationError
-
-l = Ledger()
-l.connect({
-    "host": os.environ.get('IMMUDB_HOST', 'localhost'),
-    "port": 13325,
-    "database": "ledger_hs004",
-    "username": os.environ.get('IMMUDB_TEST_USER', 'immudb'),
-    "password": os.environ.get('IMMUDB_TEST_PASS', 'immudb'),
-})
-
-# Append one valid event to establish a non-zero state to detect any unintended write
-ev_valid = {
-    "event_id": "01950003-0000-7000-8000-000000000000",
-    "event_type": "session_start",
-    "schema_version": "1.0.0",
-    "timestamp": "2026-03-01T00:00:00Z",
-    "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-    "payload": {"valid": True},
-}
-l.append(ev_valid)
-tip_before = l.get_tip()
-
-# Attempt to append event with a float value in payload (forbidden per IN-001 and SIDE-002)
-ev_bad = {
-    "event_id": "01950003-0000-7000-8000-000000000001",
-    "event_type": "session_start",
-    "schema_version": "1.0.0",
-    "timestamp": "2026-03-01T00:00:01Z",
-    "provenance": {"framework_id": "FMWK-001", "pack_id": "PC-001-ledger", "actor": "system"},
-    "payload": {"signal_value": 0.75},   # 0.75 is float — PROHIBITED
-}
-
-raised_type = None
-raised_code = None
-try:
-    l.append(ev_bad)
-except LedgerSerializationError as e:
-    raised_type = "LedgerSerializationError"
-    raised_code = getattr(e, 'code', None)
-except Exception as e:
-    raised_type = type(e).__name__
-    raised_code = None
-
-tip_after = l.get_tip()
-
-with open('/tmp/hs004_results.json', 'w') as f:
-    json.dump({
-        "tip_before": tip_before,
-        "raised_type": raised_type,
-        "raised_code": raised_code,
-        "tip_after": tip_after,
-    }, f)
-print("Execute OK")
-PYEOF
+set -euo pipefail
+cat "$HOLDOUT_TMP/good-event.json" | sh -lc "$LEDGER_APPEND_CMD" > "$HOLDOUT_TMP/serialization-error.json" || true
+printf '{}' | sh -lc "$LEDGER_TIP_CMD" > "$HOLDOUT_TMP/tip-after.json"
 ```
 
-**Verify**
+Verify:
 
 | Check | What to Examine | PASS Condition | FAIL Condition |
-|-------|----------------|----------------|----------------|
-| V1 | Exception type raised | `raised_type == "LedgerSerializationError"` | Generic Exception, ValueError, TypeError, or no exception at all |
-| V2 | error.code attribute | `raised_code == "LEDGER_SERIALIZATION_ERROR"` | None, missing attribute, wrong string — D4 ERR-004 shape violation |
-| V3 | tip sequence unchanged | `tip_after.sequence_number == tip_before.sequence_number` | Incremented — partial write occurred before serialization check |
-| V4 | tip hash unchanged | `tip_after.hash == tip_before.hash` | Changed — write occurred despite error |
+| --- | --- | --- | --- |
+| Error response shape | `serialization-error.json` | Response contains `error_code=LEDGER_SERIALIZATION_ERROR` and non-empty `message` | Generic exception text or wrong code |
+| No success payload on error | `serialization-error.json` | Response omits success keys such as `sequence_number` and `event` | Partial success leaked on failure |
+| Tip unchanged | `tip-before.json` vs `tip-after.json` | Sequence/hash are identical before and after the rejected append | Failed append advanced or mutated the tip |
 
 ```bash
-python3 - <<'PYEOF'
-import json, sys
+set -euo pipefail
+jq -e '
+  .error_code == "LEDGER_SERIALIZATION_ERROR" and
+  (.message | type == "string") and
+  (.message | length > 0) and
+  (has("sequence_number") | not) and
+  (has("event") | not)
+' "$HOLDOUT_TMP/serialization-error.json" >/dev/null
 
-with open('/tmp/hs004_results.json') as f:
-    d = json.load(f)
-
-failures = []
-
-if d['raised_type'] != 'LedgerSerializationError':
-    failures.append(
-        f"V1: expected LedgerSerializationError, got {d['raised_type']!r} — "
-        f"D4 ERR-004 requires the exact LedgerSerializationError class, not a generic exception"
-    )
-if d['raised_code'] != 'LEDGER_SERIALIZATION_ERROR':
-    failures.append(
-        f"V2: error.code={d['raised_code']!r}, expected 'LEDGER_SERIALIZATION_ERROR' — "
-        f"D4 ERR-004 shape violation (code attribute must be present and exact)"
-    )
-
-tb = d['tip_before']
-ta = d['tip_after']
-if tb.get('sequence_number') != ta.get('sequence_number'):
-    failures.append(
-        f"V3: tip sequence changed {tb.get('sequence_number')} -> {ta.get('sequence_number')} — "
-        f"partial write to immudb before serialization check"
-    )
-if tb.get('hash') != ta.get('hash'):
-    failures.append(f"V4: tip hash changed — a write occurred despite the serialization error")
-
-if failures:
-    print("FAIL:\n" + "\n".join(failures))
-    sys.exit(1)
-print("PASS: HS-004")
-sys.exit(0)
-PYEOF
+jq -e --slurp '
+  .[0].sequence_number == .[1].sequence_number and
+  .[0].hash == .[1].hash
+' "$HOLDOUT_TMP/tip-before.json" "$HOLDOUT_TMP/tip-after.json" >/dev/null
 ```
 
-**Cleanup**
-
+Cleanup:
 ```bash
-docker rm -f hs004-immudb
-rm -f /tmp/hs004_results.json
+rm -rf "$HOLDOUT_TMP"
 ```
 
----
-
-## HS-005: connect() to Missing Database Raises LedgerConnectionError Immediately; Zero Admin Operations
-
+### HS-005
 ```yaml
 component: FMWK-001-ledger
-scenario: hs-005-connect-missing-database-zero-admin
-priority: P0
-validates: SC-EC-004
-contracts: IN-007, ERR-001
-type: Error path + Integration
+scenario: connection-failure-and-sequence-conflict-are-explicit
+priority: P1
+validates: [SC-007, SC-009]
+contracts: [IN-001, IN-003, IN-006, OUT-001, OUT-003, OUT-005, SIDE-003, ERR-001, ERR-003]
+type: Error path
 ```
 
-**Setup**
-
+Setup:
 ```bash
-docker run -d --name hs005-immudb -p 13326:3322 codenotary/immudb:latest
-sleep 5
-# DO NOT create a "ledger" database. Verify it is absent.
-python3 - <<'PYEOF'
-from immudb import ImmudbClient
-c = ImmudbClient("localhost:13326")
-c.login(b"immudb", b"immudb")
-dbs = [d.decode('utf-8') if isinstance(d, bytes) else d for d in c.databaseList()]
-if "ledger" in dbs:
-    print(f"SETUP ERROR: 'ledger' database already exists: {dbs}")
-    import sys; sys.exit(1)
-c.logout()
-print(f"Setup OK: ledger absent. Existing databases: {dbs}")
-PYEOF
-```
-
-**Execute**
-
-```bash
-python3 - <<'PYEOF'
-import os, json, importlib
-
-mod = importlib.import_module(os.environ.get('LEDGER_MODULE', 'ledger'))
-Ledger = mod.Ledger
-LedgerConnectionError = mod.LedgerConnectionError
-
-l = Ledger()
-cfg = {
-    "host": os.environ.get('IMMUDB_HOST', 'localhost'),
-    "port": 13326,
-    "database": "ledger",   # Does NOT exist — GENESIS not run
-    "username": os.environ.get('IMMUDB_TEST_USER', 'immudb'),
-    "password": os.environ.get('IMMUDB_TEST_PASS', 'immudb'),
+set -euo pipefail
+: "${LEDGER_RESET_CMD:?}"
+: "${LEDGER_APPEND_CMD:?}"
+: "${LEDGER_READ_RANGE_CMD:?}"
+: "${LEDGER_TIP_CMD:?}"
+: "${LEDGER_FAULT_CMD:?}"
+export HOLDOUT_TMP="$(mktemp -d)"
+sh -lc "$LEDGER_RESET_CMD"
+cat > "$HOLDOUT_TMP/base-event.json" <<'EOF'
+{
+  "event_id": "0195b820-c29c-7c2f-a4da-8f6d2eb6d130",
+  "event_type": "session_start",
+  "schema_version": "1.0.0",
+  "timestamp": "2026-03-19T23:30:00Z",
+  "provenance": {
+    "framework_id": "FMWK-002",
+    "pack_id": "PC-003-session-events",
+    "actor": "system"
+  },
+  "payload": {
+    "session_id": "sess-operator-0003",
+    "actor_id": "operator-ray",
+    "channel": "operator",
+    "started_at": "2026-03-19T23:30:00Z"
+  }
 }
-
-raised_at = None  # "connect" or "first_operation" or None
-raised_type = None
-raised_code = None
-
-try:
-    l.connect(cfg)
-    raised_at = None  # connect() did not raise
-    # If connect() silently succeeded, try a first operation
-    try:
-        l.get_tip()
-    except LedgerConnectionError as e:
-        raised_at = "first_operation"
-        raised_type = "LedgerConnectionError"
-        raised_code = getattr(e, 'code', None)
-    except Exception as e:
-        raised_at = "first_operation"
-        raised_type = type(e).__name__
-        raised_code = None
-except LedgerConnectionError as e:
-    raised_at = "connect"
-    raised_type = "LedgerConnectionError"
-    raised_code = getattr(e, 'code', None)
-except Exception as e:
-    raised_at = "connect"
-    raised_type = type(e).__name__
-    raised_code = None
-
-# Check whether the "ledger" database was created during the attempt
-from immudb import ImmudbClient
-ci = ImmudbClient("localhost:13326")
-ci.login(b"immudb", b"immudb")
-dbs_after = [d.decode('utf-8') if isinstance(d, bytes) else d for d in ci.databaseList()]
-ledger_db_created = "ledger" in dbs_after
-ci.logout()
-
-with open('/tmp/hs005_results.json', 'w') as f:
-    json.dump({
-        "raised_at": raised_at,
-        "raised_type": raised_type,
-        "raised_code": raised_code,
-        "ledger_db_created": ledger_db_created,
-        "dbs_after": dbs_after,
-    }, f)
-print("Execute OK")
-PYEOF
+EOF
+cat "$HOLDOUT_TMP/base-event.json" | sh -lc "$LEDGER_APPEND_CMD" >/dev/null
+printf '{}' | sh -lc "$LEDGER_TIP_CMD" > "$HOLDOUT_TMP/tip-before-errors.json"
+printf '{"mode":"connection-error-next-read-range"}' | sh -lc "$LEDGER_FAULT_CMD" >/dev/null
 ```
 
-**Verify**
+Execute:
+```bash
+set -euo pipefail
+printf '{"start":0,"end":0}' | sh -lc "$LEDGER_READ_RANGE_CMD" > "$HOLDOUT_TMP/connection-error.json" || true
+printf '{"mode":"sequence-conflict-next-append"}' | sh -lc "$LEDGER_FAULT_CMD" >/dev/null
+cat "$HOLDOUT_TMP/base-event.json" | sh -lc "$LEDGER_APPEND_CMD" > "$HOLDOUT_TMP/sequence-error.json" || true
+printf '{}' | sh -lc "$LEDGER_TIP_CMD" > "$HOLDOUT_TMP/tip-after-errors.json"
+```
+
+Verify:
 
 | Check | What to Examine | PASS Condition | FAIL Condition |
-|-------|----------------|----------------|----------------|
-| V1 | Exception type raised | `raised_type == "LedgerConnectionError"` | Generic exception, or no exception at all |
-| V2 | error.code attribute | `raised_code == "LEDGER_CONNECTION_ERROR"` | None, missing, or wrong string — D4 ERR-001 shape violation |
-| V3 | Error raised at connect() not deferred | `raised_at == "connect"` | "first_operation" — D4 IN-007 says "fail immediately" |
-| V4 | Zero admin operations — database not created | `ledger_db_created == False` | True — Ledger called CreateDatabaseV2 or equivalent admin op |
+| --- | --- | --- | --- |
+| Connection error shape | `connection-error.json` | Response contains `error_code=LEDGER_CONNECTION_ERROR`, non-empty `message`, and no success `events` payload | Generic read failure or wrong error code |
+| Sequence error shape | `sequence-error.json` | Response contains `error_code=LEDGER_SEQUENCE_ERROR`, non-empty `message`, and no success `sequence_number` or `event` fields | Generic append failure or partial event returned |
+| No fork/no hidden write | `tip-before-errors.json` vs `tip-after-errors.json` | Tip sequence/hash remain unchanged across both failures | Retry path or conflict path mutates chain state |
 
 ```bash
-python3 - <<'PYEOF'
-import json, sys
+set -euo pipefail
+jq -e '
+  .error_code == "LEDGER_CONNECTION_ERROR" and
+  (.message | type == "string") and
+  (.message | length > 0) and
+  (has("events") | not)
+' "$HOLDOUT_TMP/connection-error.json" >/dev/null
 
-with open('/tmp/hs005_results.json') as f:
-    d = json.load(f)
+jq -e '
+  .error_code == "LEDGER_SEQUENCE_ERROR" and
+  (.message | type == "string") and
+  (.message | length > 0) and
+  (has("sequence_number") | not) and
+  (has("event") | not)
+' "$HOLDOUT_TMP/sequence-error.json" >/dev/null
 
-failures = []
-
-if d['raised_type'] != 'LedgerConnectionError':
-    failures.append(
-        f"V1: expected LedgerConnectionError, got {d['raised_type']!r} — "
-        f"D4 IN-007 requires LedgerConnectionError when database does not exist"
-    )
-if d['raised_code'] != 'LEDGER_CONNECTION_ERROR':
-    failures.append(
-        f"V2: error.code={d['raised_code']!r}, expected 'LEDGER_CONNECTION_ERROR' — "
-        f"D4 ERR-001 shape violation (code attribute must be present and exact)"
-    )
-if d['raised_at'] != 'connect':
-    failures.append(
-        f"V3: error raised at {d['raised_at']!r}, expected 'connect' — "
-        f"D4 IN-007 says 'MUST fail immediately' at connect(), not deferred to first operation"
-    )
-if d['ledger_db_created']:
-    failures.append(
-        f"V4: 'ledger' database WAS CREATED — Ledger called an admin operation (CreateDatabaseV2 or equivalent). "
-        f"D4 IN-007 prohibits any admin gRPC call. Databases after attempt: {d['dbs_after']}"
-    )
-
-if failures:
-    print("FAIL:\n" + "\n".join(failures))
-    sys.exit(1)
-print("PASS: HS-005")
-sys.exit(0)
-PYEOF
+jq -e --slurp '
+  .[0].sequence_number == .[1].sequence_number and
+  .[0].hash == .[1].hash
+' "$HOLDOUT_TMP/tip-before-errors.json" "$HOLDOUT_TMP/tip-after-errors.json" >/dev/null
 ```
 
-**Cleanup**
-
+Cleanup:
 ```bash
-docker rm -f hs005-immudb
-rm -f /tmp/hs005_results.json
+rm -rf "$HOLDOUT_TMP"
 ```
-
----
 
 ## Coverage Matrix
+COVERAGE GATE: All D2 P0 and P1 scenarios MUST have holdout coverage. Zero gaps allowed. P2/P3 may defer to unit tests.
 
 | D2 Scenario | Priority | Holdout Coverage | Notes |
-|-------------|----------|-----------------|-------|
-| SC-001 | P0 | HS-001 (happy path), HS-004 (failure path) | Full |
-| SC-002 | P0 | HS-001 (V — read back by sequence) | Full |
-| SC-003 | P0 | HS-002 (V5-V10) | Full — includes at-tip empty list |
-| SC-004 | P0 | HS-003 (V1, intact chain) | Full |
-| SC-005 | P0 | HS-003 (import isolation note) | Verified by process-level import constraint |
-| SC-006 | P0 | HS-001 (V4: exact sentinel, exact string comparison) | Full |
-| SC-007 | P0 | HS-001 (V6: r1.previous_hash == r0.hash) | Full |
-| SC-008 | P1 | HS-002 (V11-V14) | Full |
-| SC-009 | P1 | HS-002 (V1-V4, including empty ledger shape) | Full |
-| SC-EC-001 | P0 | HS-003 (V2-V5, shape-verified) | Full — D4 break_at shape required |
-| SC-EC-002 | P1 | None | Deferred to builder unit tests. D2 testing approach: "Use mock to simulate atomicity failure." Requires implementation-specific mock injection into atomicity mechanism. LedgerSequenceError code shape verified via builder unit test. |
-| SC-EC-003 | P1 | None | Deferred to builder unit tests. D2 testing approach: "Mock immudb to fail after connection established." Requires precise timing control during gRPC call. LedgerConnectionError code shape covered by HS-005 proxy. |
-| SC-EC-004 | P0 | HS-005 (V1-V4) | Full — admin prohibition verified via post-connect immudb database list |
-
-### Coverage Gate Status
-
-- All P0 scenarios: **COVERED** (SC-001 through SC-EC-001, SC-EC-004)
-- All P1 scenarios: **COVERED or JUSTIFIED DEFERRAL**
-  - SC-EC-002, SC-EC-003: Deferred with documented justification — D2 explicitly specifies mock-based unit test approach for both
-
----
+| --- | --- | --- | --- |
+| SC-001 | P0 | HS-001 | Verifies genesis sequence `0`, all-zero `previous_hash`, and hash shape |
+| SC-002 | P0 | HS-001 | Verifies contiguous next sequence, exact prior-hash linkage, synchronous tip visibility |
+| SC-003 | P1 | HS-002 | Verifies `read`, `read_range`, and `read_since` ordering and stored-form replay |
+| SC-004 | P0 | HS-003 | Verifies `verify_chain` parity across `online` and `offline_export` modes |
+| SC-005 | P1 | HS-001 | Verifies stored event envelope fields are self-describing |
+| SC-006 | P1 | HS-002 | Verifies `snapshot_created` replay boundary behavior and stored payload presence |
+| SC-007 | P1 | HS-005 | Verifies explicit `LEDGER_SEQUENCE_ERROR` and no fork/no hidden write |
+| SC-008 | P1 | HS-004 | Verifies `LEDGER_SERIALIZATION_ERROR` contract shape and unchanged tip |
+| SC-009 | P1 | HS-005 | Verifies `LEDGER_CONNECTION_ERROR` contract shape and unchanged chain state |
+| SC-010 | P0 | HS-003 | Verifies corruption returns `valid=false` with deterministic `break_at` |
 
 ## Run Protocol
-
-**When**: After builder delivers code and builder's handoff tests pass.
-
-**Pre-requisites**:
-- Docker available and `codenotary/immudb:latest` image pulled
-- `immudb-py` Python package installed (`pip install immudb-py`)
-- `LEDGER_MODULE` env var set to the builder's importable module path (default: `ledger`)
-- Run from project root with the FMWK-001-ledger package installed or on `PYTHONPATH`
-
-**Order**:
-1. Run HS-001 through HS-005 in sequence. Any P0 failure stops execution.
-2. Each scenario is independent — Docker containers use separate ports (13322-13326).
-
-**Threshold**: All 5 scenarios must exit 0. No partial credit.
-
-**On failure**: File against responsible D8 task. Include:
-- Scenario ID (HS-NNN)
-- Failed check (V#)
-- Violated D4 contract (ERR-NNN, IN-NNN, or OUT-NNN)
-- Actual value vs expected value (exact strings)
+When: after builder delivers + handoff tests pass.
+Order: P0 first (any fail = stop), then P1, then P2.
+Threshold: all P0 pass, all P1 pass, no partial credit.
+On failure: file against responsible D8 task. Include: failed SC-###, violated contract, actual vs expected.

@@ -1,107 +1,45 @@
-# 13Q Answers — FMWK-001-ledger (Turn D, H-1)
+Builder Prompt Contract Version: 1.0.0
 
-## Q1 — What am I building?
-I am building exactly these 16 files from the handoff Files Summary:
+# 13Q Answers — FMWK-001-ledger
 
-1. `staging/FMWK-001-ledger/ledger/__init__.py` (CREATE)
-2. `staging/FMWK-001-ledger/ledger/errors.py` (CREATE)
-3. `staging/FMWK-001-ledger/ledger/schemas.py` (CREATE)
-4. `staging/FMWK-001-ledger/ledger/serializer.py` (CREATE)
-5. `staging/FMWK-001-ledger/ledger/ledger.py` (CREATE)
-6. `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py` (CREATE)
-7. `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/immudb_adapter.py` (CREATE)
-8. `staging/FMWK-001-ledger/tests/__init__.py` (CREATE)
-9. `staging/FMWK-001-ledger/tests/unit/__init__.py` (CREATE)
-10. `staging/FMWK-001-ledger/tests/unit/test_serializer.py` (CREATE)
-11. `staging/FMWK-001-ledger/tests/unit/test_ledger_unit.py` (CREATE)
-12. `staging/FMWK-001-ledger/tests/integration/__init__.py` (CREATE)
-13. `staging/FMWK-001-ledger/tests/integration/test_ledger_integration.py` (CREATE)
-14. `staging/FMWK-001-ledger/tests/integration/test_cold_storage.py` (CREATE)
-15. `staging/FMWK-001-ledger/scripts/static_analysis.sh` (CREATE)
-16. `sawmill/FMWK-001-ledger/RESULTS.md` (CREATE at finalize step)
+## Q1. What am I building?
+I am building `FMWK-001-ledger` as the Ledger primitive: a Python package in `staging/FMWK-001-ledger/` that owns the canonical Ledger event envelope, internal sequence assignment, canonical JSON serialization, SHA-256 hash computation, ordered replay APIs, chain verification in online and offline-export modes, and a Ledger-owned immudb adapter.
 
-## Q2 — What am I explicitly NOT building?
-I am explicitly NOT building:
+## Q2. What am I NOT building?
+I am not building write-path decision logic, fold logic, Graph state/query behavior, package-lifecycle gates, snapshot file creation/loading, immudb admin surfaces, or any runtime repo changes outside this framework staging root.
 
-1. D2 Deferred + D8 Deferred scope:
-   - `DEF-001` payload schema validation for deferred event types (owned by other frameworks).
-   - `DEF-002` paginated range read (`read_range(..., page_size, page_token)`).
-2. Any query-engine behavior (filtering/sorting/full-text/semantic retrieval).
-3. Any message-queue behavior (pub/sub, consumer groups, push delivery semantics).
-4. Any Graph fold/reconstruction logic (owned by FMWK-002/FMWK-005).
-5. Snapshot file-format ownership (Ledger only records snapshot events).
-6. Any governed filesystem install activity (staging-only authoring).
-7. Any immudb admin/provisioning operations in Ledger path (`CreateDatabaseV2`, delete/compact/truncate ops).
+## Q3. What are the D1 boundaries I must honor?
+The Ledger must remain append-only truth, must assign sequence numbers internally, must use one canonical serializer for append and verify, must fail closed on connection/serialization/sequence/corruption faults, and must keep storage transport details behind the Ledger-owned adapter boundary.
+[CRITICAL_REVIEW_REQUIRED]: I am deriving the D1 boundary summary from D10, D2, and the handoff because D1 itself was not in the required reading order for this prompt; the synthesis appears consistent, but it is still an indirect reading.
 
-[CRITICAL_REVIEW_REQUIRED]: D2 says deferred payload validation covers 11 of 15 event types, while D8 says 10 event types; I am treating the intent as "defer cross-framework payload schema validation entirely" despite the count mismatch.
+## Q4. What public APIs and error surfaces am I implementing?
+Public APIs are `Ledger.append`, `Ledger.read`, `Ledger.read_range`, `Ledger.read_since`, `Ledger.verify_chain`, and `Ledger.get_tip`. Declared typed errors are `LedgerConnectionError`, `LedgerSerializationError`, `LedgerSequenceError`, and `LedgerCorruptionError`.
 
-## Q3 — First test to write (from T-003)
-`test_canonical_json_excludes_hash_field` in `tests/unit/test_serializer.py`.
-It verifies `canonical_bytes()` removes the `hash` field before serialization so hash computation input never self-includes `hash`.
+## Q5. Where does each implementation piece live?
+Production files live under `staging/FMWK-001-ledger/ledger/`: `__init__.py`, `errors.py`, `models.py`, `serialization.py`, `backend.py`, and `service.py`. Tests live under `staging/FMWK-001-ledger/tests/`: `conftest.py`, `test_models.py`, `test_serialization.py`, `test_append_and_read.py`, `test_verification.py`, `test_connection_failures.py`, and `test_integration_immudb.py`.
 
-[CRITICAL_REVIEW_REQUIRED]: T-003 defines a set of 12 tests but does not enforce strict internal ordering; I am assuming the first listed serializer test is acceptable as the first authored test.
+## Q6. What exact data-format rules are fixed by the spec?
+Append input must exclude caller-supplied `sequence`, `previous_hash`, and `hash`. Canonical serialization must use JSON with sorted keys, separators `,` and `:`, UTF-8 bytes, `ensure_ascii=false`, nulls included, and the `hash` field excluded from hash input. Hash strings must be exact `sha256:<64 lowercase hex>`. Genesis `previous_hash` is `sha256:` plus 64 zeros. `read_since(-1)` means replay from genesis. `verify_chain` must return the same verdict shape online and offline.
 
-## Q4 — Exact canonical JSON call
-`json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)`
+## Q7. What packaging/manifests are required?
+The framework package must include the Ledger source, tests, fixtures if needed, and only minimal support files following local repo convention. A framework-local manifest or metadata file is only allowed if the resolved staging root already uses one; I must not invent a packaging system.
+[CRITICAL_REVIEW_REQUIRED]: The handoff intentionally leaves the manifest format conditional on existing local convention, so I should not assume any packaging metadata file exists until I inspect the staging root after reviewer PASS.
 
-## Q5 — Genesis sentinel exact value
-`sha256:0000000000000000000000000000000000000000000000000000000000000000`
+## Q8. What dependency boundaries and hash/provenance rules matter?
+Runtime dependency boundaries are Python 3.11+, `platform_sdk` for config/secrets/logging, `pytest` for tests, and immudb transport only behind the Ledger adapter. Hash provenance depends on one shared canonical byte-generation path for append and verify so online and offline verification cannot drift.
 
-## Q6 — immudb key format for sequence 7
-`000000000007`
+## Q9. What testing burden do I have before claiming completion?
+I need at least 25 tests total, covering every behavior in the handoff test plan, with DTT red-then-green evidence per behavior. Final verification requires `python -m compileall ledger tests`, the full unit suite, targeted append/read and verification commands, the opt-in integration suite, and the staged-package regression command against this framework tests plus `staging/FMWK-900-sawmill-smoke`.
 
-## Q7 — platform_sdk files modified vs newly created
-- Existing `platform_sdk` files modified: **none**.
-- New files created alongside staging SDK shim:
-  - `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/__init__.py`
-  - `staging/FMWK-001-ledger/platform_sdk/tier0_core/data/immudb_adapter.py`
+## Q10. How does this framework integrate with existing components?
+Upstream callers include FMWK-002 write-path and approved system-event producers for append, plus diagnostics/recovery tooling and FMWK-005 graph rebuild/recovery for reads and verification. Downstream, only the Ledger-owned backend touches immudb, and it must source host/port/database/credentials through `platform_sdk` boundaries rather than hardcoded values.
 
-## Q8 — Env var selecting mock vs real adapter
-`PLATFORM_DATA_BACKEND`
-- `mock` => `MockImmudbAdapter`
-- `immudb` => `RealImmudbAdapter`
+## Q11. Adversarial: what is the most likely scope-drift failure here?
+The highest-risk drift is letting Ledger absorb write-path, graph, or snapshot-management behavior. The guardrail is to keep Ledger limited to storing self-describing events, replaying them in order, and verifying integrity; `snapshot_created` is metadata only, not snapshot file ownership.
 
-## Q9 — Total tests and breakdown
-Total: **53**
-- `tests/unit/test_serializer.py`: 12
-- `tests/unit/test_ledger_unit.py`: 33
-- `tests/integration/test_ledger_integration.py`: 6
-- `tests/integration/test_cold_storage.py`: 2
+## Q12. Adversarial: what assumption could make a correct-looking implementation wrong?
+The v1 atomic append mechanism is assumed to be the in-process mutex option under a single-writer architecture. If I implemented a different reservation strategy or tolerated caller-side fallback sequencing, I could pass superficial tests while violating the recorded D6 assumption and the no-forks requirement.
+[CRITICAL_REVIEW_REQUIRED]: The atomicity choice is explicitly an assumption locked in D6 CLR-004 rather than a stronger direct contract statement in the handoff, so reviewer confirmation is useful before implementation.
 
-Unit total: 45. Integration total: 8.
-
-## Q10 — How FMWK-002 consumes appended events
-FMWK-002 consumes Ledger events via `read_since(sequence_number)` for replay/reconstruction after snapshots, implementing D4 `IN-004` (read_since contract).  
-FMWK-002 also writes mutations through `append(event)` under D4 `IN-001`.
-
-[CRITICAL_REVIEW_REQUIRED]: The question wording ("after a caller appends") could be interpreted as either write invocation (`append` / IN-001) or downstream replay consumption (`read_since` / IN-004); I interpreted "consume" as replay/read path.
-
-## Q11 — Dependency trap
-The Real immudb path depends on runtime infrastructure not authored inside this Brain_Factory staging packet: running immudb service + pre-created `ledger` database from GENESIS/FMWK-000, and live SDK availability at `/Users/raymondbruni/dopejar/platform_sdk/`.
-
-Handling:
-1. Unit tests use `MockImmudbAdapter` only (`PLATFORM_DATA_BACKEND=mock`).
-2. Integration tests bind to Docker immudb from `/Users/raymondbruni/dopejar/docker-compose.yml`.
-3. `connect()` fails fast with `LedgerConnectionError` if `ledger` DB is missing (no create/provision fallback).
-
-[CRITICAL_REVIEW_REQUIRED]: Assumes GENESIS has already provisioned the `ledger` database expected by D1 Article 9 and SC-EC-004; if GENESIS has not run, integration behavior is fail-fast by design.
-
-## Q12 — Closest scope-creep item that is prohibited
-Auto-provisioning the immudb database in `connect()` (e.g., `CreateDatabaseV2`) is closest to scope but explicitly prohibited.
-
-Why out of scope:
-1. D1 Article 9 infrastructure separation (GENESIS provisions, Ledger connects).
-2. D8 + constraints require zero admin ops in FMWK-001 code.
-3. Connect must raise `LedgerConnectionError` immediately if DB is absent.
-
-## Q13 — Meaning of “atomic” in mutex vs gRPC write
-`Atomic` in mutex context: process-local critical section around "read tip -> assign sequence/hash -> kv_set", preventing interleaving between concurrent threads in the same process.
-
-`Atomic` in immudb gRPC context: a single write call is all-or-nothing at storage operation level (no partial persisted event on failed call).
-
-They are not the same guarantee:
-1. Mutex atomicity is concurrency ordering/serialization in the client process.
-2. gRPC/immudb atomicity is storage commit integrity per operation.
-3. Both are required; neither replaces the other.
-
-[CRITICAL_REVIEW_REQUIRED]: This answer assumes single-writer process semantics from CLR-001; a distributed multi-writer deployment would need additional cross-process coordination not in current scope.
+## Q13. Adversarial: what evidence standard must block me from claiming success?
+I cannot claim success from reasoning alone. I need session-local evidence: failing-then-passing tests for each behavior, pasted command output in `RESULTS.md`, full-suite results, staged-package regression results, and no unverifiable statements such as "should pass" or "probably works."

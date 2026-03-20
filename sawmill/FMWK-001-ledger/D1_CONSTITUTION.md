@@ -1,162 +1,89 @@
 # D1: Constitution — FMWK-001-ledger
-Meta: v:1.0.0 | ratified:2026-03-01 | amended:— | authority:NORTH_STAR.md v3.0, BUILDER_SPEC.md v3.0, OPERATIONAL_SPEC.md v3.0, FWK-0-DRAFT.md v0.2
-
----
+Meta: v:1.0.0 | ratified:2026-03-19 | amended:2026-03-19 | authority:AGENT_BOOTSTRAP.md; architecture/NORTH_STAR.md; architecture/BUILDER_SPEC.md; architecture/OPERATIONAL_SPEC.md; architecture/FWK-0-DRAFT.md; architecture/BUILD-PLAN.md; sawmill/FMWK-001-ledger/TASK.md; sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md
 
 ## Articles
 
-### Article 1: SPLITTING — Independent Authorship
-**Rule:** The Ledger MUST be independently authorable from its spec pack and FWK-0 alone, with zero requirement to co-author FMWK-002, FMWK-003, FMWK-004, FMWK-005, or FMWK-006 simultaneously.
+### Article 1 — Splitting
+- Rule: FMWK-001 MUST remain independently authorable as the append-only Ledger primitive; its spec MUST stop at event storage, event schema ownership, hash chaining, replay, and immudb abstraction.
+- Why: FWK-0 Section 3.0 requires a framework to be authorable from its own spec. If ledger behavior expands into fold logic, graph structure, or package gates, the builder can no longer implement it from the ledger spec alone and the primitive boundary collapses.
+- Test: Review `framework.json` and all packs for FMWK-001; pass only if every declared responsibility maps to event storage, event schema definition, chain verification, ordered retrieval, or immudb-backed durability.
+- Violations: No exceptions.
 
-**Why:** The KERNEL build plan requires concurrent builders on independent frameworks. If the Ledger builder must coordinate with the Write-Path builder to resolve an ambiguity, the two frameworks are not truly independent and the decomposition is wrong. Independent authorship is the prerequisite for the dark factory model to function.
+### Article 2 — Merging
+- Rule: FMWK-001 MUST NOT hide a separate capability that belongs in another framework, including write-path mutation logic, graph materialization, work-order lifecycle logic, gate execution, or snapshot file management.
+- Why: FWK-0's merging test requires separate capabilities to be split rather than buried inside a foundation framework. If Ledger absorbs execution or lifecycle logic, downstream frameworks lose clean interfaces and cold-storage validation becomes ambiguous.
+- Test: Inspect contracts and code ownership; pass only if FMWK-001 exposes Ledger interfaces and event schemas, while FMWK-002 owns folding, FMWK-005 owns graph state, and FMWK-006 owns gate behavior.
+- Violations: No exceptions.
 
-**Test:** Run FMWK-001 gate validation with only FMWK-000 installed. All gates pass without any other KERNEL framework present. The builder's context window contains only the FMWK-001 spec pack and FWK-0 — no other framework's spec material is required to produce a complete, gate-passing artifact.
+### Article 3 — Ownership
+- Rule: FMWK-001 MUST exclusively own the canonical Ledger event envelope, sequence assignment, and hash-chain rules; other frameworks MUST consume those through declared interfaces rather than redefining them.
+- Why: Ownership is what prevents shared-schema drift. If multiple frameworks redefine sequence, provenance, or hash serialization, replay diverges and the sole source of truth stops being singular.
+- Test: Confirm D3 entities `LedgerEvent`, `LedgerTip`, and `ChainVerificationResult` are declared as shared entities owned by FMWK-001 and referenced by consuming frameworks only through Ledger contracts.
+- Violations: No exceptions.
 
-**Violations:** No exceptions. Any authoring dependency on another KERNEL framework is a decomposition failure — resolve by adjusting the boundary, not by expanding scope.
+### Article 4 — Append-Only Truth
+- Rule: The Ledger MUST be append-only and MUST NEVER delete, rewrite, compact, truncate, or mutate recorded events in place.
+- Why: NORTH_STAR and BUILDER_SPEC define the Ledger as the sole source of truth. If events can be rewritten, replay, audit, rollback, and provenance validation all become untrustworthy, and "can't forget, can't drift" fails at the storage layer.
+- Test: Static inspection must show no exposed or wrapped administrative delete/reorg methods; runtime tests must append events and verify prior sequences remain byte-for-byte unchanged.
+- Violations: No exceptions.
 
----
+### Article 5 — Deterministic Hash Chain
+- Rule: Every Ledger event MUST hash the previous event using SHA-256 over canonical UTF-8 JSON with the `hash` field excluded, and every stored hash string MUST exactly match `sha256:<64 lowercase hex chars>`.
+- Why: The hash chain is the tamper-evidence mechanism that lets the operator validate the system from cold storage. Any ambiguity in serialization, encoding, or hash formatting creates false forks across languages and destroys deterministic verification.
+- Test: Generate the same event in repeated runs and across supported implementations; pass only if canonical serialization bytes and resulting hashes are identical and chain verification reports the same break point for the same corruption.
+- Violations: No exceptions.
 
-### Article 2: MERGING — Single Capability
-**Rule:** The Ledger MUST NOT contain capabilities that belong to another framework. Fold logic, signal accumulation, gate validation, Graph update logic, work order management, and snapshot format are all prohibited. The Ledger stores events. Period.
+### Article 6 — Interface Isolation
+- Rule: Callers MUST interact with the Ledger only through Ledger contracts and platform_sdk-backed configuration and connection abstractions; callers MUST NOT import or call immudb directly.
+- Why: The task source material and AGENT_BOOTSTRAP platform_sdk contract make immudb a backing store, not a public dependency. Direct immudb usage would bypass the Ledger's sequence ownership, provenance rules, and hash-chain guarantees.
+- Test: Dependency inspection must show no direct immudb dependency outside the Ledger implementation boundary and no caller-supplied sequence numbers in Ledger append requests.
+- Violations: No exceptions.
 
-**Why:** If the Ledger absorbs fold logic, it couples to the Write Path. If it absorbs gate logic, it couples to Package Lifecycle. Each coupling creates a shared surface that makes isolated testing impossible and creates cascading failure modes. The decomposition standard requires capability boundaries to be clean.
+### Article 7 — Cold-Storage Verifiability
+- Rule: FMWK-001 MUST support ordered replay and hash-chain verification from Ledger data alone, without requiring HO1, HO2, HO3, or runtime kernel services.
+- Why: NORTH_STAR and OPERATIONAL_SPEC make cold-storage validation a core operational invariant and CLI recovery path. If Ledger verification needs the runtime stack, the operator can be locked out exactly when recovery is needed.
+- Test: Export Ledger data, stop runtime services, and run chain verification offline; pass only if validity and break position match the online result.
+- Violations: No exceptions.
 
-**Test:** Static analysis of all FMWK-001 code confirms zero imports of FMWK-002, FMWK-003, FMWK-004, FMWK-005, or FMWK-006 interfaces. Only FMWK-000 schema references are permitted. Any other cross-framework import is a build failure.
-
-**Violations:** No exceptions. If a needed capability appears to belong elsewhere, flag in D6 before implementing.
-
----
-
-### Article 3: OWNERSHIP — Exclusive Data Authority
-**Rule:** No framework other than FMWK-001 MUST define, modify, or extend the event base schema, hash chain structure, or sequence numbering convention. Other frameworks define their payload schemas within the envelope FMWK-001 owns.
-
-**Why:** Shared schema ownership creates silent incompatibilities. If FMWK-002 defines a field on the base event, FMWK-001 cannot validate it and the hash chain becomes unverifiable by Ledger-only tools. The base schema must have exactly one owner for cold-storage verification to remain possible.
-
-**Test:** Grep all non-FMWK-001 files for definitions of `event_id`, `previous_hash`, `sequence`, `schema_version`, or `hash` as base schema fields. Zero matches permitted. Payload schemas defined by other frameworks are referenced through declared interfaces, never inlined into the base schema.
-
-**Violations:** No exceptions. Other frameworks declare payload schemas through D4 interface contracts that the Ledger consumes at event validation time.
-
----
-
-### Article 4: APPEND-ONLY IMMUTABILITY
-**Rule:** The Ledger MUST NOT expose or call any immudb administrative operation that modifies, deletes, reorganizes, or truncates existing event data. Every append is permanent.
-
-**Why:** Immutability is the foundation of DoPeJarMo's truth contract. If the Ledger can delete events, the Graph cannot be reliably rebuilt from Ledger replay, provenance chains break, and cold-storage verification becomes impossible. Every framework in the system depends on this invariant — a single delete corrupts truth for all downstream consumers. The NORTH_STAR Principle 5 ("Projection must be reversible") depends on this being absolute.
-
-**Test:** Static analysis confirms zero calls to `DatabaseDelete`, `DropDatabase`, `CompactIndex`, `TruncateDatabase`, `CleanIndex`, or any immudb method that modifies existing data. This check MUST be a build gate failure, not a warning.
-
-**Violations:** No exceptions. Not for storage pressure (addressed by FMWK-012 Storage Management via governed Ledger events, never direct deletion), not for correcting mistakes, not for administrative convenience.
-
----
-
-### Article 5: DETERMINISTIC HASH CHAIN
-**Rule:** Every appended event MUST include `previous_hash` = `sha256:<64 lowercase hex chars>` computed as SHA-256 of the preceding event's canonical JSON with the `hash` field excluded. The genesis event's `previous_hash` MUST be exactly `sha256:0000000000000000000000000000000000000000000000000000000000000000`.
-
-**Why:** The hash chain is what makes cold-storage verification possible without any runtime services. Any deviation from the canonical format breaks verification for any tool reading the Ledger — including CLI tools running without the kernel. Uppercase letters, `0x` prefix, base64, or raw bytes are silent bugs that break cross-tool interoperability. The format is a byte-level contract.
-
-**Test:** Append 3 events to a fresh Ledger. Assert: (1) event 0's `previous_hash` is exactly the 64-zero genesis sentinel, (2) each subsequent event's `previous_hash` equals SHA-256 of the preceding event's canonical JSON (sorted keys, no whitespace, `hash` field excluded, UTF-8 no BOM, no escaped unicode), (3) all hashes match regex `^sha256:[0-9a-f]{64}$`. Tests MUST use exact string comparison — no semantic equivalence.
-
-**Violations:** No exceptions. The hash format is a byte-level contract. Any variation is a bug.
-
----
-
-### Article 6: SEQUENCE MONOTONICITY — Caller-Opaque Sequencing
-**Rule:** The Ledger MUST assign sequence numbers internally. Callers MUST NOT pass sequence numbers to `append()`. The Ledger MUST reject any concurrent write that would produce a non-monotonic sequence with `LedgerSequenceError`.
-
-**Why:** Caller-supplied sequences create race conditions even in a single-writer design. A forked sequence creates a forked truth — the system has no way to order events correctly for Graph replay. Sequence 0 must always precede sequence 1; if a caller can supply sequence numbers, that guarantee is only as reliable as the caller's correctness. The Ledger must own the guarantee.
-
-**Test:** Verify `append()` interface accepts no `sequence` parameter. Write 5 events, verify sequences are exactly 0, 1, 2, 3, 4 with no gaps. Simulate a concurrent write conflict (force via mock); verify `LedgerSequenceError` is raised rather than silent acceptance.
-
-**Violations:** No exceptions. This applies to system events (SESSION_START, SESSION_END, SNAPSHOT_CREATED) as well — all events go through `append()`.
-
----
-
-### Article 7: IMMUDB ABSTRACTION — No Direct Dependencies
-**Rule:** All access to immudb MUST go through `platform_sdk.tier0_core.data`. No caller outside the `platform_sdk.tier0_core.data` adapter boundary may import immudb SDK libraries directly. FMWK-001 wraps platform_sdk; callers wrap FMWK-001.
-
-**Why:** immudb is an infrastructure dependency. If callers depend on immudb directly, swapping the backing store becomes a system-wide refactor touching every framework that writes events. The abstraction preserves the ability to evolve infrastructure. This also enforces the Platform SDK contract, which is non-negotiable per AGENT_BOOTSTRAP.md.
-
-**Test:** Grep all files except `platform_sdk/tier0_core/data/immudb_adapter.py` for `import immudb`, `from immudb`, or any immudb SDK namespace. Zero matches permitted. CLI tools use the same Ledger interface (or a thin offline re-implementation defined in D4) and do not bypass the adapter boundary.
-
-**Violations:** No exceptions. The platform_sdk contract is architectural law, not a suggestion.
-
----
-
-### Article 8: COLD-STORAGE VERIFIABILITY — No Runtime Dependency
-**Rule:** The `verify_chain()` operation MUST function correctly using only the immudb data in the `ledger_data` volume. It MUST NOT require the kernel process, the Graph (FMWK-005), HO1 (FMWK-004), HO2 (FMWK-003), or any cognitive runtime component.
-
-**Why:** OPERATIONAL_SPEC Q4 guarantees the operator is never locked out. If cold-storage verification requires a running kernel, and the kernel is broken, the operator cannot diagnose the state of the system. The hash chain must be checkable by a CLI tool connecting directly to immudb on :3322 with nothing else running.
-
-**Test:** Stop the kernel container. Connect a CLI tool directly to immudb on :3322. Run `verify_chain()`. Assert the result is identical to online verification with the kernel running.
-
-**Violations:** No exceptions. This is the operational invariant that makes DoPeJarMo recoverable.
-
----
-
-### Article 9: INFRASTRUCTURE SEPARATION — Connect Does Not Provision
-**Rule:** The Ledger MUST NOT create the immudb `ledger` database during `connect()`. If the `ledger` database does not exist, `connect()` MUST fail immediately with `LedgerConnectionError`. Database creation is a GENESIS ceremony operation.
-
-**Why:** If `connect()` calls `CreateDatabaseV2`, multiple agents connecting simultaneously to a non-existent database race on this call, potentially corrupting the immudb system catalog. "Connect" is operational. "Create" is provisioning. The GENESIS ceremony creates the database exactly once; all subsequent `connect()` calls assume it exists.
-
-**Test:** Point `connect()` at a clean immudb instance with no `ledger` database. Assert `LedgerConnectionError` is raised immediately. Confirm via mock that zero `CreateDatabaseV2` calls were made.
-
-**Violations:** No exceptions. GENESIS owns database creation. The Ledger connects to what already exists.
-
----
+### Article 8 — Fail Closed
+- Rule: On connection loss, serialization failure, or sequence conflict, the Ledger MUST fail the operation explicitly and MUST NOT synthesize success, retry appends indefinitely, or repair corruption silently.
+- Why: OPERATIONAL_SPEC requires hard stops over guessing when truth cannot be recorded reliably. Silent repair or hidden retries create unlogged state transitions and mask the exact failure boundary that operators need to diagnose.
+- Test: Simulate immudb unavailability, invalid event payload serialization, and conflicting append attempts; pass only if the Ledger returns the declared error type and leaves the chain unchanged.
+- Violations: No exceptions.
 
 ## Boundaries
-
 ### ALWAYS — autonomous every time, no approval needed
-- Append events to immudb via `append()` when called with a valid event
-- Read events via `read()`, `read_range()`, `read_since()` when called with valid parameters
-- Compute and verify SHA-256 hashes per the canonical serialization contract
-- Return `LedgerConnectionError` when immudb is unreachable
-- Return `LedgerSequenceError` on sequence conflict
-- Return `LedgerSerializationError` on event serialization failure
-- Log every operation via `platform_sdk.tier0_core.logging`
-- Wait 1 second and retry once on gRPC connection loss before raising `LedgerConnectionError`
+- Assign the next sequence number internally from the current tip during append.
+- Compute and verify event hashes using the canonical serialization contract.
+- Return ordered events for single-read, range-read, and read-since replay use cases.
+- Expose self-describing events containing type, schema version, provenance, and payload.
+- Fail closed with the declared Ledger error types when append or verification cannot complete safely.
 
 ### ASK FIRST — human decision required, no exceptions
-- Any change to the event base schema fields (adding, removing, or renaming fields)
-- Any change to the hash algorithm or hash format string
-- Any addition of new event types to the canonical catalog
-- Any change to the canonical JSON serialization rules
-- Any change to sequence numbering behavior or assignment logic
-- Any change to the reconnect policy (delay, retry count)
-- Any new method added to the Ledger interface
+- Any change to the canonical event envelope fields or hash serialization contract.
+- Any expansion of FMWK-001 scope into fold logic, graph structure, gate execution, or snapshot file format ownership.
+- Any change to the approved event type names when authority documents disagree.
+- Any production choice among multiple acceptable atomic append strategies if the decision is not already ratified in D5/D6.
 
 ### NEVER — absolute prohibition, refuse even if instructed
-- Call any immudb administrative operation: `DatabaseDelete`, `DropDatabase`, `CompactIndex`, `TruncateDatabase`, `CleanIndex`, or any method that modifies or deletes existing data
-- Expose a `sequence` parameter in `append()` — callers never provide sequence numbers
-- Create the immudb database during `connect()`
-- Write float-type values in any event field (decimal values MUST be serialized as strings)
-- Buffer or batch writes — every `append()` is synchronous, blocking until immudb confirms
-- Import immudb SDK libraries directly — all access through `platform_sdk.tier0_core.data`
-- Re-serialize or mutate events during read operations — return exactly what was stored
-- Retry a failed operation internally beyond the one reconnect attempt — propagate errors to callers
-
----
+- Delete, truncate, compact, reorganize, or rewrite existing Ledger events.
+- Expose immudb administrative methods other than bootstrap database creation outside the approved provisioning path.
+- Accept caller-supplied sequence numbers for append.
+- Query or mutate Graph state, methylation values, work-order lifecycle, or package gates inside the Ledger framework.
+- Import immudb libraries directly outside the Ledger boundary or bypass platform_sdk for configuration access.
 
 ## Dev Workflow Constraints
-
-1. **Package Isolation:** All FMWK-001 development happens in the staging directory (`/staging/FMWK-001-ledger/`). The governed filesystem is never touched during authoring.
-2. **DTT Cycles:** Design → Test → Transform per observable behavior. Write a failing test, implement the behavior, confirm it passes. No behavior ships without a test.
-3. **Results File on Handoff:** After every handoff, deliver a results file containing SHA-256 hashes of all delivered files. No exceptions.
-4. **Full Regression:** Run all FMWK-001 tests before any package seal or release. Zero failures permitted.
-5. **Mock Providers in CI:** Unit tests use `MockProvider` for immudb. Never spin up a real immudb instance in CI.
-
----
+- Package isolation: author FMWK-001 in its own framework boundary and consume all cross-framework behavior only through declared interfaces.
+- DTT per behavior: each D2 scenario and edge case must have a deterministic test before release, including offline verification coverage.
+- Handoff evidence: every implementation handoff must include a results artifact with file hashes and scenario/test outcomes traceable back to D2 and D4.
+- Regression scope: run full regression for FMWK-001 plus any consuming packages/frameworks affected by event schema or contract changes before release.
+- Mock-first testing: use mock providers for unit tests and never depend on live immudb in unit test cycles.
 
 ## Tooling Constraints
-
-| Operation | USE | NOT |
-|-----------|-----|-----|
-| Ledger storage access | `platform_sdk.tier0_core.data.get_adapter()` | immudb SDK directly |
-| Configuration | `LedgerConfig.from_env()` backed by `platform_sdk.tier0_core.config` | Ad-hoc `os.getenv()` reads throughout Ledger code |
-| Secrets / credentials | `platform_sdk.tier0_core.secrets.get_secret()` | Hardcoded values, `os.getenv()` for secrets |
-| Event serialization (hash input) | `json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)` | Any JSON library with different defaults, `json.dumps()` without explicit args |
-| Hash computation | `hashlib.sha256(utf8_bytes).hexdigest()` prefixed with `sha256:` | Any hash shortcut, base64, raw bytes, uppercase output |
-| Error reporting | `platform_sdk.tier0_core.errors` base classes | `raise Exception(...)` or bare Python exceptions |
-| Logging | `platform_sdk.tier0_core.logging` | `print()`, raw `structlog`, `logging.basicConfig()` |
-| Health reporting | `platform_sdk.tier2_reliability.health` | Custom `/health` endpoints |
-| Metrics | `platform_sdk.tier2_reliability` metrics module | Raw Prometheus client imports |
+| Operation:text | USE:approach | NOT:anti-pattern |
+| Append path | USE:Ledger interface with internal sequence assignment and canonical hash computation | NOT:caller-supplied sequence or direct immudb `Set` from another framework |
+| Configuration | USE:`platform_sdk` config/secrets access for host, port, database, credentials | NOT:hardcoded credentials or scattered env reads |
+| Storage access | USE:Ledger-owned immudb wrapper boundary | NOT:direct immudb imports by write-path, graph, or package-lifecycle callers |
+| Hashing | USE:SHA-256 over canonical UTF-8 JSON with sorted keys and excluded `hash` field | NOT:language-default JSON serialization, alternate encodings, or noncanonical whitespace |
+| Verification | USE:online and offline chain verification against exact stored hash strings | NOT:semantic hash comparison or runtime-only verification |
+| Testing | USE:deterministic scenario tests plus corruption and disconnect fault injection | NOT:ad hoc manual validation as sole evidence |

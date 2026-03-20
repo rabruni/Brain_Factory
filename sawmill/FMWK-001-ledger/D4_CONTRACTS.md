@@ -1,276 +1,390 @@
 # D4: Contracts — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2) | data model:D3 v1.0.0 | status:Final
+Meta: v:1.0.0 (matches D2) | data model: D3 1.0.0 | status:Final
 
 IDs: IN-NNN (inbound), OUT-NNN (outbound), SIDE-NNN (side-effect), ERR-NNN (error).
 
----
+## Inbound
 
-## Inbound Contracts
+### IN-001 — Append Event
+- Caller: FMWK-002 write-path and approved infrastructure producers of system events
+- Trigger: A governed mutation or system event must be recorded
+- Scenarios: SC-001, SC-002, SC-005, SC-006, SC-007, SC-008, SC-009
 
-### IN-001: append(event)
-- Caller: FMWK-002 (write-path — all cognitive events), FMWK-006 (package-lifecycle — install events), kernel infrastructure (session events, snapshot events)
-- Trigger: Any state mutation requiring a Ledger record
-- Scenarios: SC-001, SC-006, SC-007, SC-008
-
-Request Shape (fields caller supplies):
 | Field | Type | Required | Description | Constraints |
-|-------|------|----------|-------------|-------------|
-| event_id | string | yes | UUID v7 | UUID v7 format; caller assigns |
-| event_type | string | yes | From canonical catalog | Must be in E-009 catalog |
-| schema_version | string | yes | Schema version | "1.0.0" (current) |
-| timestamp | string | yes | ISO-8601 UTC with "Z" suffix | e.g., "2026-03-01T14:22:00Z" |
-| provenance | object | yes | {framework_id, pack_id, actor} | actor: "system"\|"operator"\|"agent" |
-| payload | object | yes | Event type-specific data | No float-type values anywhere in payload |
+| event_id | Type:uuid-v7 | Req:yes | Event identifier | Must be unique |
+| event_type | Type:string | Req:yes | Event classifier | Approved catalog value |
+| schema_version | Type:string | Req:yes | Event schema version | Semver string |
+| timestamp | Type:string | Req:yes | Event timestamp | ISO-8601 UTC |
+| provenance | Type:object | Req:yes | Event origin | Must satisfy E-002 |
+| payload | Type:object | Req:yes | Event payload | Must match event-specific schema |
 
 Constraints:
-- Caller MUST NOT supply `sequence`, `previous_hash`, or `hash` — these are Ledger-assigned
-- `payload` MUST NOT contain float-type values; all decimal values MUST be strings
-- `event_type` MUST be in the E-009 canonical catalog
+- Caller MUST NOT provide `sequence`, `previous_hash`, or `hash`.
+- Ledger assigns `sequence` and `previous_hash` from the current tip.
+- Serialization MUST satisfy SIDE-002 before persistence.
 
-Returns: `sequence_number: int` — the sequence number assigned to this event
+Example:
+```json
+{
+  "event_id": "0195b7fc-c29c-7c2f-a4da-8f6d2eb6d1a1",
+  "event_type": "node_creation",
+  "schema_version": "1.0.0",
+  "timestamp": "2026-03-19T23:50:00Z",
+  "provenance": {
+    "framework_id": "FMWK-002",
+    "pack_id": "PC-001-fold-engine",
+    "actor": "system"
+  },
+  "payload": {
+    "node_id": "node-intent-dining-recall",
+    "node_type": "intent",
+    "lifecycle_state": "LIVE",
+    "metadata": {
+      "title": "Find Sarah's restaurant recommendation"
+    }
+  }
+}
+```
 
----
-
-### IN-002: read(sequence_number)
-- Caller: FMWK-002 (write-path), FMWK-005 (graph replay), CLI verification tools
-- Trigger: Fetching a specific event by position
-- Scenarios: SC-002
-
-Request Shape: `sequence_number: int`
-
-Constraints:
-- `sequence_number` must be in range [0, current_tip.sequence_number]
-- Raises `LedgerConnectionError` if immudb unreachable
-- Raises `LedgerConnectionError` if `sequence_number` is out of range (missing key / no stored event at that sequence)
-
-Returns: Full LedgerEvent (E-001) exactly as stored — no transformation or re-serialization
-
----
-
-### IN-003: read_range(start, end)
-- Caller: FMWK-005 (graph replay), CLI verification tools
-- Trigger: Fetching a contiguous window of events
-- Scenarios: SC-003 (variant — fixed-range form)
-
-Request Shape:
-| Field | Type | Required | Constraints |
-|-------|------|----------|-------------|
-| start | int | yes | ≥ 0 |
-| end | int | yes | ≥ start; ≤ current_tip.sequence_number |
-
-Constraints:
-- Raises `LedgerConnectionError` if immudb unreachable
-
-Returns: `[LedgerEvent]` in strictly ascending sequence order. Empty list if start > tip.
-
----
-
-### IN-004: read_since(sequence_number)
-- Caller: FMWK-005 (graph replay after snapshot load)
-- Trigger: Graph reconstruction — load snapshot then replay events after snapshot_sequence
+### IN-002 — Read One Event
+- Caller: Any framework or tool that needs an exact stored event
+- Trigger: Point lookup by sequence
 - Scenarios: SC-003
 
-Request Shape: `sequence_number: int` — returns all events with sequence > this value
-
-Constraints:
-- If `sequence_number` equals current tip, returns empty list (not an error)
-- Raises `LedgerConnectionError` if immudb unreachable
-
-Returns: `[LedgerEvent]` in strictly ascending sequence order
-
----
-
-### IN-005: verify_chain(start?, end?)
-- Caller: CLI tools (cold-storage validation), FMWK-006 (system-gate), operator diagnostics via DoPeJarMo
-- Trigger: Integrity verification, post-recovery validation, framework chain validation
-- Scenarios: SC-004, SC-005, SC-EC-001
-
-Request Shape:
-| Field | Type | Required | Constraints |
-|-------|------|----------|-------------|
-| start | int | no | Default 0 |
-| end | int | no | Default current tip sequence |
-
-Constraints:
-- MUST function without a running kernel process (cold-storage capable — direct immudb connection only)
-- Recomputes each event's hash from canonical JSON and compares to stored `hash`
-- Verifies `previous_hash` chain linkage at every step
-- Raises `LedgerConnectionError` if immudb is unreachable during the chain walk
-
-Returns: VerifyChainResult (E-004) — `{valid: true}` or `{valid: false, break_at: N}`
-
----
-
-### IN-006: get_tip()
-- Caller: FMWK-002 (via atomicity mechanism before append), any caller checking current position
-- Trigger: Before computing next sequence (internal), on-demand position check
-- Scenarios: SC-009
-
-Request Shape: No parameters
-
-Constraints:
-- Raises `LedgerConnectionError` if immudb unreachable
-
-Returns: LedgerTip (E-003) — `{sequence_number: N, hash: "sha256:..."}`. If no events exist: `{sequence_number: -1, hash: ""}`.
-
----
-
-### IN-007: connect(config)
-- Caller: Kernel boot process, CLI tools at startup
-- Trigger: System initialization, CLI tool startup
-- Scenarios: SC-EC-004
-
-Request Shape:
 | Field | Type | Required | Description | Constraints |
-|-------|------|----------|-------------|-------------|
-| host | string | yes | immudb hostname | From `LedgerConfig`; reads env var `IMMUDB_HOST` |
-| port | int | yes | immudb gRPC port | From `LedgerConfig`; reads env var `IMMUDB_PORT` (default 3322) |
-| database | string | yes | Database name | From `LedgerConfig`; reads env var `IMMUDB_DATABASE` (default "ledger") |
-| username | string | yes | immudb credentials | From `platform_sdk.tier0_core.secrets`; NEVER hardcoded |
-| password | string | yes | immudb credentials | From `platform_sdk.tier0_core.secrets`; NEVER hardcoded |
+| sequence_number | Type:integer | Req:yes | Requested Ledger sequence | `>= 0` |
 
 Constraints:
-- MUST fail immediately with `LedgerConnectionError` if the `ledger` database does not exist — zero admin operations
-- Single persistent gRPC connection (no connection pool)
-- On connection loss: wait exactly 1 second, attempt one reconnect; if fails, raise `LedgerConnectionError`
-- MUST NOT call `CreateDatabaseV2` or any immudb administrative gRPC method
+- Sequence must reference an existing event.
 
-Returns: void (connection established or exception raised)
+Example:
+```json
+{
+  "sequence_number": 4
+}
+```
 
----
+### IN-003 — Read Event Range
+- Caller: FMWK-005 graph rebuild, diagnostics, recovery tooling
+- Trigger: Ordered replay over a bounded sequence interval
+- Scenarios: SC-003, SC-004
 
-## Outbound Contracts
+| Field | Type | Required | Description | Constraints |
+| start | Type:integer | Req:yes | First sequence to read | `>= 0` |
+| end | Type:integer | Req:yes | Last sequence to read | `>= start` |
 
-### OUT-001: append() acknowledgment → Write Path
-- Consumer: FMWK-002 (write-path) — uses returned sequence to confirm write position
-- Scenarios: SC-001
-- Response Shape: `sequence_number: int` — the sequence assigned to the appended event
-- Example success: `42`
-- Example failure: raises `LedgerConnectionError` (caller handles)
+Constraints:
+- Returned events must be ordered by ascending sequence.
 
----
+Example:
+```json
+{
+  "start": 0,
+  "end": 127
+}
+```
 
-### OUT-002: Event stream → Graph replay
-- Consumer: FMWK-005 (graph) — receives ordered events from `read_since()` to rebuild materialized view
+### IN-004 — Read Since Sequence
+- Caller: FMWK-005 graph recovery after snapshot load
+- Trigger: Replay all events after a known sequence boundary
+- Scenarios: SC-003, SC-006
+
+| Field | Type | Required | Description | Constraints |
+| sequence_number | Type:integer | Req:yes | Exclusive lower bound | `>= -1`; `-1` means from genesis |
+
+Constraints:
+- Events with `sequence > sequence_number` are returned in ascending order.
+
+Example:
+```json
+{
+  "sequence_number": 128
+}
+```
+
+### IN-005 — Verify Chain
+- Caller: Cold-storage CLI tools, operator diagnostics, startup validation
+- Trigger: Integrity validation request
+- Scenarios: SC-004, SC-010
+
+| Field | Type | Required | Description | Constraints |
+| start | Type:integer | Req:no | Optional first sequence | Defaults to genesis |
+| end | Type:integer | Req:no | Optional last sequence | Defaults to current tip |
+| source_mode | Type:enum | Req:yes | Verification source | `online` or `offline_export` |
+
+Constraints:
+- Verification recomputes hashes from canonical serialized bytes, not stored hash-to-hash comparisons only.
+
+Example:
+```json
+{
+  "start": 0,
+  "end": 5,
+  "source_mode": "offline_export"
+}
+```
+
+### IN-006 — Get Tip
+- Caller: FMWK-002 write-path and diagnostics
+- Trigger: Need the latest Ledger position
+- Scenarios: SC-002, SC-003
+
+| Field | Type | Required | Description | Constraints |
+| none | Type:none | Req:yes | No request body | Caller invokes contract with no payload |
+
+Constraints:
+- Empty-ledger behavior is only valid before genesis append.
+
+Example:
+```json
+{}
+```
+
+## Outbound
+
+### OUT-001 — Append Result
+- Consumer: Append caller
+- Scenarios: SC-001, SC-002, SC-005, SC-006
+- Response Shape: sequence number plus persisted `LedgerEvent` (E-001)
+
+Example success:
+```json
+{
+  "sequence_number": 4,
+  "event": {
+    "event_id": "0195b7fc-c29c-7c2f-a4da-8f6d2eb6d1a1",
+    "sequence": 4,
+    "event_type": "signal_delta",
+    "schema_version": "1.0.0",
+    "timestamp": "2026-03-19T23:11:12Z",
+    "provenance": {
+      "framework_id": "FMWK-004",
+      "pack_id": "PC-002-signal-logging",
+      "actor": "agent"
+    },
+    "previous_hash": "sha256:6a4f8649e9449e51d4538f86d3c31ab8f6b2f9fa3012af5d0dd03d5f5f258d4a",
+    "payload": {
+      "node_id": "node-sarah-french",
+      "delta": "1",
+      "reason": "active_intent_hit",
+      "intent_id": "intent-dining-recall"
+    },
+    "hash": "sha256:4f5b54bcf2ef4e7be116a6df080f59b0bb5f80927b0d6162825250efce5435b1"
+  }
+}
+```
+
+Example failure:
+```json
+{
+  "error_code": "LEDGER_SEQUENCE_ERROR",
+  "message": "Sequence assignment conflict; append rejected."
+}
+```
+
+### OUT-002 — Read Result
+- Consumer: Read caller
 - Scenarios: SC-003
-- Response Shape: `[LedgerEvent]` (list of E-001)
-- Ordering guarantee: Strictly ascending by `sequence` field. No gaps. No duplicates.
-- Example success: `[{sequence:11,...}, {sequence:12,...}, ..., {sequence:20,...}]`
-- Example failure: raises `LedgerConnectionError` if immudb unreachable during read
+- Response Shape: `LedgerEvent` (E-001)
 
----
+Example success:
+```json
+{
+  "event": {
+    "event_id": "0195b7fc-c29c-7c2f-a4da-8f6d2eb6d1a1",
+    "sequence": 4,
+    "event_type": "signal_delta",
+    "schema_version": "1.0.0",
+    "timestamp": "2026-03-19T23:11:12Z",
+    "provenance": {
+      "framework_id": "FMWK-004",
+      "pack_id": "PC-002-signal-logging",
+      "actor": "agent"
+    },
+    "previous_hash": "sha256:6a4f8649e9449e51d4538f86d3c31ab8f6b2f9fa3012af5d0dd03d5f5f258d4a",
+    "payload": {
+      "node_id": "node-sarah-french",
+      "delta": "1",
+      "reason": "active_intent_hit",
+      "intent_id": "intent-dining-recall"
+    },
+    "hash": "sha256:4f5b54bcf2ef4e7be116a6df080f59b0bb5f80927b0d6162825250efce5435b1"
+  }
+}
+```
 
-### OUT-003: Chain verification result → CLI / gate
-- Consumer: CLI tools, FMWK-006 package-lifecycle system gate
-- Scenarios: SC-004, SC-005
-- Response Shape: VerifyChainResult (E-004)
-- Example success: `{"valid": true}`
-- Example failure (chain broken): `{"valid": false, "break_at": 3}`
+Example failure:
+```json
+{
+  "error_code": "LEDGER_CONNECTION_ERROR",
+  "message": "Unable to read from immudb."
+}
+```
 
----
+### OUT-003 — Range Replay Result
+- Consumer: Replay caller
+- Scenarios: SC-003, SC-006
+- Response Shape: ordered list of `LedgerEvent` (E-001)
 
-### OUT-004: Current tip → caller
-- Consumer: FMWK-002 (atomicity mechanism), any caller checking position
-- Scenarios: SC-009
-- Response Shape: LedgerTip (E-003)
-- Example: `{"sequence_number": 42, "hash": "sha256:a1b2c3..."}`
-- Empty ledger: `{"sequence_number": -1, "hash": ""}`
+Example success:
+```json
+{
+  "events": [
+    {
+      "event_id": "0195b7f0-1111-7c2f-a4da-8f6d2eb6d100",
+      "sequence": 0,
+      "event_type": "session_start",
+      "schema_version": "1.0.0",
+      "timestamp": "2026-03-19T23:00:00Z",
+      "provenance": {
+        "framework_id": "FMWK-002",
+        "pack_id": "PC-003-session-events",
+        "actor": "system"
+      },
+      "previous_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "payload": {
+        "session_id": "sess-operator-0001",
+        "actor_id": "operator-ray",
+        "channel": "operator",
+        "started_at": "2026-03-19T23:00:00Z"
+      },
+      "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
+```
 
----
+Example failure:
+```json
+{
+  "error_code": "LEDGER_CONNECTION_ERROR",
+  "message": "Replay read failed."
+}
+```
 
-## Side-Effect Contracts
+### OUT-004 — Verification Result
+- Consumer: Integrity caller
+- Scenarios: SC-004, SC-010
+- Response Shape: `ChainVerificationResult` (E-009)
 
-### SIDE-001: immudb write
-- Target System: immudb (ledger_data volume)
-- Trigger: Every successful call to `append()`
-- Scenarios: SC-001, SC-006, SC-007, SC-008
-- Write Shape:
-  - Key: zero-padded sequence number string (12 digits, e.g., `"000000000042"`)
-  - Value: canonical JSON of the complete event (including `hash` and `previous_hash`), UTF-8 encoded
-- Ordering Guarantee: immudb write completes (synchronous gRPC acknowledgment) before `append()` returns. No write buffering.
-- Failure Behavior: If immudb write fails (gRPC error), `LedgerConnectionError` is raised. The event is NOT recorded. The caller (FMWK-002) handles all retry and recovery decisions.
+Example success:
+```json
+{
+  "valid": true,
+  "start": 0,
+  "end": 5
+}
+```
 
----
+Example failure:
+```json
+{
+  "valid": false,
+  "break_at": 3,
+  "start": 0,
+  "end": 5
+}
+```
 
-### SIDE-002: Canonical JSON Serialization (hash computation contract)
-- Target System: `hashlib.sha256` (internal, pure function)
-- Trigger: Every hash computation — during `append()` (computing `hash`) and during `verify_chain()` (recomputing expected hash)
-- Scenarios: SC-001, SC-004, SC-005, SC-006, SC-007
+### OUT-005 — Tip Result
+- Consumer: Tip caller
+- Scenarios: SC-002, SC-003
+- Response Shape: `LedgerTip` (E-008)
 
-Exact serialization steps (byte-level contract — MUST be reproduced identically by any verifier):
-1. Copy the event object as a Python dict (or equivalent in other languages).
-2. Remove the `hash` key entirely from the copy.
-3. Serialize: `json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False)`
-   - Keys: sorted alphabetically at every nesting level (recursive)
-   - Separators: `,` between items, `:` between key-value — no whitespace
-   - `ensure_ascii=False`: literal UTF-8 characters, NOT `\uNNNN` escapes
-   - `null` fields: included as `"key":null`, not omitted
-   - Integer fields: bare digits only (no `.0`, no `e` notation)
-   - No float-type values exist in valid events — if encountered, this is a `LedgerSerializationError`
-4. Encode the resulting string to bytes: UTF-8, no BOM.
-5. `hashlib.sha256(utf8_bytes).hexdigest()` → 64 lowercase hex chars.
-6. Prefix with `sha256:` → assign as the `hash` field.
+Example success:
+```json
+{
+  "sequence_number": 128,
+  "hash": "sha256:cc5af2f9c31b1db5d90d2f39c23027d580f509512cc3fc74b18298f8310ca71c"
+}
+```
 
-Ordering Guarantee: Pure function — no ordering dependency.
-Failure Behavior: If the event contains any value that cannot be serialized (e.g., float, bytes, set), raise `LedgerSerializationError` before any immudb write is attempted.
+Example failure:
+```json
+{
+  "error_code": "LEDGER_CONNECTION_ERROR",
+  "message": "Unable to read tip from immudb."
+}
+```
 
----
+## Side-Effects
 
-### SIDE-003: Reconnection behavior
+### SIDE-001 — Persistent Append
+- Target System: immudb `ledger` database
+- Trigger: Successful `append`
+- Scenarios: SC-001, SC-002, SC-005, SC-006
+
+| Field | Type | Required | Description | Constraints |
+| key | Type:string | Req:yes | Storage key | Zero-padded sequence string per implementation mapping |
+| value | Type:bytes | Req:yes | Canonical serialized event bytes | UTF-8, no BOM |
+
+Ordering Guarantee:
+- Append is synchronous and becomes visible only after immudb acknowledges the write.
+- Sequence assignment and persistence are atomic at the Ledger contract boundary.
+
+Failure Behavior:
+- Return `LedgerConnectionError`, `LedgerSerializationError`, or `LedgerSequenceError`.
+- Do not report success and do not create a partial event.
+
+### SIDE-002 — Canonical Serialization and Hashing
+- Target System: Local hash computation before persistence
+- Trigger: Any append and any verify operation
+- Scenarios: SC-001, SC-002, SC-004, SC-008, SC-010
+
+| Field | Type | Required | Description | Constraints |
+| source_event | Type:object | Req:yes | Event object prior to hashing | `hash` field excluded from hash input |
+| serialized_bytes | Type:bytes | Req:yes | Canonical JSON output | Sorted keys, separators `,` and `:`, UTF-8, `ensure_ascii=false`, nulls included |
+| hash_output | Type:string | Req:yes | SHA-256 digest string | Exact `sha256:<64 lowercase hex>` |
+
+Ordering Guarantee:
+- Serialization occurs before persistence and before verification comparison.
+- The same source event always produces the same bytes and hash.
+
+Failure Behavior:
+- Return `LedgerSerializationError`.
+- Abort append or verification result generation.
+
+### SIDE-003 — Reconnect Once on Connection Loss
 - Target System: immudb gRPC connection
-- Trigger: gRPC connection failure detected during any operation
-- Scenarios: SC-EC-003
+- Trigger: Connection drops during read or append
+- Scenarios: SC-009
 
-Behavior sequence:
-1. Connection failure detected (gRPC error on any operation).
-2. Wait exactly 1 second.
-3. Attempt one reconnect to immudb using the same config from `connect()`.
-4. If reconnect succeeds, complete the original operation.
-5. If reconnect fails, raise `LedgerConnectionError`. DO NOT retry the original operation again.
+| Field | Type | Required | Description | Constraints |
+| disconnect_event | Type:string | Req:yes | Connection failure indicator | Non-empty |
+| retry_delay_ms | Type:integer | Req:yes | Wait before reconnect | Must be `1000` |
 
-Ordering Guarantee: At most one reconnect attempt per failure. The caller handles all higher-level recovery.
+Ordering Guarantee:
+- Close connection, wait one second, reconnect, and retry the interrupted operation once.
 
----
+Failure Behavior:
+- If retry fails, return `LedgerConnectionError`.
+- No additional retry loop is allowed.
 
-## Error Contracts
+## Errors
 
-### ERR-001: LedgerConnectionError
-- Condition: Cannot reach immudb — initial `connect()` with missing database, gRPC failure during any operation, or reconnect failure after one retry
-- Scenarios: SC-EC-003, SC-EC-004
-- Code: `LEDGER_CONNECTION_ERROR`
-- Caller Action: Do NOT retry inside the Ledger. Propagate to caller. FMWK-002 decides recovery (per OPERATIONAL_SPEC Q4: system hard-stops when Ledger is unreachable — cannot write means nothing can happen).
+### ERR-001
+- Condition: immudb is unreachable, the `ledger` database does not exist, or reconnect-once retry fails
+- Scenarios: SC-003, SC-009
+- Caller Action: Treat as no-write/no-read success; surface operator-visible failure and let higher layers decide retry timing
 
----
+### ERR-002
+- Condition: event cannot be serialized under the canonical JSON contract
+- Scenarios: SC-001, SC-002, SC-008
+- Caller Action: Fix event construction; do not retry unchanged input
 
-### ERR-002: LedgerCorruptionError
-- Condition: `verify_chain()` finds a stored hash that does not match the recomputed SHA-256 of that event's canonical JSON
-- Scenarios: SC-EC-001, SC-004
-- Code: `LEDGER_CORRUPTION_ERROR`
-- Caller Action: Stop all operations. Report to operator via DoPeJarMo. Manual investigation required — this is a catastrophic condition. The `break_at` sequence in VerifyChainResult identifies where corruption begins.
+### ERR-003
+- Condition: sequence reservation conflicts with the current tip during append
+- Scenarios: SC-002, SC-007
+- Caller Action: Treat as architectural violation under the single-writer model; do not create fallback sequence logic
 
----
-
-### ERR-003: LedgerSequenceError
-- Condition: Concurrent write detected — the read-tip-then-write atomicity mechanism detects a non-monotonic or duplicate sequence number
-- Scenarios: SC-EC-002
-- Code: `LEDGER_SEQUENCE_ERROR`
-- Caller Action: This is a design violation (single writer should prevent this). Treat as fatal. Log with full context. Do NOT retry. Investigate how the single-writer invariant was breached.
-
----
-
-### ERR-004: LedgerSerializationError
-- Condition: Event object cannot be serialized to canonical JSON (float-type value present, unserializable Python type, etc.)
-- Scenarios: SC-001 (failure path)
-- Code: `LEDGER_SERIALIZATION_ERROR`
-- Caller Action: Fix the event construction before retrying. This is a programming error in the caller, not a transient condition.
-
----
+### ERR-004
+- Condition: hash-chain verification detects a mismatch
+- Scenarios: SC-004, SC-010
+- Caller Action: Treat as corruption, stop dependent operations, and surface `break_at`
 
 ## Error Code Enum
-
 | Code | Meaning | Retryable |
-|------|---------|-----------|
-| LEDGER_CONNECTION_ERROR | Cannot reach immudb (network, auth, or missing database) | No — caller decides recovery |
-| LEDGER_CORRUPTION_ERROR | Hash chain mismatch detected during verify_chain | No — fatal, requires manual investigation |
-| LEDGER_SEQUENCE_ERROR | Sequence conflict — non-monotonic write attempted | No — fatal design violation |
-| LEDGER_SERIALIZATION_ERROR | Cannot serialize event to canonical JSON | No — programming error in caller |
+| LEDGER_CONNECTION_ERROR | immudb connection or database access failed | yes |
+| LEDGER_SERIALIZATION_ERROR | Event could not be canonically serialized | no |
+| LEDGER_SEQUENCE_ERROR | Next sequence could not be assigned without conflict | no |
+| LEDGER_CORRUPTION_ERROR | Stored chain failed verification | no |

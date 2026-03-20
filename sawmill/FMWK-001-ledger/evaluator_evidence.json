@@ -1,0 +1,65 @@
+{
+  "run_id": "20260320T202813Z-6935d147c49b",
+  "attempt": 1,
+  "holdout_hash": "sha256:b1f1c423dbcf4cd9987632c7b4ca825934a1f6bafc58918c51d7eb8fcb7cc33c",
+  "staging_hash": "sha256:f10f26900f3a0bc7c21e2bc29fe4884e0e29bb861ca59e1de859729399c9f9ee",
+  "scenarios": [
+    {
+      "scenario_id": "HS-001",
+      "priority": "P0",
+      "type": "Happy path",
+      "run_results": [
+        {"run": 1, "result": "PASS"},
+        {"run": 2, "result": "PASS"},
+        {"run": 3, "result": "PASS"}
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-003",
+      "priority": "P0",
+      "type": "Integration",
+      "run_results": [
+        {"run": 1, "result": "PASS"},
+        {"run": 2, "result": "PASS"},
+        {"run": 3, "result": "PASS"}
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-002",
+      "priority": "P1",
+      "type": "Integration",
+      "run_results": [
+        {"run": 1, "result": "PASS"},
+        {"run": 2, "result": "PASS"},
+        {"run": 3, "result": "PASS"}
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-004",
+      "priority": "P1",
+      "type": "Error path",
+      "run_results": [
+        {"run": 1, "result": "PASS"},
+        {"run": 2, "result": "PASS"},
+        {"run": 3, "result": "PASS"}
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-005",
+      "priority": "P1",
+      "type": "Error path",
+      "run_results": [
+        {"run": 1, "result": "PASS"},
+        {"run": 2, "result": "PASS"},
+        {"run": 3, "result": "PASS"}
+      ],
+      "aggregate_result": "PASS"
+    }
+  ],
+  "verdict": "PASS",
+  "pass_rate": 100
+}
