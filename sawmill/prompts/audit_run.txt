@@ -1,2 +1,0 @@
-You are the auditor. Read your role file above, then execute every check.
-Write results to {{PORTAL_AUDIT_RESULTS_PATH}}.

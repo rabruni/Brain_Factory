@@ -14,7 +14,7 @@ roles:
   spec-agent:
     role_file: .claude/agents/spec-agent.md
     execution_scope: worker
-    default_backend: mock
+    default_backend: claude
     production_backend: codex
     model_policy: default
     allowed_backends:
@@ -27,7 +27,7 @@ roles:
   holdout-agent:
     role_file: .claude/agents/holdout-agent.md
     execution_scope: worker
-    default_backend: mock
+    default_backend: claude
     production_backend: codex
     model_policy: default
     allowed_backends:
@@ -40,7 +40,7 @@ roles:
   builder:
     role_file: .claude/agents/builder.md
     execution_scope: worker
-    default_backend: mock
+    default_backend: claude
     production_backend: codex
     model_policy: default
     allowed_backends:
@@ -53,7 +53,7 @@ roles:
   reviewer:
     role_file: .claude/agents/reviewer.md
     execution_scope: worker
-    default_backend: mock
+    default_backend: claude
     production_backend: claude
     model_policy: max_capability
     allowed_backends:
@@ -66,7 +66,7 @@ roles:
   evaluator:
     role_file: .claude/agents/evaluator.md
     execution_scope: worker
-    default_backend: mock
+    default_backend: claude
     production_backend: claude
     model_policy: max_capability
     allowed_backends:
@@ -87,16 +87,3 @@ roles:
       - codex
       - gemini
     env_override: SAWMILL_AUDIT_AGENT
-
-  portal-steward:
-    role_file: .claude/agents/portal-steward.md
-    execution_scope: worker
-    default_backend: mock
-    production_backend: codex
-    model_policy: default
-    allowed_backends:
-      - claude
-      - codex
-      - gemini
-      - mock
-    env_override: SAWMILL_PORTAL_AGENT

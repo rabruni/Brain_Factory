@@ -403,12 +403,12 @@ Before running the Sawmill for the first time:
 - [ ] `CLAUDE.md` exists at project root with institutional context
 - [ ] `AGENTS.md` symlinked to `CLAUDE.md` (for Codex)
 - [ ] `GEMINI.md` symlinked to `CLAUDE.md` (for Gemini)
-- [ ] `.claude/agents/` has all runtime role files (orchestrator, spec-agent, holdout-agent, builder, reviewer, evaluator, auditor, portal-steward)
+- [ ] `.claude/agents/` has all runtime role files (orchestrator, spec-agent, holdout-agent, builder, reviewer, evaluator, auditor)
 - [ ] `Templates/` has all D1-D10 templates + handoff standards (full, for humans)
 - [ ] `Templates/compressed/` has all compressed templates (for agents)
 - [ ] `.holdouts/` directory exists
 - [ ] `sawmill/` directory exists
-- [ ] Git hooks activated: `git config core.hooksPath .githooks` (syncs source → docs/ on commit)
+- [ ] Git hooks activated if local repo automation is desired
 - [ ] CLI availability matches the execution contract: `claude` for orchestration, `codex` for worker turns, `gemini` only if explicitly used
 - [ ] Codex fallback configured (if using Codex without symlinks): `project_doc_fallback_filenames = ["CLAUDE.md"]`
 - [ ] Gemini context configured (if using Gemini without symlinks): `"contextFileName": ["GEMINI.md", "CLAUDE.md"]`

@@ -1,25 +1,5 @@
 version: 1
 prompts:
-  audit_run:
-    role: auditor
-    prompt_file: sawmill/prompts/audit_run.txt
-    required_artifacts: []
-    expected_artifacts:
-      - portal_audit_results
-    freshness_policy: required
-    retry_behavior: none
-
-  portal_stage:
-    role: portal-steward
-    prompt_file: sawmill/prompts/portal_stage.txt
-    required_artifacts:
-      - status_page
-    expected_artifacts:
-      - portal_status
-      - portal_changeset
-    freshness_policy: allow_unchanged
-    retry_behavior: maintenance
-
   turn_a_spec:
     role: spec-agent
     prompt_file: sawmill/prompts/turn_a_spec.txt

@@ -78,14 +78,7 @@ check_allowed() {
             [[ "$path" == sawmill/*/evaluator_evidence.json ]] && return 0
             ;;
         auditor)
-            [[ "$path" == sawmill/PORTAL_AUDIT_RESULTS.md ]] && return 0
             [[ "$path" == sawmill/*/CANARY_AUDIT.md ]] && return 0
-            ;;
-        portal-steward)
-            [[ "$path" == docs/* ]] && return 0
-            [[ "$path" == mkdocs.yml ]] && return 0
-            [[ "$path" == catalog-info.yaml ]] && return 0
-            [[ "$path" == sawmill/PORTAL_CHANGESET.md ]] && return 0
             ;;
     esac
     return 1

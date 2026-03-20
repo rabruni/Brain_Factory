@@ -4,7 +4,7 @@
 **Authority label**: narrative
 **Date**: 2026-03-10
 
-This page is a steward-owned verification checklist.
+This page is a runtime verification checklist.
 Runtime authority remains:
 
 - `sawmill/run.sh`
@@ -112,7 +112,7 @@ Check `status.json` against `events.jsonl`:
   - `passed`
   - `invalidated`
 - if `governed_path_intact=false`, final PASS is not allowed unless operator mode explicitly permits intervention
-- docs/sawmill status page reflects:
+- optional status page reflects:
   - current run id
   - runtime state
   - governed-path state
@@ -122,34 +122,22 @@ Required rebuild check:
 ```bash
 cp sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json /tmp/<RUN-ID>.status.json.bak
 rm sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json
-python3 sawmill/project_run_status.py project-status --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
+python3 -m sawmill.run_state project-status --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
 diff -u /tmp/<RUN-ID>.status.json.bak sawmill/<FMWK-ID>/runs/<RUN-ID>/status.json
 ```
 
 If literal diff is too strict for local formatting reasons, semantic JSON equality is still REQUIRED.
 
-### 5. Portal evidence
-
-Check:
-
-- `docs/sawmill/<FMWK-ID>.md`
-- `docs/PORTAL_STATUS.md`
-- `sawmill/PORTAL_CHANGESET.md`
-
-Portal may be unchanged when already current; unchanged content alone is not failure.
-
-### 6. Required validation commands
+### 5. Required validation commands
 
 ```bash
-python3 docs/lint_runtime_claims.py
-python3 docs/validate_portal_map.py
-python3 sawmill/validate_role_registry.py --registry sawmill/ROLE_REGISTRY.yaml
-python3 sawmill/validate_artifact_registry.py --registry sawmill/ARTIFACT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml
-python3 sawmill/validate_prompt_registry.py --registry sawmill/PROMPT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml --artifacts sawmill/ARTIFACT_REGISTRY.yaml
-python3 sawmill/check_runtime_harness.py --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
-python3 sawmill/validate_evidence_artifacts.py --kind builder --artifact sawmill/<FMWK-ID>/builder_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --handoff sawmill/<FMWK-ID>/BUILDER_HANDOFF.md --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md --results sawmill/<FMWK-ID>/RESULTS.md
-python3 sawmill/validate_evidence_artifacts.py --kind reviewer --artifact sawmill/<FMWK-ID>/reviewer_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md
-python3 sawmill/validate_evidence_artifacts.py --kind evaluator --artifact sawmill/<FMWK-ID>/evaluator_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --holdouts .holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md --staging-root staging/<FMWK-ID>
+python3 -m sawmill.registry validate roles --registry sawmill/ROLE_REGISTRY.yaml
+python3 -m sawmill.registry validate artifacts --registry sawmill/ARTIFACT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml
+python3 -m sawmill.registry validate prompts --registry sawmill/PROMPT_REGISTRY.yaml --roles sawmill/ROLE_REGISTRY.yaml --artifacts sawmill/ARTIFACT_REGISTRY.yaml
+python3 -m sawmill.audit harness --run-dir sawmill/<FMWK-ID>/runs/<RUN-ID>
+python3 -m sawmill.evidence validate --kind builder --artifact sawmill/<FMWK-ID>/builder_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --handoff sawmill/<FMWK-ID>/BUILDER_HANDOFF.md --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md --results sawmill/<FMWK-ID>/RESULTS.md
+python3 -m sawmill.evidence validate --kind reviewer --artifact sawmill/<FMWK-ID>/reviewer_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --q13-answers sawmill/<FMWK-ID>/13Q_ANSWERS.md
+python3 -m sawmill.evidence validate --kind evaluator --artifact sawmill/<FMWK-ID>/evaluator_evidence.json --run-id <RUN-ID> --attempt <ATTEMPT> --holdouts .holdouts/<FMWK-ID>/D9_HOLDOUT_SCENARIOS.md --staging-root staging/<FMWK-ID>
 bash -n sawmill/run.sh
 ```
 
@@ -164,8 +152,7 @@ Treat run as PASS only when all are true:
 - `status.json` is derivable from `events.jsonl`
 - harness acceptance checks pass
 - required stage audit evidence passes
-- portal map validation passes
-- runtime-claim lint passes
+- registry validation passes
 
 Treat run as FAIL when any are true:
 
@@ -175,8 +162,7 @@ Treat run as FAIL when any are true:
 - required version evidence missing/malformed/mismatched
 - evidence JSON missing, malformed, or contradictory
 - manual intervention occurred and runtime state is `invalidated`
-- portal map validation fails
-- runtime-claim lint fails
+- registry validation fails
 
 ## Scope Clarifier
 

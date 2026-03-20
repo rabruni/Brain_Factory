@@ -89,7 +89,7 @@ Emit only one of these forms.
 WORK_ORDER
 framework: FMWK-NNN-name
 turn: A|B|C|D|E
-target_role: spec-agent|holdout-agent|builder|reviewer|evaluator|auditor|portal-steward
+target_role: spec-agent|holdout-agent|builder|reviewer|evaluator|auditor
 action: dispatch
 inputs:
   - <path>
@@ -151,7 +151,7 @@ sawmill/FMWK-001-ledger/
 
 Claude supervises the pipeline and dispatches worker roles. The authoritative path is `./sawmill/run.sh`, which resolves role files and worker backends from `sawmill/ROLE_REGISTRY.yaml` and handles checkpoints, reviewer/evaluator loops, and retries.
 
-- **Auditor** — run before starting a framework build, or anytime Ray asks for a coherence check. Prefer `./sawmill/run.sh --audit`. Results go to `sawmill/PORTAL_AUDIT_RESULTS.md`.
+- **Auditor** — run when Ray asks for a coherence check. Use the package audit tools directly.
 - **Spec Agent, Holdout Agent, Builder, Reviewer, Evaluator** — for pipeline turns, use `./sawmill/run.sh`. Direct worker CLI invocation is exceptional and only for an explicitly requested non-`run.sh` path.
 
 ## Dispatch Protocol

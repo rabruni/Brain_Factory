@@ -1,0 +1,54 @@
+# Portal Configuration Template
+# Copy this file to portal_config.yaml and fill in your system's paths.
+# See PORTAL_KIT.md for full documentation.
+
+system_name: "My System"
+repo_root: "."  # absolute path or relative to where portal.py lives
+
+# ── Pipeline / Process Configuration ──────────────────────────────────────────
+# Where your orchestrator writes execution logs.
+# Each run should be a directory containing events.jsonl and status.json.
+#
+# Directory structure expected:
+#   <runs_dir>/<framework-or-project>/<run-id>/
+#     events.jsonl    <- one JSON event per line (see PORTAL_KIT.md for schema)
+#     status.json     <- current run state
+#     logs/           <- (optional) stdout/stderr from agents
+#     invocations/    <- (optional) prompt payloads, metadata
+pipeline:
+  name: "pipeline"
+  runs_dir: "pipeline/runs"       # relative to repo_root
+  run_dir_prefix: ""              # filter prefix for project dirs (empty = all)
+  events_file: "events.jsonl"
+  status_file: "status.json"
+
+# ── Agent Conversation Transcripts ────────────────────────────────────────────
+# Map CLI name to directory containing transcript files.
+# Supported formats:
+#   .jsonl  — Claude Code and Codex style (one JSON record per line)
+#   .json   — Gemini CLI style (single JSON object with messages array)
+#
+# Remove any CLIs you don't use. Add custom ones — the portal will auto-detect
+# format from the file extension.
+conversations:
+  # claude: "~/.claude/projects/YOUR_PROJECT_KEY"
+  # codex: "~/.codex/sessions"
+  # gemini: "~/.gemini/tmp"
+
+# ── System Catalog ────────────────────────────────────────────────────────────
+# Backstage-format catalog-info.yaml files. The portal reads these directly —
+# you do NOT need a running Backstage instance.
+#
+# Create catalog-info.yaml in your repo root to describe your system's
+# components, APIs, and infrastructure. See the catalog section in PORTAL_KIT.md.
+catalog_files:
+  - "catalog-info.yaml"
+
+# ── Agent Role Definitions (optional) ─────────────────────────────────────────
+# Directory containing agent role files (e.g. .md files that define each agent's
+# behavior). The portal renders these in the Agent Roles page.
+agents_dir: ""  # e.g. ".claude/agents" or "agents/"
+
+# ── Architecture Documents (optional) ─────────────────────────────────────────
+# Directory containing authority/design documents.
+architecture_dir: ""  # e.g. "architecture/" or "docs/"

@@ -183,27 +183,3 @@ artifacts:
     required: true
     artifact_kind: file
     standard_ref:
-
-  portal_status:
-    owner_role: portal-steward
-    path_template: docs/PORTAL_STATUS.md
-    stage: portal
-    required: true
-    artifact_kind: file
-    standard_ref:
-
-  portal_changeset:
-    owner_role: portal-steward
-    path_template: sawmill/PORTAL_CHANGESET.md
-    stage: portal
-    required: true
-    artifact_kind: file
-    standard_ref:
-
-  portal_audit_results:
-    owner_role: auditor
-    path_template: sawmill/PORTAL_AUDIT_RESULTS.md
-    stage: audit
-    required: true
-    artifact_kind: file
-    standard_ref:

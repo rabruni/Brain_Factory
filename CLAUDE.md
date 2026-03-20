@@ -140,8 +140,7 @@ Agent role files: `.claude/agents/`
 | Builder | `builder.md` | Worker role for Turn D implementation after the 13Q review pass. |
 | Reviewer | `reviewer.md` | Worker role for automated 13Q review and retry/escalate decisions before build. |
 | Evaluator | `evaluator.md` | Worker role for Turn E holdout evaluation. |
-| Auditor | `auditor.md` | Worker role for portal coherence audits and system checks. |
-| Portal Steward | `portal-steward.md` | Worker role for portal maintenance in the runtime stage loop. |
+| Auditor | `auditor.md` | Worker role for system checks and coherence audits. |
 
 To become any role, read its file: e.g., "you are the orchestrator" → read `.claude/agents/orchestrator.md`, follow its instructions.
 
@@ -190,9 +189,8 @@ Templates/compressed/       <- Same templates, 73% fewer tokens (for agents)
 sawmill/                    <- Build pipeline working directory
 .claude/agents/             <- Specialist agent definitions
 .holdouts/                  <- Holdout scenarios (isolated)
-docs/                       <- TechDocs rendering (mirrors architecture/ and Templates/)
+docs/                       <- Optional generated docs / status surfaces
 catalog-info.yaml           <- Backstage entity
-mkdocs.yml                  <- TechDocs config
 ```
 
 ## Naming Conventions

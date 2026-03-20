@@ -66,18 +66,7 @@ These happen inside the authoritative stage flow:
 
 - stage-local status updates
 - framework-local stage audits
-- stop-on-mismatch behavior for stage-local portal state
-
-### Portal-steward-owned
-
-These run after each stage for broader portal alignment:
-
-- mirror gaps not covered by pre-commit sync
-- `mkdocs.yml` nav drift
-- `catalog-info.yaml` drift
-- narrative freshness
-- `docs/PORTAL_STATUS.md` and `sawmill/PORTAL_CHANGESET.md` maintenance
-- `docs/PORTAL_MAP.yaml` upkeep
+- stop-on-mismatch behavior for stage-local status state
 
 ### Auditor-owned
 
@@ -87,25 +76,16 @@ These run after each stage for broader portal alignment:
 
 Audits diagnose. They do not rewrite source truth.
 
-## Mirror Freshness
-
-- `.githooks/pre-commit` is the primary automatic mirror-sync mechanism.
-- `portal-steward` verifies and repairs anything the hook does not cover.
-- `docs/PORTAL_MAP.yaml` declares which source-to-surface mappings must exist.
-
 ## Automatic vs Manual
 
 ### Automatic
 
 - `run.sh` stage execution
-- `run.sh` stage-local portal updates and stage audits
-- portal-steward alignment after each stage
-- pre-commit mirror sync for covered source files
+- `run.sh` stage-local status updates and stage audits
 
 ### Manual or maintenance-triggered
 
-- portal narrative cleanup beyond stage-relevant scope
-- nav/catalog reconciliation beyond stage-relevant scope
+- broader repository cleanup beyond stage-relevant scope
 - portal health refreshes outside stage-local status updates
 
 ## Failure Rule

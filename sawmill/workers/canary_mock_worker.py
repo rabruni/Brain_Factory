@@ -177,27 +177,6 @@ def write_turn_c(framework: str) -> None:
     )
 
 
-def write_portal_stage(framework: str) -> None:
-    status_path = env_path("PORTAL_STATUS_PATH")
-    changeset_path = env_path("PORTAL_CHANGESET_PATH")
-    stage = os.environ.get("STAGE", "unknown-stage")
-    write_text(
-        status_path,
-        "# Portal Status\n\n"
-        f"- Framework: {framework}\n"
-        f"- Stage: {stage}\n"
-        f"- Run ID: {run_id()}\n"
-        "- Status: healthy\n",
-    )
-    write_text(
-        changeset_path,
-        "# Portal Changeset\n\n"
-        f"- Run ID: {run_id()}\n"
-        f"- Applied stage: {stage}\n"
-        "- Deterministic canary portal sync completed.\n",
-    )
-
-
 def write_turn_d_13q(args: argparse.Namespace) -> None:
     version = contract_version_from_prompt("BUILDER_PROMPT_CONTRACT_VERSION", "unknown")
     write_text(
@@ -348,8 +327,6 @@ def dispatch(args: argparse.Namespace) -> None:
         write_turn_b(args.framework)
     elif args.prompt_key == "turn_c_holdout":
         write_turn_c(args.framework)
-    elif args.prompt_key == "portal_stage":
-        write_portal_stage(args.framework)
     elif args.prompt_key == "turn_d_13q":
         write_turn_d_13q(args)
     elif args.prompt_key == "turn_d_review":
