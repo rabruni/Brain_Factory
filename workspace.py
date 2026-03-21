@@ -25,6 +25,7 @@ DB_FILE = WORKSPACE_DIR / "workspace.db"
 VALID_TYPES = {"plan", "results", "review", "prompt", "handoff", "question", "context"}
 VALID_STATUSES = {"sent", "read", "complete"}
 VALID_CLIS = {"claude", "codex", "gemini", "human", "any"}
+DEFAULT_MAX_DEPTH = 2
 
 
 def _utc_now():
@@ -85,6 +86,11 @@ def _connect():
     return conn
 
 
+def _column_names(conn, table_name):
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {row["name"] for row in rows}
+
+
 def _ensure_schema(conn):
     conn.executescript(
         """
@@ -137,6 +143,25 @@ def _ensure_schema(conn):
         );
         """
     )
+    columns = _column_names(conn, "items")
+    migrations = [
+        ("claimed_by", "ALTER TABLE items ADD COLUMN claimed_by TEXT NOT NULL DEFAULT ''"),
+        ("claimed_at", "ALTER TABLE items ADD COLUMN claimed_at TEXT NOT NULL DEFAULT ''"),
+        ("lease_expires_at", "ALTER TABLE items ADD COLUMN lease_expires_at TEXT NOT NULL DEFAULT ''"),
+        ("retry_count", "ALTER TABLE items ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"),
+        ("max_depth", f"ALTER TABLE items ADD COLUMN max_depth INTEGER NOT NULL DEFAULT {DEFAULT_MAX_DEPTH}"),
+        ("depth", "ALTER TABLE items ADD COLUMN depth INTEGER NOT NULL DEFAULT 0"),
+        ("work_root_id", "ALTER TABLE items ADD COLUMN work_root_id TEXT NOT NULL DEFAULT ''"),
+        ("work_parent_id", "ALTER TABLE items ADD COLUMN work_parent_id TEXT NOT NULL DEFAULT ''"),
+        ("execution_depth", "ALTER TABLE items ADD COLUMN execution_depth INTEGER NOT NULL DEFAULT 0"),
+        ("last_error", "ALTER TABLE items ADD COLUMN last_error TEXT NOT NULL DEFAULT ''"),
+        ("last_run_at", "ALTER TABLE items ADD COLUMN last_run_at TEXT NOT NULL DEFAULT ''"),
+        ("last_exit_code", "ALTER TABLE items ADD COLUMN last_exit_code INTEGER"),
+        ("max_retries", "ALTER TABLE items ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 0"),
+    ]
+    for column_name, statement in migrations:
+        if column_name not in columns:
+            conn.execute(statement)
     conn.commit()
 
 
@@ -160,6 +185,19 @@ def _row_to_item(row):
         "tags": json.loads(row["tags_json"] or "[]"),
         "comments": json.loads(row["comments_json"] or "[]"),
         "content": row["content"],
+        "claimed_by": row["claimed_by"],
+        "claimed_at": row["claimed_at"],
+        "lease_expires_at": row["lease_expires_at"],
+        "retry_count": row["retry_count"],
+        "max_depth": row["max_depth"],
+        "depth": row["depth"],
+        "work_root_id": row["work_root_id"],
+        "work_parent_id": row["work_parent_id"],
+        "execution_depth": row["execution_depth"],
+        "last_error": row["last_error"],
+        "last_run_at": row["last_run_at"],
+        "last_exit_code": row["last_exit_code"],
+        "max_retries": row["max_retries"],
         "_path": str(WORKSPACE_DIR / f"{row['id']}.yaml"),
         "_filename": f"{row['id']}.yaml",
     }
@@ -204,8 +242,11 @@ def _import_legacy_items(conn):
                 INSERT INTO items(
                     id, type, from_cli, from_agent, from_session, to_recipients, reply_to,
                     thread_id, status, created_at, updated_at, approved_at, summary,
-                    tags_json, comments_json, content
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tags_json, comments_json, content, claimed_by, claimed_at,
+                    lease_expires_at, retry_count, max_depth, depth, work_root_id,
+                    work_parent_id, execution_depth, last_error,
+                    last_run_at, last_exit_code, max_retries
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     meta.get("id"),
@@ -224,6 +265,19 @@ def _import_legacy_items(conn):
                     json.dumps(meta.get("tags") or []),
                     json.dumps(meta.get("comments") or []),
                     meta.get("content", ""),
+                    meta.get("claimed_by", ""),
+                    meta.get("claimed_at", ""),
+                    meta.get("lease_expires_at", ""),
+                    int(meta.get("retry_count", 0) or 0),
+                    int(meta.get("max_depth", DEFAULT_MAX_DEPTH) or DEFAULT_MAX_DEPTH),
+                    int(meta.get("depth", 0) or 0),
+                    meta.get("work_root_id", meta.get("thread_id", meta.get("id", ""))),
+                    meta.get("work_parent_id", ""),
+                    int(meta.get("execution_depth", meta.get("depth", 0) or 0)),
+                    meta.get("last_error", ""),
+                    meta.get("last_run_at", ""),
+                    meta.get("last_exit_code"),
+                    int(meta.get("max_retries", 0) or 0),
                 ),
             )
         except Exception:
@@ -333,17 +387,62 @@ def _bootstrap():
 _bootstrap()
 
 
-def create_item(item_type, from_cli, to, summary, content, tags=None, from_session="", from_agent="", reply_to=""):
+def create_item(
+    item_type,
+    from_cli,
+    to,
+    summary,
+    content,
+    tags=None,
+    from_session="",
+    from_agent="",
+    reply_to="",
+    depth=None,
+    max_depth=None,
+    work_root_id=None,
+    work_parent_id=None,
+    execution_depth=None,
+):
     if item_type not in VALID_TYPES:
         raise ValueError(f"Invalid type: {item_type}. Must be one of {VALID_TYPES}")
     item_id = str(uuid.uuid4())[:8]
     now = _utc_now()
 
     thread_id = item_id
+    parent = None
     if reply_to:
         parent = get_item(reply_to)
         if parent and "error" not in parent:
             thread_id = parent.get("thread_id", "") or reply_to
+            if depth is None:
+                depth = int(parent.get("depth", 0) or 0) + 1
+            if max_depth is None:
+                max_depth = int(parent.get("max_depth", DEFAULT_MAX_DEPTH) or DEFAULT_MAX_DEPTH)
+    if depth is None:
+        depth = 0
+    if max_depth is None:
+        max_depth = DEFAULT_MAX_DEPTH
+
+    recipients = _split_recipients(to)
+    non_human_recipients = [r for r in recipients if r not in {"human", "any"}]
+    sender_agent = from_agent or from_cli
+
+    if parent and "error" not in parent:
+        if work_root_id is None:
+            work_root_id = parent.get("work_root_id") or parent.get("id") or thread_id
+        parent_execution_depth = int(parent.get("execution_depth", parent.get("depth", 0)) or 0)
+        is_agent_relay = sender_agent != "human" and bool(non_human_recipients)
+        if execution_depth is None:
+            execution_depth = parent_execution_depth + 1 if is_agent_relay else parent_execution_depth
+        if work_parent_id is None:
+            work_parent_id = parent.get("id", "") if is_agent_relay else parent.get("work_parent_id", "")
+    else:
+        if work_root_id is None:
+            work_root_id = item_id
+        if execution_depth is None:
+            execution_depth = 0
+        if work_parent_id is None:
+            work_parent_id = ""
 
     meta = {
         "id": item_id,
@@ -362,6 +461,19 @@ def create_item(item_type, from_cli, to, summary, content, tags=None, from_sessi
         "tags": tags or [],
         "comments": [],
         "content": content,
+        "claimed_by": "",
+        "claimed_at": "",
+        "lease_expires_at": "",
+        "retry_count": 0,
+        "max_depth": int(max_depth),
+        "depth": int(depth),
+        "work_root_id": work_root_id or item_id,
+        "work_parent_id": work_parent_id or "",
+        "execution_depth": int(execution_depth or 0),
+        "last_error": "",
+        "last_run_at": "",
+        "last_exit_code": None,
+        "max_retries": 0,
     }
     with _connect() as conn:
         _ensure_schema(conn)
@@ -370,8 +482,11 @@ def create_item(item_type, from_cli, to, summary, content, tags=None, from_sessi
             INSERT INTO items(
                 id, type, from_cli, from_agent, from_session, to_recipients, reply_to,
                 thread_id, status, created_at, updated_at, approved_at, summary,
-                tags_json, comments_json, content
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tags_json, comments_json, content, claimed_by, claimed_at,
+                lease_expires_at, retry_count, max_depth, depth, work_root_id,
+                work_parent_id, execution_depth, last_error,
+                last_run_at, last_exit_code, max_retries
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 meta["id"],
@@ -390,6 +505,19 @@ def create_item(item_type, from_cli, to, summary, content, tags=None, from_sessi
                 json.dumps(meta["tags"]),
                 json.dumps(meta["comments"]),
                 meta["content"],
+                meta["claimed_by"],
+                meta["claimed_at"],
+                meta["lease_expires_at"],
+                meta["retry_count"],
+                meta["max_depth"],
+                meta["depth"],
+                meta["work_root_id"],
+                meta["work_parent_id"],
+                meta["execution_depth"],
+                meta["last_error"],
+                meta["last_run_at"],
+                meta["last_exit_code"],
+                meta["max_retries"],
             ),
         )
         conn.commit()
@@ -486,6 +614,169 @@ def get_item(item_id):
     if not row:
         return {"error": f"Item not found: {item_id}"}
     return _normalize_item(_row_to_item(row))
+
+
+def get_claimable_items(worker_name, item_type=None):
+    items = list_items(status="sent", to=worker_name, item_type=item_type)
+    now = _utc_now()
+    claimable = []
+    for item in items:
+        if item.get("claimed_by") and item.get("lease_expires_at") and item["lease_expires_at"] > now:
+            continue
+        claimable.append(item)
+    return claimable
+
+
+def claim_item(item_id, worker_name, lease_seconds=300):
+    now = _utc_now()
+    lease_expires_at = (
+        datetime.datetime.utcnow() + datetime.timedelta(seconds=lease_seconds)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _connect() as conn:
+        _ensure_schema(conn)
+        result = conn.execute(
+            """
+            UPDATE items
+            SET claimed_by = ?, claimed_at = ?, lease_expires_at = ?, updated_at = ?
+            WHERE id = ?
+              AND status = 'sent'
+              AND (claimed_by = '' OR lease_expires_at = '' OR lease_expires_at <= ?)
+            """,
+            (worker_name, now, lease_expires_at, now, item_id, now),
+        )
+        conn.commit()
+    if result.rowcount:
+        _audit("claimed", item_id, actor=worker_name, detail=f"lease {lease_seconds}s")
+        return True
+    return False
+
+
+def renew_claim(item_id, worker_name, lease_seconds=300):
+    now = _utc_now()
+    lease_expires_at = (
+        datetime.datetime.utcnow() + datetime.timedelta(seconds=lease_seconds)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _connect() as conn:
+        _ensure_schema(conn)
+        result = conn.execute(
+            """
+            UPDATE items
+            SET lease_expires_at = ?, updated_at = ?
+            WHERE id = ? AND claimed_by = ?
+            """,
+            (lease_expires_at, now, item_id, worker_name),
+        )
+        conn.commit()
+    return result.rowcount > 0
+
+
+def release_claim(item_id, worker_name=""):
+    now = _utc_now()
+    with _connect() as conn:
+        _ensure_schema(conn)
+        if worker_name:
+            result = conn.execute(
+                """
+                UPDATE items
+                SET claimed_by = '', claimed_at = '', lease_expires_at = '', updated_at = ?
+                WHERE id = ? AND (claimed_by = '' OR claimed_by = ?)
+                """,
+                (now, item_id, worker_name),
+            )
+        else:
+            result = conn.execute(
+                """
+                UPDATE items
+                SET claimed_by = '', claimed_at = '', lease_expires_at = '', updated_at = ?
+                WHERE id = ?
+                """,
+                (now, item_id),
+            )
+        conn.commit()
+    if result.rowcount:
+        _audit("claim_released", item_id, actor=worker_name or "system", detail="")
+        return {"id": item_id, "claimed_by": ""}
+    return {"error": f"Item not found: {item_id}"}
+
+
+def record_run_result(item_id, exit_code, error_text="", increment_retry=False):
+    now = _utc_now()
+    with _connect() as conn:
+        _ensure_schema(conn)
+        row = conn.execute("SELECT retry_count FROM items WHERE id = ?", (item_id,)).fetchone()
+        if not row:
+            return {"error": f"Item not found: {item_id}"}
+        retry_count = row["retry_count"] + 1 if increment_retry else row["retry_count"]
+        conn.execute(
+            """
+            UPDATE items
+            SET last_exit_code = ?, last_error = ?, last_run_at = ?, retry_count = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (exit_code, error_text, now, retry_count, now, item_id),
+        )
+        conn.commit()
+    return {"id": item_id, "retry_count": retry_count, "last_exit_code": exit_code}
+
+
+def set_max_retries(item_id, max_retries):
+    with _connect() as conn:
+        _ensure_schema(conn)
+        result = conn.execute(
+            "UPDATE items SET max_retries = ?, updated_at = ? WHERE id = ?",
+            (int(max_retries), _utc_now(), item_id),
+        )
+        conn.commit()
+    if not result.rowcount:
+        return {"error": f"Item not found: {item_id}"}
+    return {"id": item_id, "max_retries": int(max_retries)}
+
+
+def expire_stale_claims():
+    now = _utc_now()
+    expired = []
+    with _connect() as conn:
+        _ensure_schema(conn)
+        rows = conn.execute(
+            """
+            SELECT id
+            FROM items
+            WHERE claimed_by != ''
+              AND lease_expires_at != ''
+              AND lease_expires_at < ?
+            """,
+            (now,),
+        ).fetchall()
+        for row in rows:
+            expired.append(row["id"])
+            conn.execute(
+                """
+                UPDATE items
+                SET claimed_by = '',
+                    claimed_at = '',
+                    lease_expires_at = '',
+                    retry_count = retry_count + 1,
+                    last_error = 'Claim expired before completion',
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, row["id"]),
+            )
+        conn.commit()
+    for item_id in expired:
+        _audit("claim_expired", item_id, actor="system", detail="lease expired")
+    return expired
+
+
+def mark_needs_human(item_id, actor="system", reason=""):
+    item = get_item(item_id)
+    if "error" in item:
+        return item
+    route_item(item_id, "human", actor=actor)
+    record_run_result(item_id, item.get("last_exit_code"), reason or item.get("last_error", ""))
+    release_claim(item_id)
+    _audit("needs_human", item_id, actor=actor, detail=(reason or "")[:200])
+    return {"id": item_id, "to": "human", "reason": reason}
 
 
 def update_status(item_id, new_status, actor="system"):

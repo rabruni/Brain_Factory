@@ -710,21 +710,136 @@ def render_trace_node(eid, by_id, children, depth=0):
 # ══════════════════════════════════════════════════════════════════════════════
 st.sidebar.title("Brain Factory")
 
+# ── Global search ─────────────────────────────────────────────────────────────
+search_query = st.sidebar.text_input("🔍 Search", placeholder="Search files, conversations, workspace...")
+
 page = st.sidebar.radio(
     "Navigate",
     [
         "📋 Workspace",
         "📊 Activity Feed",
         "🔄 Latest Changes",
-        "🏭 Sawmill Runs",
+        "🏭 Sawmill",
         "📐 Architecture",
-        "🤖 Agent Roles",
         "🏗️ System Catalog",
         "💬 Conversations",
         "📁 File Explorer",
     ],
     label_visibility="collapsed",
 )
+
+# Override page if search is active
+if search_query:
+    page = "_search"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEARCH RESULTS
+# ══════════════════════════════════════════════════════════════════════════════
+if page == "_search":
+    st.title(f"Search: {search_query}")
+    q = search_query.lower()
+    result_count = 0
+
+    # ── Search workspace ──────────────────────────────────────────────
+    ws_results = []
+    try:
+        for it in ws.list_items():
+            full = ws.get_item(it.get("id", ""))
+            content = full.get("content", "").lower()
+            summary = it.get("summary", "").lower()
+            if q in content or q in summary:
+                ws_results.append(it)
+    except Exception:
+        pass
+    if ws_results:
+        with st.expander(f"📋 Workspace — {len(ws_results)} matches", expanded=True):
+            for it in ws_results[:20]:
+                agent = it.get("from_agent", "?")
+                st.markdown(f"**{agent}** → {it.get('to', '?')} · {it.get('summary', '')[:60]}")
+        result_count += len(ws_results)
+
+    # ── Search conversations (deep scan) ────────────────────────────────
+    conv_results = []
+    all_conv_sessions = []
+    for s in discover_claude_sessions()[:50]:
+        s["_cli"] = "claude"
+        all_conv_sessions.append(s)
+    for s in discover_codex_sessions()[:50]:
+        s["_cli"] = "codex"
+        all_conv_sessions.append(s)
+    for s in discover_gemini_sessions()[:20]:
+        s["_cli"] = "gemini"
+        all_conv_sessions.append(s)
+
+    for s in all_conv_sessions:
+        # Check preview first
+        if q in s.get("preview", "").lower():
+            conv_results.append(s)
+            continue
+        # Deep scan — read first 100 lines of transcript
+        p = pathlib.Path(s.get("path", ""))
+        if p.exists():
+            try:
+                lines = p.read_text(encoding="utf-8").splitlines()[:100]
+                text = " ".join(lines).lower()
+                if q in text:
+                    conv_results.append(s)
+            except Exception:
+                pass
+
+    if conv_results:
+        cli_icons_search = {"claude": "🟣", "codex": "🟢", "gemini": "🔵"}
+        with st.expander(f"💬 Conversations — {len(conv_results)} matches", expanded=True):
+            for s in conv_results[:20]:
+                cli = s.get("_cli", "?")
+                ci = cli_icons_search.get(cli, "•")
+                ts = format_timestamp(s.get("timestamp", ""))[:16]
+                preview = s.get("preview", "")[:60]
+                st.markdown(f"{ci} **{cli}** `{ts}` `{s.get('session','')[:12]}` — {preview}")
+        result_count += len(conv_results)
+
+    # ── Search files ──────────────────────────────────────────────────
+    file_results = []
+    for f in BRAIN.rglob("*"):
+        if f.is_file() and not any(skip in str(f) for skip in [".git/", "node_modules/", "__pycache__", "workspace/workspace.db", ".chainlit/"]):
+            if q in f.name.lower():
+                file_results.append(("name", f))
+            elif f.suffix in (".md", ".yaml", ".yml", ".py", ".sh", ".txt", ".json", ".toml"):
+                try:
+                    if f.stat().st_size < 100000 and q in f.read_text(encoding="utf-8").lower():
+                        file_results.append(("content", f))
+                except Exception:
+                    pass
+    if file_results:
+        with st.expander(f"📁 Files — {len(file_results)} matches", expanded=True):
+            for match_type, f in file_results[:30]:
+                try:
+                    rel = str(f.relative_to(BRAIN))
+                except ValueError:
+                    rel = str(f)
+                badge = "📌 name" if match_type == "name" else "📄 content"
+                st.markdown(f"{badge} `{rel}` ({format_mtime(f)})")
+        result_count += len(file_results)
+
+    # ── Search activity feed ──────────────────────────────────────────
+    feed_results = []
+    for run_info in discover_all_runs()[:10]:
+        events = load_run_events(run_info["path"])
+        for ev in events:
+            if q in ev.get("summary", "").lower() or q in ev.get("event_type", "").lower() or q in ev.get("role", "").lower():
+                feed_results.append(ev)
+    if feed_results:
+        with st.expander(f"📊 Activity Feed — {len(feed_results)} matches", expanded=True):
+            for ev in feed_results[:20]:
+                ts = format_timestamp(ev.get("timestamp", ""))
+                st.markdown(f"`{ts[:16]}` **{ev.get('event_type','')}** ({ev.get('role','')}) — {ev.get('summary','')[:60]}")
+        result_count += len(feed_results)
+
+    if result_count == 0:
+        st.info(f"No results for '{search_query}'")
+    else:
+        st.caption(f"{result_count} total results")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -735,6 +850,7 @@ if page == "📋 Workspace":
 
     st.title("Workspace")
     st.caption("Shared surface for cross-agent conversations. Send prompts, route work, read responses.")
+    st.markdown("[Open Chat UI →](http://localhost:8503)", unsafe_allow_html=True)
 
     # ── New item form ─────────────────────────────────────────────────────
     with st.expander("➕ New Conversation", expanded=False):
@@ -781,6 +897,14 @@ if page == "📋 Workspace":
 
     cli_icon_map = {"claude": "🟣", "codex": "🟢", "gemini": "🔵", "human": "👤"}
     cli_avatar_map = {"claude": "🟣", "codex": "🟢", "gemini": "🔵", "human": "👤"}
+
+    def needs_human_badge(it):
+        retry_count = int(it.get("retry_count", 0) or 0)
+        max_retries = int(it.get("max_retries", 0) or 0)
+        recipients = [r.strip() for r in str(it.get("to", "")).split(",") if r.strip()]
+        if max_retries > 0 and retry_count >= max_retries and "human" in recipients:
+            return f"⚠️ Worker failed after {retry_count} attempts — needs human."
+        return ""
 
     # ── Render as threads ────────────────────────────────────────────────
     threads = ws.list_threads()
@@ -831,10 +955,15 @@ if page == "📋 Workspace":
                 status = it.get("status", "?")
                 si = status_icons.get(status, "•")
                 avatar = cli_avatar_map.get(from_cli, "🤖")
+                badge = needs_human_badge(it)
 
                 role = "user" if from_agent == "human" else "assistant"
                 with st.chat_message(role, avatar=avatar):
                     with st.expander(f"**{from_agent}** · {created} · {si}", expanded=True):
+                        if badge:
+                            st.error(badge)
+                            if it.get("last_error"):
+                                st.caption(f"Last error: {it['last_error'][:300]}")
                         st.markdown(content or summary)
 
         render_chat()
@@ -1369,94 +1498,250 @@ if page == "🔄 Latest Changes":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE: Sawmill Runs
+# PAGE: Sawmill
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "🏭 Sawmill Runs":
-    st.title("Sawmill Runs")
-    frameworks = discover_frameworks()
-    if not frameworks:
-        st.warning("No FMWK-* directories found under sawmill/")
-        st.stop()
+elif page == "🏭 Sawmill":
+    st.title("Sawmill")
+    # All defined frameworks from BUILD-PLAN + discovered on disk
+    all_fw_ids = [
+        # Phase 1: KERNEL
+        "FMWK-001-ledger", "FMWK-002-write-path", "FMWK-003-orchestration",
+        "FMWK-004-execution", "FMWK-005-graph", "FMWK-006-package-lifecycle",
+        # Phase 2: Layer 1
+        "FMWK-010-agent-interface", "FMWK-011-routing",
+        "FMWK-012-storage-management", "FMWK-013-meta-learning-agent",
+        # Phase 3: Layer 2
+        "FMWK-020-memory", "FMWK-021-intent", "FMWK-022-conversation",
+    ]
+    for fid in discover_frameworks():
+        if fid not in all_fw_ids:
+            all_fw_ids.append(fid)
 
-    fw = st.sidebar.selectbox("Framework", frameworks)
+    fw = st.sidebar.selectbox("Framework", all_fw_ids)
 
-    st.header(f"{fw} — Spec Pack")
-    spec_dir = SAWMILL / fw
-    docs = sorted((f for f in spec_dir.iterdir() if f.is_file() and f.suffix == ".md"),
-                  key=lambda f: f.stat().st_mtime, reverse=True)
-    if docs:
-        tabs = st.tabs([f"{f.stem}  ({format_mtime(f)})" for f in docs])
-        for tab, doc in zip(tabs, docs):
-            with tab:
-                content = read_file(doc)
-                st.markdown(content)
-                with st.expander("Raw"):
-                    st.code(content, language="markdown")
-    else:
-        st.info("No spec documents found.")
+    saw_tab1, saw_tab2, saw_tab3 = st.tabs([
+        "📐 What Gets Built", "🏭 How It Gets Built", "📦 What Has Been Built",
+    ])
 
-    st.header("Run History")
-    runs = discover_runs(fw)
-    if not runs:
-        st.info("No runs recorded yet.")
-    else:
-        run_id = st.selectbox("Select run", [r.name for r in runs],
-                              format_func=lambda r: f"{r[:15].replace('T', ' ')} — {r[16:]}")
-        run_dir = SAWMILL / fw / "runs" / run_id
+    # ── Tab 1: What Gets Built ───────────────────────────────────────────
+    with saw_tab1:
+        # Builder Spec
+        builder_spec = ARCHITECTURE / "BUILDER_SPEC.md"
+        if builder_spec.exists():
+            with st.expander(f"📐 BUILDER_SPEC — What to build ({format_mtime(builder_spec)})", expanded=False):
+                st.markdown(read_file(builder_spec))
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("run.json")
-            run_meta = read_json(run_dir / "run.json")
-            if run_meta:
-                st.json(run_meta)
-        with col2:
-            st.subheader("status.json")
-            status = read_json(run_dir / "status.json")
-            if status:
-                state = status.get("state", "unknown")
-                color = {"running": "🟡", "passed": "🟢", "failed": "🔴"}.get(state, "⚪")
-                st.metric("State", f"{color} {state}")
-                st.metric("Turn", status.get("current_turn", "—"))
-                st.metric("Role", status.get("current_role", "—"))
-                st.metric("Step", status.get("current_step", "—"))
-                st.json(status)
+        # Build Plan
+        build_plan = ARCHITECTURE / "BUILD-PLAN.md"
+        if build_plan.exists():
+            with st.expander(f"📋 BUILD-PLAN — Build order and dependencies ({format_mtime(build_plan)})", expanded=False):
+                st.markdown(read_file(build_plan))
 
-        st.subheader("Event Timeline")
-        events_file = run_dir / "events.jsonl"
-        if events_file.exists():
-            events = read_jsonl(events_file)
-            for ev in events:
-                ts = format_timestamp(ev.get("timestamp", ""))
-                etype = ev.get("event_type", "?")
-                role = ev.get("role", "?")
-                summary = ev.get("summary", "")
-                icon = {"run_started": "🚀", "preflight_passed": "✅", "turn_started": "▶️",
-                        "prompt_rendered": "📝", "agent_invoked": "🤖", "evidence_validated": "🔍",
-                        "gate_passed": "🚪", "turn_completed": "✔️", "run_completed": "🏁",
-                        "turn_failed": "❌", "run_failed": "❌"}.get(etype, "•")
-                with st.expander(f"{icon} {ts} — {etype} ({role}): {summary}"):
-                    st.json(ev)
-        else:
-            st.info("No events.jsonl found for this run.")
+        st.divider()
 
-        logs_dir = run_dir / "logs"
-        if logs_dir.exists() and list(logs_dir.iterdir()):
-            st.subheader("Logs")
-            log_files = sorted(logs_dir.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)
-            log_file = st.selectbox("Log file", [f.name for f in log_files])
-            st.code(read_file(logs_dir / log_file), language="text")
+        # Framework Registry with live status
+        # All frameworks from BUILD-PLAN.md
+        all_frameworks = {
+            # Phase 1: KERNEL
+            "FMWK-001-ledger": {"name": "Ledger", "phase": "KERNEL", "desc": "Append-only store, event schemas, hash chain"},
+            "FMWK-002-write-path": {"name": "Write-Path", "phase": "KERNEL", "desc": "Synchronous mutation, fold logic, snapshot, signal accumulation"},
+            "FMWK-003-orchestration": {"name": "Orchestration", "phase": "KERNEL", "desc": "Work order planning, dispatch, context computation"},
+            "FMWK-004-execution": {"name": "Execution", "phase": "KERNEL", "desc": "LLM calls, prompt contract enforcement"},
+            "FMWK-005-graph": {"name": "Graph", "phase": "KERNEL", "desc": "In-memory directed graph, query interface, snapshot/replay"},
+            "FMWK-006-package-lifecycle": {"name": "Package-Lifecycle", "phase": "KERNEL", "desc": "Gates, install/uninstall, CLI tools, composition registry"},
+            # Phase 2: Layer 1
+            "FMWK-010-agent-interface": {"name": "Agent Interface", "phase": "Layer 1", "desc": "DoPeJarMo interactive agent session shell for operators"},
+            "FMWK-011-routing": {"name": "Routing", "phase": "Layer 1", "desc": "LLM provider dispatch policy — which models handle which work orders"},
+            "FMWK-012-storage-management": {"name": "Storage Management", "phase": "Layer 1", "desc": "Ledger trimming using methylation values, pressure-driven"},
+            "FMWK-013-meta-learning-agent": {"name": "Meta-Learning Agent", "phase": "Layer 1", "desc": "Decay, density normalization, consolidation, homeostasis"},
+            # Phase 3: Layer 2
+            "FMWK-020-memory": {"name": "Memory", "phase": "Layer 2", "desc": "Learning artifacts, consolidation, the 'can't forget' promise"},
+            "FMWK-021-intent": {"name": "Intent", "phase": "Layer 2", "desc": "Intent lifecycle management, proposal/authority boundary"},
+            "FMWK-022-conversation": {"name": "Conversation", "phase": "Layer 2", "desc": "DoPeJar personality — Donna + Pepper + JARVIS. The product."},
+        }
+        for fid in discover_frameworks():
+            if fid not in all_frameworks:
+                all_frameworks[fid] = {"name": fid, "phase": "Other", "desc": ""}
 
-        inv_dir = run_dir / "invocations"
-        if inv_dir.exists() and list(inv_dir.iterdir()):
-            st.subheader("Invocations")
-            inv_files = sorted(inv_dir.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)
-            inv_file = st.selectbox("Invocation", [f.name for f in inv_files])
-            content = read_file(inv_dir / inv_file)
-            if inv_file.endswith(".json"):
-                st.json(json.loads(content))
-            else:
-                st.code(content, language="text")
+        # Overview grouped by phase
+        st.subheader("Framework Registry")
+        by_phase = {}
+        for fid, info in all_frameworks.items():
+            phase = info.get("phase", "Other")
+            by_phase.setdefault(phase, []).append((fid, info))
+
+        for phase in ["KERNEL", "Layer 1", "Layer 2", "Other"]:
+            items = by_phase.get(phase, [])
+            if not items:
+                continue
+            st.markdown(f"### {phase}")
+            for fid, info in items:
+                has_sawmill = (SAWMILL / fid).exists()
+                has_staging = (BRAIN / "staging" / fid).exists()
+                has_holdouts = (BRAIN / ".holdouts" / fid).exists()
+                has_runs = False
+                run_count = 0
+                runs_dir = SAWMILL / fid / "runs"
+                if runs_dir.exists():
+                    run_list = list(runs_dir.iterdir())
+                    has_runs = len(run_list) > 0
+                    run_count = len(run_list)
+
+                parts = []
+                if has_runs:
+                    parts.append(f"🏭 {run_count} runs")
+                if has_sawmill:
+                    parts.append("📄 spec pack")
+                if has_staging:
+                    parts.append("🐍 staging")
+                if has_holdouts:
+                    parts.append("🔒 holdouts")
+                status_str = " · ".join(parts) if parts else "⚪ not started"
+
+                st.markdown(f"**{fid}** — {info['name']}  \n_{info['desc']}_  \n{status_str}")
+
+    # ── Tab 2: How It Gets Built (pipeline definition) ──────────────────
+    with saw_tab2:
+        st.subheader("Templates & Contracts")
+        templates_dir = BRAIN / "Templates"
+        if templates_dir.exists():
+            template_files = sorted(templates_dir.glob("*.md"), key=lambda f: f.name)
+            contracts = [f for f in template_files if "CONTRACT" in f.name.upper() or "HANDOFF" in f.name.upper()]
+            d_templates = [f for f in template_files if f.name.startswith("D") and f not in contracts]
+            other_templates = [f for f in template_files if f not in contracts and f not in d_templates]
+
+            if contracts:
+                st.markdown("**Contracts**")
+                for f in contracts:
+                    with st.expander(f"📜 {f.stem} ({format_mtime(f)})"):
+                        st.markdown(read_file(f))
+            if d_templates:
+                st.markdown("**D1-D10 Templates**")
+                for f in d_templates:
+                    with st.expander(f"📐 {f.stem} ({format_mtime(f)})"):
+                        st.markdown(read_file(f))
+            if other_templates:
+                st.markdown("**Other**")
+                for f in other_templates:
+                    with st.expander(f"📄 {f.stem} ({format_mtime(f)})"):
+                        st.markdown(read_file(f))
+
+        st.divider()
+        st.subheader("Registries")
+        for name, path in [
+            ("ROLE_REGISTRY.yaml", SAWMILL / "ROLE_REGISTRY.yaml"),
+            ("ARTIFACT_REGISTRY.yaml", SAWMILL / "ARTIFACT_REGISTRY.yaml"),
+            ("PROMPT_REGISTRY.yaml", SAWMILL / "PROMPT_REGISTRY.yaml"),
+            ("DEPENDENCIES.yaml", SAWMILL / "DEPENDENCIES.yaml"),
+        ]:
+            if path.exists():
+                with st.expander(f"📋 {name} ({format_mtime(path)})"):
+                    st.code(read_file(path), language="yaml")
+
+        st.divider()
+        st.subheader("Prompts")
+        prompts_dir = SAWMILL / "prompts"
+        if prompts_dir.exists():
+            for f in sorted(prompts_dir.glob("*.txt")):
+                with st.expander(f"💬 {f.stem} ({format_mtime(f)})"):
+                    st.code(read_file(f), language="text")
+
+        st.divider()
+        st.subheader("Agent Roles")
+        for f in sorted(AGENTS.glob("*.md"), key=lambda f: f.name):
+            with st.expander(f"🤖 {f.stem} ({format_mtime(f)})"):
+                st.markdown(read_file(f))
+
+        st.divider()
+        st.subheader("Key Documents")
+        for name, path in [
+            ("EXECUTION_CONTRACT.md", SAWMILL / "EXECUTION_CONTRACT.md"),
+            ("COLD_START.md", SAWMILL / "COLD_START.md"),
+            ("AGENT_TRAVERSAL.md", SAWMILL / "AGENT_TRAVERSAL.md"),
+        ]:
+            if path.exists():
+                with st.expander(f"📝 {name} ({format_mtime(path)})"):
+                    st.markdown(read_file(path))
+
+    # ── Tab 3: What Has Been Built (per-framework results) ───────────────
+    with saw_tab3:
+        if fw:
+            fw_info = all_frameworks.get(fw, {})
+            st.header(f"{fw} — {fw_info.get('name', '')}")
+            st.caption(fw_info.get("desc", ""))
+
+            # Run history
+            runs = discover_runs(fw)
+            if runs:
+                st.subheader(f"Runs ({len(runs)})")
+                run_id = st.selectbox("Select run", [r.name for r in runs],
+                                      format_func=lambda r: f"{r[:15].replace('T', ' ')} — {r[16:]}")
+                run_dir = SAWMILL / fw / "runs" / run_id
+                col1, col2 = st.columns(2)
+                with col1:
+                    run_meta = read_json(run_dir / "run.json")
+                    if run_meta:
+                        st.json(run_meta)
+                with col2:
+                    status = read_json(run_dir / "status.json")
+                    if status:
+                        state = status.get("state", "unknown")
+                        color = {"running": "🟡", "passed": "🟢", "failed": "🔴"}.get(state, "⚪")
+                        st.metric("State", f"{color} {state}")
+                        st.metric("Turn", status.get("current_turn", "—"))
+                        st.json(status)
+
+                events_file = run_dir / "events.jsonl"
+                if events_file.exists():
+                    all_ev = read_jsonl(events_file)
+                    sig = [e for e in all_ev if e.get("event_type") not in NOISE_EVENTS]
+                    noise = [e for e in all_ev if e.get("event_type") in NOISE_EVENTS]
+                    st.caption(f"{len(sig)} events + {len(noise)} heartbeats")
+                    for ev in sig:
+                        ts = format_timestamp(ev.get("timestamp", ""))
+                        etype = ev.get("event_type", "?")
+                        role = ev.get("role", "?")
+                        summary = ev.get("summary", "")
+                        icon = {"run_started": "🚀", "preflight_passed": "✅", "turn_started": "▶️",
+                                "prompt_rendered": "📝", "agent_invoked": "🤖", "evidence_validated": "🔍",
+                                "gate_passed": "🚪", "turn_completed": "✔️", "run_completed": "🏁",
+                                "turn_failed": "❌", "run_failed": "❌"}.get(etype, "•")
+                        st.markdown(f"{icon} `{ts[11:19]}` **{etype}** ({role}) — {summary}")
+                    if noise:
+                        with st.expander(f"💓 {len(noise)} heartbeat events"):
+                            for ev in noise[:20]:
+                                st.caption(f"`{format_timestamp(ev.get('timestamp',''))[11:19]}` {ev.get('summary','')}")
+                            if len(noise) > 20:
+                                st.caption(f"... and {len(noise) - 20} more")
+
+            # Spec pack
+            spec_dir = SAWMILL / fw
+            if spec_dir.exists():
+                docs = sorted((f for f in spec_dir.iterdir() if f.is_file() and f.suffix == ".md"), key=lambda f: f.name)
+                if docs:
+                    st.subheader("Spec Pack")
+                    for f in docs:
+                        with st.expander(f"📄 {f.stem} ({format_mtime(f)})"):
+                            st.markdown(read_file(f))
+            elif not runs:
+                st.info(f"{fw} has been defined but not started in the sawmill.")
+
+            # Staging code
+            staging_dir = BRAIN / "staging" / fw
+            if staging_dir.exists():
+                st.subheader("Staging Code")
+                for f in sorted(staging_dir.rglob("*.py")):
+                    rel = str(f.relative_to(BRAIN))
+                    with st.expander(f"🐍 {rel} ({format_mtime(f)})"):
+                        st.code(read_file(f), language="python")
+
+            # Holdouts
+            holdout_dir = BRAIN / ".holdouts" / fw
+            if holdout_dir.exists():
+                st.subheader("Holdout Scenarios")
+                for f in sorted(holdout_dir.glob("*.md")):
+                    with st.expander(f"🔒 {f.stem} ({format_mtime(f)})"):
+                        st.markdown(read_file(f))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1617,7 +1902,6 @@ elif page == "💬 Conversations":
     gemini_sessions = discover_gemini_sessions()
     all_sessions = claude_sessions + codex_sessions + gemini_sessions
 
-    # Sort newest first by default (using file mtime as fallback for missing timestamps)
     for s in all_sessions:
         if not s.get("timestamp"):
             s["timestamp"] = file_mtime(pathlib.Path(s["path"])).isoformat()
@@ -1628,20 +1912,58 @@ elif page == "💬 Conversations":
         st.warning("No transcripts found from any CLI.")
         st.stop()
 
+    # ── Sidebar filters ───────────────────────────────────────────────
     cli_filter = st.sidebar.multiselect("CLI", ["claude", "codex", "gemini"],
                                         default=["claude", "codex", "gemini"])
-    filtered = [s for s in all_sessions if s["cli"] in cli_filter]
 
-    if not filtered:
-        st.info("No sessions match the filter.")
-        st.stop()
+    conv_search = st.sidebar.text_input("Search conversations", placeholder="keyword...", key="conv_search")
 
     conv_sort = st.sidebar.radio("Sort by", ["Newest first", "Oldest first", "CLI"], key="conv_sort")
+
+    # Date filter
+    all_dates = set()
+    for s in all_sessions:
+        ts = s.get("timestamp", "")
+        if len(ts) >= 10:
+            all_dates.add(ts[:10])
+    sorted_dates = sorted(all_dates, reverse=True)
+    date_filter = st.sidebar.selectbox("Date", ["all"] + sorted_dates, key="conv_date")
+
+    # Apply filters
+    filtered = [s for s in all_sessions if s["cli"] in cli_filter]
+
+    if date_filter != "all":
+        filtered = [s for s in filtered if s.get("timestamp", "")[:10] == date_filter]
+
+    if conv_search:
+        q = conv_search.lower()
+        search_filtered = []
+        for s in filtered:
+            # Search preview
+            if q in s.get("preview", "").lower():
+                search_filtered.append(s)
+                continue
+            # Deep search — scan first 50 lines of transcript
+            p = pathlib.Path(s["path"])
+            if p.exists():
+                try:
+                    lines = p.read_text(encoding="utf-8").splitlines()[:50]
+                    text = " ".join(lines).lower()
+                    if q in text:
+                        search_filtered.append(s)
+                except Exception:
+                    pass
+        filtered = search_filtered
+        st.caption(f"Found {len(filtered)} conversations matching '{conv_search}'")
+
+    if not filtered:
+        st.info("No sessions match the filters.")
+        st.stop()
+
     if conv_sort == "Oldest first":
         filtered.sort(key=lambda s: s.get("timestamp", "0"))
     elif conv_sort == "CLI":
         filtered.sort(key=lambda s: (s["cli"], s.get("timestamp", "0")), reverse=True)
-    # else already newest first
 
     cli_icons = {"claude": "🟣", "codex": "🟢", "gemini": "🔵"}
 
