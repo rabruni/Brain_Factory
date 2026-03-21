@@ -227,3 +227,4 @@ docs/sawmill-source/
 workspace/
 .heartbeat_poll.json
 heartbeat_status.json
+.claude/scheduled_tasks.lock
