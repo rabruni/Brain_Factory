@@ -1,69 +1,74 @@
 {
-  "run_id": "20260320T205424Z-45d3202a8b43",
-  "attempt": 2,
-  "q13_answers_hash": "sha256:66d992f7ac013ef3a0d1ae6301ededbcc2150b5c89846463d23118d43f8704a8",
+  "run_id": "20260321T054057Z-6d3169742c02",
+  "attempt": 1,
+  "q13_answers_hash": "sha256:30c9f02596f1fe4f687c1e5e3f3a86200541e7e4aee8037dd1110553be79089f",
   "builder_prompt_contract_version_reviewed": "1.0.0",
   "reviewer_prompt_contract_version": "1.0.0",
   "findings": [
     {
-      "question": "Q1-Q3",
-      "area": "scope_boundaries",
-      "status": "correct",
-      "detail": "Scope, exclusions, and D1 ALWAYS/ASK FIRST/NEVER boundaries match D1 Constitution, D2 Specification, and D10 exactly."
+      "question": "Q1",
+      "status": "PASS",
+      "detail": "Correctly identifies ledger package, 6 LedgerClient methods, hash chaining, threading.Lock, complete deliverable list. All paths match handoff."
+    },
+    {
+      "question": "Q2",
+      "status": "PASS",
+      "detail": "Correctly excludes FMWK-002/005/006, DEF-001/002, multi-process, async, kernel services. Scope boundaries precise."
+    },
+    {
+      "question": "Q3",
+      "status": "PASS",
+      "detail": "ALWAYS/ASK FIRST/NEVER boundaries correctly stated, traceable to D1 articles and D10 key patterns."
     },
     {
       "question": "Q4",
-      "area": "public_apis",
-      "status": "correct",
-      "detail": "Six Ledger methods and four internal module boundaries match D10 Active Components and BUILDER_HANDOFF Section 3."
+      "status": "PASS",
+      "detail": "All 6 inbound contract signatures and 8 error contracts verified against D4. ImmudbStore internal interface matches handoff."
     },
     {
       "question": "Q5",
-      "area": "file_locations",
-      "status": "correct",
-      "detail": "Implementation in staging, gate artifacts in sawmill. CRITICAL_REVIEW_REQUIRED flag on 13Q path conflict resolved: prompt instruction is authoritative for gate artifacts."
+      "status": "PASS",
+      "detail": "CRITICAL_REVIEW_REQUIRED resolved: platform_sdk.tier0_core.data is SQLAlchemy (verified), not immudb. Builder's ImmudbStore abstraction in store.py is the correct resolution, consistent with handoff architecture and existing SDK pattern. import immudb permitted only in store.py."
     },
     {
       "question": "Q6",
-      "area": "data_formats_and_errors",
-      "status": "correct",
-      "detail": "Event fields, hash format, canonical serialization rules, and four error codes match D4 contracts and examples."
+      "status": "PASS",
+      "detail": "All 4 entities (LedgerEvent 9 fields, Provenance 3 fields, TipRecord 2 fields, ChainVerificationResult 2 fields) verified against D3. EventType 15 values match D3/D4. Float-as-string, null inclusion, key format, hash format all correct."
     },
     {
       "question": "Q7",
-      "area": "package_manifests",
-      "status": "correct",
-      "detail": "PC-001-ledger-core file inventory and SHA256 evidence plan match handoff Sections 5 and 9."
+      "status": "PASS",
+      "detail": "Package metadata correct. RESULTS.md and builder_evidence.json required fields all listed."
     },
     {
       "question": "Q8",
-      "area": "dependencies",
-      "status": "correct",
-      "detail": "Python stdlib + platform_sdk + immudb-through-abstraction matches handoff and D1 tooling constraints."
+      "status": "PASS",
+      "detail": "Stdlib and platform_sdk dependencies correct. new_id(kind='uuid7') verified in ids.py:54. PlatformConfig immudb fields verified in config.py:46-50. immudb-py scoped to store.py only."
     },
     {
       "question": "Q9",
-      "area": "testing",
-      "status": "correct",
-      "detail": "25+ tests, SC-001 through SC-011, four targeted commands plus full regression match handoff Sections 6 and 8."
+      "status": "PASS",
+      "detail": "Test distribution matches handoff plan. 60 explicitly named tests exceeds 55 target. TDD discipline and verification criteria correctly stated."
     },
     {
       "question": "Q10",
-      "area": "integration",
-      "status": "correct",
-      "detail": "Names FMWK-002 as caller and FMWK-003/005/006 as consumers. Mechanical-only integration boundary is specific."
+      "status": "PASS",
+      "detail": "Upstream/downstream callers correct. PlatformConfig wiring verified against live SDK. CLI integration and immudb wiring (port 3322, database 'ledger', key format, value format) correct."
     },
     {
-      "question": "Q11-Q12",
-      "area": "adversarial",
-      "status": "correct",
-      "detail": "Scope drift risk (semantic smuggling, D1 Art 2/6) and failure softening (no partial success, D1 Art 8) correctly identified."
+      "question": "Q11",
+      "status": "PASS",
+      "detail": "SC-011 mutex scope correctly identified as highest-risk misinterpretation. Failure mode (silent sequence fork) accurately described. Commits to lock before get_tip()."
+    },
+    {
+      "question": "Q12",
+      "status": "PASS",
+      "detail": "verify_chain() + connection error correctly identified. D4 IN-005 postcondition 6 quoted exactly. Secondary risk (read_since exclusive boundary) also correct."
     },
     {
       "question": "Q13",
-      "area": "uncertainty",
-      "status": "acceptable",
-      "detail": "CRITICAL_REVIEW_REQUIRED flag on missing adversarial prompt list resolved: answers demonstrate genuine comprehension from D1-D8 rather than rote compliance."
+      "status": "PASS",
+      "detail": "8 plausible evaluator probes, all traceable to D2/D4/D6 specifications."
     }
   ],
   "verdict": "PASS",

@@ -1,278 +1,343 @@
-# D3: Data Model — FMWK-001-ledger
-Meta: v:1.0.0 (matches D2) | status:Final | shared entities:9
+# D3: Data Model — Ledger (FMWK-001)
+Meta: v:1.0.0 (matches D2) | status:Final | shared entities:4
+
+---
 
 ## Entities
-### E-001 — Ledger Event
+
+### E-001 — LedgerEvent
 - Scope: SHARED
-- Used By: FMWK-002 write-path, FMWK-003 orchestration, FMWK-005 graph, FMWK-006 package-lifecycle, cold-storage validation tools
-- Source: SC-001, SC-002, SC-003, SC-004, SC-005, SC-007, SC-008, SC-011
-- Description: The canonical append-only event envelope stored by the ledger. It is self-describing, globally ordered, hash-linked to the previous event, and serialized deterministically for persistence and verification.
+- Used By: FMWK-002 (Write Path — reads events for fold), FMWK-005 (Graph — reads events for replay), FMWK-006 (Package Lifecycle — reads framework_install events for gate validation), cold-storage CLI tools
+- Source: SC-001, SC-002, SC-003, SC-004, SC-005, SC-007, SC-008, SC-009
+- Description: The fundamental unit of storage in the Ledger. Every state mutation in DoPeJarMo is recorded as a LedgerEvent. Events are immutable once written. The hash field is computed from the canonical JSON of all other fields (including previous_hash, excluding hash itself). The sequence field is assigned by the Ledger — callers never supply it.
+
+Fields:
 
 | Field | Type | Required | Description | Constraints |
-| event_id:string | Type:uuid-v7 | Req:yes | Stable event identifier | Constraint:UUIDv7 string |
-| sequence:number | Type:integer | Req:yes | Global monotonic ledger sequence | Constraint:`>= 0`; assigned only by ledger |
-| event_type:string | Type:string | Req:yes | Event type discriminator | Constraint:non-empty; must be in approved catalog |
-| schema_version:string | Type:semver | Req:yes | Payload/schema version | Constraint:`1.0.0` for this spec version |
-| timestamp:string | Type:ISO-8601 UTC | Req:yes | Event creation time | Constraint:UTC timestamp with `Z` suffix |
-| provenance:object | Type:Provenance | Req:yes | Framework, pack, and actor origin | Constraint:see nested constraints |
-| previous_hash:string | Type:hash | Req:yes | Hash of prior event in chain | Constraint:`sha256:<64 lowercase hex>`; genesis uses zero hash |
-| payload:object | Type:object | Req:yes | Event-type-specific payload | Constraint:validated by event type schema |
-| hash:string | Type:hash | Req:yes | Hash of canonical serialized event excluding `hash` field | Constraint:`sha256:<64 lowercase hex>` |
+|-------|------|----------|-------------|-------------|
+| event_id | string | yes | Globally unique identifier for this event | UUID v7 format (e.g., "01956b3c-4f2a-7000-8000-000000000001") |
+| sequence | integer | yes | Global monotonic position in the Ledger | ≥ 0; assigned by Ledger, never by caller; genesis event = 0 |
+| event_type | string | yes | Category of this event | Must be a value from the EventType enum (see below) |
+| schema_version | string | yes | Version of the payload schema for this event_type | semver format, e.g., "1.0.0" |
+| timestamp | string | yes | Time the event was created | ISO-8601 UTC with Z suffix, e.g., "2026-03-21T03:21:00Z" |
+| provenance | Provenance | yes | Who/what created this event | See E-002 Provenance |
+| previous_hash | string | yes | SHA-256 hash of the preceding event's canonical JSON | Format: "sha256:" + exactly 64 lowercase hex chars; genesis = "sha256:0000000000000000000000000000000000000000000000000000000000000000" |
+| payload | object | yes | Event-type-specific data | JSON object; schema per event_type; see payload schemas below; the Ledger validates JSON serializability but not payload field structure |
+| hash | string | yes | SHA-256 hash of this event's canonical JSON (hash field excluded from input) | Format: "sha256:" + exactly 64 lowercase hex chars |
 
+JSON Example:
 ```json
 {
-  "event_id": "0195b8d1-6d8d-7ef9-9c6a-4bd29ca2dce4",
-  "sequence": 2,
-  "event_type": "package_install",
-  "schema_version": "1.0.0",
-  "timestamp": "2026-03-20T20:15:32Z",
-  "provenance": {
-    "framework_id": "FMWK-006",
-    "pack_id": "PC-006-kernel-package",
-    "actor": "system"
-  },
-  "previous_hash": "sha256:2ddcbf0b9a9120cc1d72fe073dc372f976922a0b7d20c0f5fd43589e3c56231d",
+  "event_id": "01956b3c-4f2a-7000-8000-000000000001",
+  "event_type": "session_start",
+  "hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   "payload": {
-    "package_id": "PKG-0001-kernel",
-    "framework_id": "FMWK-001-ledger",
-    "version": "1.0.0",
-    "install_scope": "kernel",
-    "manifest_hash": "sha256:06dfb23ab8cf9c6621fe58f465bf6f6a2e4698af1c8d8de7c093b2b26a3e5fb7"
+    "actor_id": "op-01956b3c-0001",
+    "session_id": "01956b3c-4f2a-7000-9000-000000000001",
+    "session_type": "operator"
   },
-  "hash": "sha256:8c9c546d9fea3a48d36c1318bd91bc35499808722d2bb4f2e0eb342d6b3de4d7"
-}
-```
-
-Invariants:
-- `sequence` is unique and strictly increasing by 1 from genesis.
-- `previous_hash` of sequence `0` is exactly `sha256:` plus 64 lowercase zeroes.
-- `hash` is computed from canonical JSON serialization of the event excluding the `hash` field.
-- The stored event bytes must round-trip without changing field meanings or order-independent hash outcome.
-
-### E-002 — Verification Result
-- Scope: SHARED
-- Used By: cold-storage validation tools, FMWK-006 package-lifecycle, operators via DoPeJarMo diagnostics
-- Source: SC-005, SC-008
-- Description: Mechanical result of replaying and recomputing the ledger hash chain over a requested sequence interval.
-
-| Field | Type | Required | Description | Constraints |
-| valid:boolean | Type:boolean | Req:yes | Whether every checked event matched its stored hash and prior hash linkage | Constraint:true or false |
-| start_sequence:number | Type:integer | Req:yes | Inclusive verification start | Constraint:`>= 0` |
-| end_sequence:number | Type:integer | Req:yes | Inclusive verification end | Constraint:`>= start_sequence` |
-| break_at:number | Type:integer | Req:no | First sequence where verification failed | Constraint:required when `valid=false` |
-
-```json
-{
-  "valid": false,
-  "start_sequence": 0,
-  "end_sequence": 5,
-  "break_at": 3
-}
-```
-
-Invariants:
-- `break_at` is omitted when `valid=true`.
-- `break_at` identifies the first failed event, not the last successful one.
-
-### E-003 — Ledger Tip
-- Scope: SHARED
-- Used By: append callers through the ledger abstraction, replay tools, diagnostics
-- Source: SC-002, SC-006
-- Description: The latest committed append position in the linear event chain.
-
-| Field | Type | Required | Description | Constraints |
-| sequence_number:number | Type:integer | Req:yes | Latest committed sequence | Constraint:`>= 0` when non-empty ledger |
-| hash:string | Type:hash | Req:yes | Hash stored on the tip event | Constraint:`sha256:<64 lowercase hex>` |
-
-```json
-{
-  "sequence_number": 12,
-  "hash": "sha256:8b6e4791d3035430dc7f00692cfd0d2a59d789ab3ed86855f81044cd22fdfd4d"
-}
-```
-
-Invariants:
-- `sequence_number` and `hash` must match the most recent stored event.
-- The next successful append must use this `hash` as `previous_hash`.
-
-### E-004 — Provenance
-- Scope: SHARED
-- Used By: all event producers and auditors
-- Source: SC-003
-- Description: The event origin block that ties an event to framework scope, pack provenance, and actor class.
-
-| Field | Type | Required | Description | Constraints |
-| framework_id:string | Type:string | Req:yes | Framework origin identifier | Constraint:canonical stored value uses full framework identifier `FMWK-NNN-name` |
-| pack_id:string | Type:string | Req:yes | Pack that emitted or owns the event | Constraint:non-empty pack identifier |
-| actor:string | Type:enum | Req:yes | Origin actor class | Constraint:`system`, `operator`, or `agent` |
-
-```json
-{
-  "framework_id": "FMWK-001-ledger",
-  "pack_id": "PC-001-ledger-core",
-  "actor": "system"
-}
-```
-
-Invariants:
-- `framework_id` stores the full framework identifier form `FMWK-NNN-name`; shorthand `FMWK-NNN` references in source material are treated as schematic placeholders.
-- `actor` is restricted to the approved enum.
-- Provenance is always present; anonymous events are invalid.
-
-### E-005 — Node Creation Payload
-- Scope: SHARED
-- Used By: FMWK-002 write-path, FMWK-005 graph
-- Source: SC-003
-- Description: Minimum payload schema for the event that introduces a new graph node into ledger history.
-
-| Field | Type | Required | Description | Constraints |
-| node_id:string | Type:string | Req:yes | New node identifier | Constraint:non-empty |
-| node_type:string | Type:string | Req:yes | Node kind discriminator | Constraint:non-empty |
-| initial_state:object | Type:object | Req:yes | Framework-defined starting state | Constraint:must be JSON object |
-| associated_entities:array | Type:array | Req:no | Related IDs recorded at creation | Constraint:array of strings when present |
-| session_id:string | Type:string | Req:no | Session that caused creation | Constraint:non-empty when present |
-
-```json
-{
-  "node_id": "intent-0195b8d1",
-  "node_type": "intent",
-  "initial_state": {
-    "status": "DECLARED",
-    "title": "Rebuild ledger framework"
+  "previous_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "provenance": {
+    "actor": "operator",
+    "framework_id": "FMWK-002",
+    "pack_id": "PC-001-write"
   },
-  "associated_entities": [
-    "session-0195b8d1"
-  ],
-  "session_id": "session-0195b8d1"
+  "schema_version": "1.0.0",
+  "sequence": 0,
+  "timestamp": "2026-03-21T03:21:00Z"
 }
 ```
 
 Invariants:
-- `node_id` must be unique within the owning framework's namespace.
-- `initial_state` is opaque to ledger verification but must remain serializable under canonical JSON rules.
+- `sequence` is unique across all LedgerEvents. No two events share a sequence number.
+- `previous_hash` of event at sequence N equals `hash` of event at sequence N-1.
+- `previous_hash` of the genesis event (sequence 0) is "sha256:" + 64 zeros.
+- `hash` equals SHA-256 of canonical JSON (all fields including previous_hash, excluding hash itself; see Canonical JSON Serialization Constraint below).
+- `event_id` is unique across all LedgerEvents (UUID v7 ensures this with high probability).
+- `hash` format is exactly "sha256:" followed by 64 lowercase hex characters. No uppercase, no "0x" prefix, no base64.
 
-### E-006 — Signal Delta Payload
-- Scope: SHARED
-- Used By: FMWK-002 write-path, FMWK-005 graph
-- Source: SC-003
-- Description: Minimum payload schema for a signal adjustment event recorded by the ledger for later fold by the Write Path.
+---
+
+### E-002 — Provenance
+- Scope: SHARED (embedded in E-001 LedgerEvent)
+- Used By: Wherever LedgerEvent is used; also inspected directly by FMWK-006 (Package Lifecycle) for ownership verification
+- Source: SC-001, SC-002 (every appended event carries provenance)
+- Description: Identifies the originating framework, pack (if applicable), and type of actor for a LedgerEvent. Enables attribution of any event back to its source framework for audit, governance rule verification, and ownership checks.
+
+Fields:
 
 | Field | Type | Required | Description | Constraints |
-| node_id:string | Type:string | Req:yes | Target node identifier | Constraint:non-empty |
-| signal_name:string | Type:string | Req:yes | Named signal counter | Constraint:non-empty |
-| delta:number | Type:integer | Req:yes | Integer signal increment or decrement | Constraint:non-zero integer |
-| reason:string | Type:string | Req:no | Human-readable cause | Constraint:UTF-8 string when present |
-| session_id:string | Type:string | Req:no | Session context | Constraint:non-empty when present |
+|-------|------|----------|-------------|-------------|
+| framework_id | string | yes | Framework that produced this event | e.g., "FMWK-002"; must match an installed framework ID |
+| pack_id | string | no | Pack within the framework that produced this event | e.g., "PC-001-write"; may be null if not applicable |
+| actor | string | yes | Type of entity that triggered this event | Enum: "system", "operator", "agent" |
 
+JSON Example:
 ```json
 {
-  "node_id": "memory-0195b8d1",
-  "signal_name": "operator_reinforcement",
-  "delta": 1,
-  "reason": "operator confirmed importance",
-  "session_id": "session-0195b8d1"
+  "actor": "system",
+  "framework_id": "FMWK-002",
+  "pack_id": "PC-001-write"
 }
 ```
 
 Invariants:
-- `delta` is an integer; floating-point values are not allowed in the minimum schema.
-- Ledger stores the delta only; it does not compute methylation values.
+- `actor` must be one of: "system", "operator", "agent". No other values.
+- `framework_id` is always present and non-empty.
 
-### E-007 — Package Install Payload
+---
+
+### E-003 — TipRecord
 - Scope: SHARED
-- Used By: FMWK-006 package-lifecycle, cold-storage validation tools
-- Source: SC-003
-- Description: Minimum payload schema for the package lifecycle event that records framework installation provenance in the ledger.
+- Used By: FMWK-002 (Write Path — reads tip before each append to determine next sequence number), FMWK-006 (Package Lifecycle — reads tip for chain walk start)
+- Source: SC-006
+- Description: A point-in-time snapshot of the Ledger's latest position. Returned by get_tip(). Provides the sequence number and hash of the most recently appended event — the two pieces of information needed to continue the chain.
+
+Fields:
 
 | Field | Type | Required | Description | Constraints |
-| package_id:string | Type:string | Req:yes | Installed package identifier | Constraint:non-empty |
-| framework_id:string | Type:string | Req:yes | Installed framework identifier | Constraint:non-empty |
-| version:string | Type:semver | Req:yes | Installed version | Constraint:semantic version string |
-| install_scope:string | Type:string | Req:yes | Installation domain or phase | Constraint:non-empty |
-| manifest_hash:string | Type:hash | Req:yes | Hash of the installed package manifest | Constraint:`sha256:<64 lowercase hex>` |
+|-------|------|----------|-------------|-------------|
+| sequence_number | integer | yes | Sequence number of the latest event | ≥ 0; equals -1 if Ledger is empty (see D6 CLR-002) |
+| hash | string | yes | SHA-256 hash of the latest event | "sha256:" + 64 lowercase hex chars; equals "sha256:" + 64 zeros if Ledger is empty |
 
+JSON Example:
 ```json
 {
-  "package_id": "PKG-0001-kernel",
-  "framework_id": "FMWK-001-ledger",
-  "version": "1.0.0",
-  "install_scope": "kernel",
-  "manifest_hash": "sha256:06dfb23ab8cf9c6621fe58f465bf6f6a2e4698af1c8d8de7c093b2b26a3e5fb7"
+  "hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "sequence_number": 41
 }
 ```
 
 Invariants:
-- `manifest_hash` must use the canonical hash string format.
-- Package lifecycle owns install semantics; ledger owns only storage and ordering.
+- `hash` of the TipRecord equals `hash` of the LedgerEvent at `sequence_number`.
+- After a successful append(), TipRecord.sequence_number increases by exactly 1.
 
-### E-008 — Session Start Payload
+---
+
+### E-004 — ChainVerificationResult
 - Scope: SHARED
-- Used By: FMWK-002 write-path, operator/session management flows
-- Source: SC-003
-- Description: Minimum payload schema for the mechanical system event that marks the start of a session boundary.
+- Used By: FMWK-006 (Package Lifecycle — validates framework chain integrity), cold-storage CLI tools, FMWK-005 (Graph — on startup)
+- Source: SC-007, SC-008, SC-009
+- Description: The result of a hash chain integrity verification. Reports whether the chain is intact over the verified range, and if not, identifies the first corrupted sequence number.
+
+Fields:
 
 | Field | Type | Required | Description | Constraints |
-| session_id:string | Type:string | Req:yes | Session identifier | Constraint:non-empty |
-| session_kind:string | Type:string | Req:yes | Session class | Constraint:`operator` or `user` in current usage |
-| subject_id:string | Type:string | Req:yes | Authenticated principal or actor namespace | Constraint:non-empty |
-| started_by:string | Type:enum | Req:yes | Actor category that initiated the session | Constraint:`system`, `operator`, or `agent` |
+|-------|------|----------|-------------|-------------|
+| valid | boolean | yes | True if all events in the verified range have correct hashes and correct previous_hash links | |
+| break_at | integer | no | Sequence number of the first event where corruption was detected | Present only when valid=false; absent (null) when valid=true |
 
+JSON Example (intact):
 ```json
 {
-  "session_id": "session-0195b8d1",
-  "session_kind": "operator",
-  "subject_id": "ray",
-  "started_by": "operator"
+  "break_at": null,
+  "valid": true
+}
+```
+
+JSON Example (corrupted at sequence 3):
+```json
+{
+  "break_at": 3,
+  "valid": false
 }
 ```
 
 Invariants:
-- Session boundary events are mechanical system events and remain append-only like all other events.
-- Session lifecycle semantics beyond recording are owned outside the ledger.
+- `break_at` is null when valid=true.
+- `break_at` is present (non-null) when valid=false.
+- `break_at` identifies the lowest sequence number where either the stored hash does not match the recomputed SHA-256 of the event's canonical JSON, or the previous_hash does not match the hash of the preceding event.
 
-### E-009 — Snapshot Created Payload
-- Scope: SHARED
-- Used By: FMWK-002 write-path, FMWK-005 graph
-- Source: SC-007
-- Description: Ledger-owned reference payload for a snapshot marker event. It records the existence, hash, and replay boundary of a snapshot file without defining snapshot file contents.
+---
 
-| Field | Type | Required | Description | Constraints |
-| snapshot_sequence:number | Type:integer | Req:yes | Sequence at which the snapshot was taken | Constraint:`>= 0` |
-| snapshot_path:string | Type:string | Req:yes | Snapshot location | Constraint:must match `/snapshots/<sequence_number>.snapshot` |
-| snapshot_hash:string | Type:hash | Req:yes | Hash of snapshot file contents | Constraint:`sha256:<64 lowercase hex>` |
+## Payload Schemas (for Ledger-owned event types)
 
+The Ledger owns payload schemas for event types produced by the Ledger itself or by KERNEL bootstrapping. The `payload` field in E-001 is typed per `event_type`. Floats in payloads MUST be serialized as strings to prevent cross-language representation drift (see Canonical JSON Serialization Constraint).
+
+### node_creation payload
 ```json
 {
-  "snapshot_sequence": 42,
-  "snapshot_path": "/snapshots/42.snapshot",
-  "snapshot_hash": "sha256:5c1f3ed4c95346f1dc3ddca6ca9ea6240cfa0b8455174a8c4363130f0f2387cc"
+  "base_weight": "0.5",
+  "initial_methylation": "0.0",
+  "node_id": "01956b3c-4f2a-7000-8000-000000000042",
+  "node_type": "learning_artifact"
 }
 ```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| node_id | string | yes | UUID v7 of the new Graph node |
+| node_type | string | yes | Type of Graph node being created (e.g., "learning_artifact", "intent", "work_order") |
+| initial_methylation | string | yes | Float 0.0–1.0 serialized as string (e.g., "0.0") |
+| base_weight | string | yes | Non-negative float serialized as string (e.g., "0.5") |
 
-Invariants:
-- Ledger owns the reference marker only; the snapshot file format is external to this framework.
-- `snapshot_sequence` defines the lower bound for replay-after-snapshot.
+### signal_delta payload
+```json
+{
+  "delta": "0.1",
+  "node_id": "01956b3c-4f2a-7000-8000-000000000042",
+  "signal_type": "entity"
+}
+```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| node_id | string | yes | UUID v7 of the target Graph node |
+| signal_type | string | yes | Enum: "entity", "mode", "stimulus", "regime" |
+| delta | string | yes | Signed float serialized as string (e.g., "0.1", "-0.05") |
+
+### package_install payload
+```json
+{
+  "framework_id": "FMWK-002",
+  "manifest_hash": "sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+  "package_id": "FMWK-002-write-path",
+  "version": "1.0.0"
+}
+```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| package_id | string | yes | Package identifier (e.g., "FMWK-002-write-path") |
+| framework_id | string | yes | Framework being installed (e.g., "FMWK-002") |
+| version | string | yes | semver string (e.g., "1.0.0") |
+| manifest_hash | string | yes | SHA-256 hash of the package manifest; "sha256:" + 64 lowercase hex chars |
+
+### session_start payload
+```json
+{
+  "actor_id": "op-01956b3c-0001",
+  "session_id": "01956b3c-4f2a-7000-9000-000000000001",
+  "session_type": "operator"
+}
+```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| session_id | string | yes | UUID v7 for this session |
+| actor_id | string | yes | Identifier of the connecting actor |
+| session_type | string | yes | Enum: "operator", "user" |
+
+### session_end payload
+```json
+{
+  "reason": "normal",
+  "session_id": "01956b3c-4f2a-7000-9000-000000000001"
+}
+```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| session_id | string | yes | UUID v7 matching the session_start event |
+| reason | string | yes | Enum: "normal", "timeout", "error" |
+
+### snapshot_created payload
+```json
+{
+  "snapshot_file": "/snapshots/41.snapshot",
+  "snapshot_hash": "sha256:c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+  "snapshot_sequence": 41
+}
+```
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| snapshot_sequence | integer | yes | The Ledger sequence number at which the snapshot was taken |
+| snapshot_file | string | yes | Path to snapshot file: "/snapshots/<sequence_number>.snapshot" |
+| snapshot_hash | string | yes | SHA-256 hash of the snapshot file; "sha256:" + 64 lowercase hex chars |
+
+### Deferred payload schemas
+The following event types' payload schemas are owned by other frameworks and are deferred to those frameworks' specs:
+- `methylation_delta` → FMWK-002 (Write Path)
+- `suppression` → FMWK-002 (Write Path)
+- `unsuppression` → FMWK-002 (Write Path)
+- `mode_change` → FMWK-002 (Write Path)
+- `consolidation` → FMWK-002 (Write Path)
+- `work_order_transition` → FMWK-003 (Orchestration)
+- `intent_transition` → FMWK-021 (Intent)
+- `package_uninstall` → FMWK-006 (Package Lifecycle)
+- `framework_install` → FMWK-006 (Package Lifecycle)
+
+The Ledger accepts these payloads as opaque JSON objects, validates JSON serializability, and stores them without inspecting field content.
+
+---
+
+## Canonical JSON Serialization Constraint
+
+This is a data model invariant enforced by the Ledger on every append() and verify_chain() call:
+
+1. Start with the event dict containing all fields EXCEPT `hash`
+2. Serialize to JSON: sort all keys alphabetically at every nesting level; use separators=(',', ':') (no whitespace); ensure_ascii=False (literal UTF-8 characters, not \uNNNN escapes)
+3. Encode to UTF-8 bytes with no BOM
+4. Compute SHA-256 digest
+5. Store as "sha256:" + 64 lowercase hex characters
+
+Python reference implementation:
+```python
+import hashlib, json
+def canonical_hash(event_dict: dict) -> str:
+    d = {k: v for k, v in event_dict.items() if k != "hash"}
+    canonical = json.dumps(d, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    digest = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    return f"sha256:{digest}"
+```
+
+Additional rules:
+- Integer fields (sequence, snapshot_sequence) are bare digits: 0, 1, 42 (no decimal point)
+- Float values in payload do not exist in this schema — all numeric values that are floats (methylation, delta, base_weight) are stored as strings: "0.1", "0.0"
+- Null fields are included in serialization as `"field":null`, not omitted
+- The `hash` field is excluded from the serialization input and computed after all other fields are fixed
+
+---
+
+## EventType Enum
+
+Valid values for the `event_type` field in E-001 LedgerEvent:
+
+| Value | Owner Framework | Description |
+|-------|----------------|-------------|
+| node_creation | FMWK-001 (via FMWK-002) | New Graph node created |
+| signal_delta | FMWK-001 (via FMWK-002) | Signal increment/decrement on a Graph node |
+| methylation_delta | FMWK-002 | Direct methylation adjustment |
+| suppression | FMWK-002 | Graph node suppressed |
+| unsuppression | FMWK-002 | Graph node unsuppressed |
+| mode_change | FMWK-002 | Graph node mode changed |
+| consolidation | FMWK-002 | Graph nodes consolidated |
+| work_order_transition | FMWK-003 | Work order state changed |
+| intent_transition | FMWK-021 | Intent lifecycle state changed |
+| session_start | FMWK-001 | Session boundary — session started |
+| session_end | FMWK-001 | Session boundary — session ended |
+| package_install | FMWK-006 | Package installed via gates |
+| package_uninstall | FMWK-006 | Package uninstalled |
+| framework_install | FMWK-006 | Framework installed (gate-verified) |
+| snapshot_created | FMWK-001 | Snapshot of Graph state taken |
+
+---
 
 ## Entity Relationship Map
-```text
-E-003 Ledger Tip
-   ^
-   | identifies latest
-   |
-E-001 Ledger Event ---- contains ----> E-004 Provenance
-   |
-   +---- payload(event_type=node_creation) ----> E-005 Node Creation Payload
-   |
-   +---- payload(event_type=signal_delta) ----> E-006 Signal Delta Payload
-   |
-   +---- payload(event_type=package_install) -> E-007 Package Install Payload
-   |
-   +---- payload(event_type=session_start) ---> E-008 Session Start Payload
-   |
-   +---- payload(event_type=snapshot_created) -> E-009 Snapshot Created Payload
-   |
-   +---- participates in chain verification --> E-002 Verification Result
+
+```
+LedgerEvent (E-001)
+│
+├── provenance: Provenance (E-002)
+│   ├── framework_id: string
+│   ├── pack_id: string (optional)
+│   └── actor: enum {system, operator, agent}
+│
+├── payload: object (type-specific, see payload schemas)
+│
+├── previous_hash → hash of LedgerEvent[sequence-1]
+│                   (sha256:0000...0000 for genesis)
+│
+└── hash = SHA-256(canonical_json(event_without_hash))
+
+TipRecord (E-003)
+│
+├── sequence_number → LedgerEvent[sequence_number].sequence
+└── hash → LedgerEvent[sequence_number].hash
+
+ChainVerificationResult (E-004)
+│
+├── valid: boolean
+└── break_at: integer | null (sequence of first corrupted event)
 ```
 
+---
+
 ## Migration Notes
-No prior model — greenfield.
+
+No prior model — greenfield. FMWK-001-ledger is a KERNEL framework built from scratch. No migration from a prior data model is required.

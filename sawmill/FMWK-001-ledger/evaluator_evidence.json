@@ -1,50 +1,164 @@
 {
-  "run_id": "20260320T205424Z-45d3202a8b43",
-  "attempt": 2,
-  "holdout_hash": "sha256:0283f98318cbfa55bfc767896c987a1f4384bcb6a83419665b36636f4578e080",
-  "staging_hash": "sha256:0fb62e5bca70e8584ec9068c58c38be2861392dcd3ec9e44a1a3b76777cf635a",
+  "run_id": "20260321T054057Z-6d3169742c02",
+  "attempt": 1,
+  "holdout_hash": "sha256:4059d9b33f303c7f304123c36b217e287ce0c6aa2bbe1ae7d474c105432c0447",
+  "staging_hash": "sha256:5a1655eb54b35d61f6da555ccf0ae8ecfb64968fa9dc383799278bc85b23dffd",
   "scenarios": [
     {
       "scenario_id": "HS-001",
-      "scenario_slug": "genesis-append-populates-ledger-owned-fields",
       "priority": "P0",
+      "title": "Genesis append assigns sequence 0 with zero previous_hash",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_001.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-001.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-001.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-001.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-001.run3.json"
+      ],
       "run_results": ["PASS", "PASS", "PASS"],
-      "aggregate_result": "PASS",
-      "failure_detail": null
+      "aggregate_result": "PASS"
     },
     {
       "scenario_id": "HS-002",
-      "scenario_slug": "sequential-append-read-replay-and-tip-remain-linear",
       "priority": "P0",
-      "run_results": ["FAIL", "FAIL", "FAIL"],
-      "aggregate_result": "FAIL",
-      "failure_detail": "schemas.py validate_payload(\"node_creation\") rejects holdout payload — requires initial_state (Mapping) but holdout provides {node_id, node_type, subject_id} only"
-    },
-    {
-      "scenario_id": "HS-004",
-      "scenario_slug": "verify-chain-reports-first-corruption-boundary",
-      "priority": "P0",
-      "run_results": ["FAIL", "FAIL", "FAIL"],
-      "aggregate_result": "FAIL",
-      "failure_detail": "schemas.py validate_payload(\"package_install\") rejects holdout payload — requires framework_id/install_scope/manifest_hash but holdout provides {package_id, version, action} only"
-    },
-    {
-      "scenario_id": "HS-005",
-      "scenario_slug": "append-and-tip-fail-with-contract-shaped-errors",
-      "priority": "P0",
+      "title": "Sequential appends form an unbroken hash chain",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_002.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-002.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-002.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-002.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-002.run3.json"
+      ],
       "run_results": ["PASS", "PASS", "PASS"],
-      "aggregate_result": "PASS",
-      "failure_detail": null
+      "aggregate_result": "PASS"
     },
     {
       "scenario_id": "HS-003",
-      "scenario_slug": "online-and-offline-verification-agree-on-intact-ledger",
+      "priority": "P0",
+      "title": "Read operations return complete events in correct order",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_003.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-003.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-003.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-003.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-003.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-004",
+      "priority": "P0",
+      "title": "Tip reflects empty-ledger sentinel and advances after each append",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_004.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-004.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-004.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-004.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-004.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-005",
+      "priority": "P0",
+      "title": "Hash chain verification detects intact chain and locates corruption",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_005.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-005.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-005.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-005.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-005.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-006",
       "priority": "P1",
-      "run_results": ["FAIL", "FAIL", "FAIL"],
-      "aggregate_result": "FAIL",
-      "failure_detail": "schemas.py validate_payload(\"package_install\") rejects holdout payload — same root cause as HS-004"
+      "title": "immudb unreachable on append raises LedgerConnectionError and leaves state unchanged",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_006.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-006.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-006.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-006.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-006.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-007",
+      "priority": "P1",
+      "title": "Concurrent append raises LedgerSequenceError and creates no fork",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_007.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-007.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-007.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-007.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-007.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-008",
+      "priority": "P0",
+      "title": "Cold-storage offline verification produces identical results to online verification",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_008.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-008.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-008.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-008.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-008.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-009",
+      "priority": "P1",
+      "title": "Non-serializable payload raises LedgerSerializationError before any write",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_009.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-009.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-009.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-009.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-009.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-010",
+      "priority": "P1",
+      "title": "Out-of-range and negative sequence reads raise LedgerSequenceError",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_010.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-010.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-010.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-010.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-010.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-011",
+      "priority": "P0",
+      "title": "Multi-type append sequence with bulk read and end-to-end chain verification",
+      "generated_test_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/test_hs_011.py",
+      "mapping_path": "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-011.mapping.md",
+      "run_output_paths": [
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-011.run1.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-011.run2.json",
+        "runs/20260321T054057Z-6d3169742c02/eval_tests/attempt1/HS-011.run3.json"
+      ],
+      "run_results": ["PASS", "PASS", "PASS"],
+      "aggregate_result": "PASS"
     }
   ],
-  "verdict": "FAIL",
-  "pass_rate": 40.0
+  "verdict": "PASS",
+  "pass_rate": 100.0
 }

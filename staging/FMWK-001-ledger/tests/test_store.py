@@ -1,448 +1,179 @@
-from ledger.errors import (
-    LEDGER_CONNECTION_ERROR,
-    LEDGER_CORRUPTION_ERROR,
-    LEDGER_SEQUENCE_ERROR,
-    LEDGER_SERIALIZATION_ERROR,
-    LedgerConnectionError,
-    LedgerCorruptionError,
-    LedgerSequenceError,
-    LedgerSerializationError,
-)
-from ledger.models import LedgerEvent, LedgerTip, Provenance, VerificationResult
-from ledger.schemas import validate_append_request
-from ledger.serialization import ZERO_HASH
-from ledger.store import ClientDisconnectError, DatabaseMissingError, LedgerStore
-
-
-def _request(event_type: str, payload: dict) -> dict:
-    return {
-        "event_type": event_type,
-        "schema_version": "1.0.0",
-        "timestamp": "2026-03-20T20:20:00Z",
-        "provenance": {
-            "framework_id": "FMWK-001-ledger",
-            "pack_id": "PC-001-ledger-core",
-            "actor": "system",
-        },
-        "payload": payload,
-    }
-
-
-class FakeImmudbClient:
-    def __init__(
-        self,
-        *,
-        database_exists: bool = True,
-        fail_get: int = 0,
-        fail_set: int = 0,
-    ) -> None:
-        self.database_exists = database_exists
-        self.fail_get = fail_get
-        self.fail_set = fail_set
-        self.records: dict[str, bytes] = {}
-
-    def ensure_database(self) -> None:
-        if not self.database_exists:
-            raise DatabaseMissingError("ledger database missing")
-
-    def get(self, key: str) -> bytes:
-        if self.fail_get:
-            self.fail_get -= 1
-            raise ClientDisconnectError("get disconnected")
-        return self.records[key]
-
-    def set(self, key: str, value: bytes) -> None:
-        if self.fail_set:
-            self.fail_set -= 1
-            raise ClientDisconnectError("set disconnected")
-        self.records[key] = value
-
-    def keys(self) -> list[str]:
-        return sorted(self.records.keys())
-
-
-def test_model_construction_accepts_valid_ledger_event() -> None:
-    event = LedgerEvent(
-        event_id="0195b8d1-6d8d-7ef9-9c6a-4bd29ca2dce4",
-        sequence=0,
-        event_type="session_start",
-        schema_version="1.0.0",
-        timestamp="2026-03-20T20:20:00Z",
-        provenance=Provenance(
-            framework_id="FMWK-001-ledger",
-            pack_id="PC-001-ledger-core",
-            actor="system",
-        ),
-        previous_hash="sha256:" + ("0" * 64),
-        payload={
-            "session_id": "session-0195b8d1",
-            "session_kind": "operator",
-            "subject_id": "ray",
-            "started_by": "operator",
-        },
-        hash="sha256:b2bbde319c7c9677b6d6816d9b422c8ec9787c6d0ca7f64444f0715a8ca54ac8",
-    )
-
-    assert event.sequence == 0
-    assert event.provenance.framework_id == "FMWK-001-ledger"
-
-
-def test_model_construction_accepts_tip_and_verification_result() -> None:
-    tip = LedgerTip(
-        sequence_number=12,
-        hash="sha256:8b6e4791d3035430dc7f00692cfd0d2a59d789ab3ed86855f81044cd22fdfd4d",
-    )
-    result = VerificationResult(valid=False, start_sequence=0, end_sequence=5, break_at=3)
-
-    assert tip.sequence_number == 12
-    assert result.break_at == 3
-
-
-def test_error_codes_are_stable_for_each_framework_error() -> None:
-    assert LedgerConnectionError("connect failed").code == LEDGER_CONNECTION_ERROR
-    assert LedgerCorruptionError("chain broken").code == LEDGER_CORRUPTION_ERROR
-    assert LedgerSequenceError("tip changed").code == LEDGER_SEQUENCE_ERROR
-    assert LedgerSerializationError("bad bytes").code == LEDGER_SERIALIZATION_ERROR
-
-
-def test_error_messages_are_preserved() -> None:
-    error = LedgerSequenceError("tip changed during append")
-
-    assert str(error) == "tip changed during append"
-
-
-def test_append_rejects_caller_supplied_sequence_fields() -> None:
-    request = {
-        "event_type": "session_start",
-        "schema_version": "1.0.0",
-        "timestamp": "2026-03-20T20:20:00Z",
-        "sequence": 7,
-        "provenance": {
-            "framework_id": "FMWK-001-ledger",
-            "pack_id": "PC-001-ledger-core",
-            "actor": "system",
-        },
-        "payload": {
-            "session_id": "session-0195b8d1",
-            "session_kind": "operator",
-            "subject_id": "ray",
-            "started_by": "operator",
-        },
-    }
-
-    try:
-        validate_append_request(request)
-    except LedgerSerializationError as error:
-        assert error.code == LEDGER_SERIALIZATION_ERROR
-        assert "sequence" in str(error)
-    else:
-        raise AssertionError("expected serialization error")
-
-
-def test_append_validates_minimum_node_creation_payload() -> None:
-    validate_append_request(
-        {
-            "event_type": "node_creation",
-            "schema_version": "1.0.0",
-            "timestamp": "2026-03-20T20:20:00Z",
-            "provenance": {
-                "framework_id": "FMWK-001-ledger",
-                "pack_id": "PC-001-ledger-core",
-                "actor": "system",
-            },
-            "payload": {
-                "node_id": "intent-0195b8d1",
-                "node_type": "intent",
-                "initial_state": {"status": "DECLARED"},
-                "associated_entities": ["session-0195b8d1"],
-                "session_id": "session-0195b8d1",
-            },
-        }
-    )
-
-
-def test_append_validates_minimum_signal_delta_payload() -> None:
-    validate_append_request(
-        {
-            "event_type": "signal_delta",
-            "schema_version": "1.0.0",
-            "timestamp": "2026-03-20T20:20:00Z",
-            "provenance": {
-                "framework_id": "FMWK-001-ledger",
-                "pack_id": "PC-001-ledger-core",
-                "actor": "system",
-            },
-            "payload": {
-                "node_id": "memory-0195b8d1",
-                "signal_name": "operator_reinforcement",
-                "delta": 1,
-                "reason": "operator confirmed importance",
-                "session_id": "session-0195b8d1",
-            },
-        }
-    )
-
-    invalid = {
-        "event_type": "signal_delta",
-        "schema_version": "1.0.0",
-        "timestamp": "2026-03-20T20:20:00Z",
-        "provenance": {
-            "framework_id": "FMWK-001-ledger",
-            "pack_id": "PC-001-ledger-core",
-            "actor": "system",
-        },
-        "payload": {
-            "node_id": "memory-0195b8d1",
-            "signal_name": "operator_reinforcement",
-            "delta": 1.5,
-        },
-    }
-
-    try:
-        validate_append_request(invalid)
-    except LedgerSerializationError as error:
-        assert "delta" in str(error)
-    else:
-        raise AssertionError("expected serialization error")
-
-
-def test_append_validates_minimum_package_install_payload() -> None:
-    validate_append_request(
-        {
-            "event_type": "package_install",
-            "schema_version": "1.0.0",
-            "timestamp": "2026-03-20T20:20:00Z",
-            "provenance": {
-                "framework_id": "FMWK-001-ledger",
-                "pack_id": "PC-001-ledger-core",
-                "actor": "system",
-            },
-            "payload": {
-                "package_id": "PKG-0001-kernel",
-                "framework_id": "FMWK-001-ledger",
-                "version": "1.0.0",
-                "install_scope": "kernel",
-                "manifest_hash": "sha256:06dfb23ab8cf9c6621fe58f465bf6f6a2e4698af1c8d8de7c093b2b26a3e5fb7",
-            },
-        }
-    )
-
-
-def test_append_validates_minimum_session_start_payload() -> None:
-    validate_append_request(
-        {
-            "event_type": "session_start",
-            "schema_version": "1.0.0",
-            "timestamp": "2026-03-20T20:20:00Z",
-            "provenance": {
-                "framework_id": "FMWK-001-ledger",
-                "pack_id": "PC-001-ledger-core",
-                "actor": "system",
-            },
-            "payload": {
-                "session_id": "session-0195b8d1",
-                "session_kind": "operator",
-                "subject_id": "ray",
-                "started_by": "operator",
-            },
-        }
-    )
-
-
-def test_append_validates_snapshot_created_reference_payload() -> None:
-    validate_append_request(
-        {
-            "event_type": "snapshot_created",
-            "schema_version": "1.0.0",
-            "timestamp": "2026-03-20T20:20:00Z",
-            "provenance": {
-                "framework_id": "FMWK-001-ledger",
-                "pack_id": "PC-001-ledger-core",
-                "actor": "system",
-            },
-            "payload": {
-                "snapshot_sequence": 42,
-                "snapshot_path": "/snapshots/42.snapshot",
-                "snapshot_hash": "sha256:5c1f3ed4c95346f1dc3ddca6ca9ea6240cfa0b8455174a8c4363130f0f2387cc",
-            },
-        }
-    )
-
-
-def test_append_genesis_assigns_sequence_zero_and_zero_previous_hash() -> None:
-    store = LedgerStore(client_factory=lambda: FakeImmudbClient(), sleep=lambda _: None)
-
-    event = store.append_event(
-        _request(
-            "session_start",
-            {
-                "session_id": "session-0195b8d1",
-                "session_kind": "operator",
-                "subject_id": "ray",
-                "started_by": "operator",
-            },
-        )
-    )
-
-    assert event.sequence == 0
-    assert event.previous_hash == ZERO_HASH
-
-
-def test_append_uses_previous_tip_hash_and_next_sequence() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    first = store.append_event(
-        _request(
-            "session_start",
-            {
-                "session_id": "session-1",
-                "session_kind": "operator",
-                "subject_id": "ray",
-                "started_by": "operator",
-            },
-        )
-    )
-
-    second = store.append_event(
-        _request(
-            "signal_delta",
-            {
-                "node_id": "memory-0195b8d1",
-                "signal_name": "operator_reinforcement",
-                "delta": 1,
-            },
-        )
-    )
-
-    assert second.sequence == 1
-    assert second.previous_hash == first.hash
-
-
-def test_read_returns_single_event_by_sequence() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    event = store.append_event(
-        _request(
-            "session_start",
-            {
-                "session_id": "session-1",
-                "session_kind": "operator",
-                "subject_id": "ray",
-                "started_by": "operator",
-            },
-        )
-    )
-
-    assert store.read(event.sequence) == event
-
-
-def test_read_range_returns_ascending_inclusive_sequence_order() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    store.append_event(_request("session_start", {"session_id": "session-1", "session_kind": "operator", "subject_id": "ray", "started_by": "operator"}))
-    second = store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 1}))
-    third = store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 2}))
-
-    assert store.read_range(1, 2) == [second, third]
-
-
-def test_read_since_excludes_boundary_sequence() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    store.append_event(_request("session_start", {"session_id": "session-1", "session_kind": "operator", "subject_id": "ray", "started_by": "operator"}))
-    second = store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 1}))
-    third = store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 2}))
-
-    assert store.read_since(1) == [third]
-    assert store.read_since(-1) == [store.read(0), second, third]
-
-
-def test_get_tip_returns_latest_sequence_and_hash() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    store.append_event(_request("session_start", {"session_id": "session-1", "session_kind": "operator", "subject_id": "ray", "started_by": "operator"}))
-    second = store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 1}))
-
-    assert store.get_tip() == LedgerTip(sequence_number=1, hash=second.hash)
-
-
-def test_append_rejects_tip_mismatch_with_sequence_error() -> None:
-    client = FakeImmudbClient()
-    store = LedgerStore(client_factory=lambda: client, sleep=lambda _: None)
-    store.append_event(_request("session_start", {"session_id": "session-1", "session_kind": "operator", "subject_id": "ray", "started_by": "operator"}))
-
-    def mutate_tip() -> None:
-        rogue = store._build_event(  # noqa: SLF001
-            _request("signal_delta", {"node_id": "memory-rogue", "signal_name": "operator_reinforcement", "delta": 9}),
-            sequence=1,
-            previous_hash=store.get_tip().hash,
-        )
-        client.set(store._key_for_sequence(1), store._encode_event(rogue))  # noqa: SLF001
-
-    store.before_commit = mutate_tip
-
-    try:
-        store.append_event(_request("signal_delta", {"node_id": "memory-1", "signal_name": "operator_reinforcement", "delta": 1}))
-    except LedgerSequenceError as error:
-        assert error.code == LEDGER_SEQUENCE_ERROR
-    else:
-        raise AssertionError("expected sequence error")
-
-
-def test_connect_fails_fast_when_database_absent() -> None:
-    store = LedgerStore(client_factory=lambda: FakeImmudbClient(database_exists=False), sleep=lambda _: None)
-
-    try:
-        store.get_tip()
-    except LedgerConnectionError as error:
-        assert error.code == LEDGER_CONNECTION_ERROR
-    else:
-        raise AssertionError("expected connection error")
-
-
-def test_disconnect_retries_once_then_succeeds() -> None:
-    clients = [FakeImmudbClient(fail_set=1), FakeImmudbClient()]
-
-    def factory() -> FakeImmudbClient:
-        return clients.pop(0)
-
-    store = LedgerStore(client_factory=factory, sleep=lambda _: None)
-    event = store.append_event(
-        _request(
-            "session_start",
-            {
-                "session_id": "session-1",
-                "session_kind": "operator",
-                "subject_id": "ray",
-                "started_by": "operator",
-            },
-        )
-    )
-
-    assert event.sequence == 0
-
-
-def test_disconnect_retries_once_then_fails() -> None:
-    clients = [FakeImmudbClient(fail_set=1), FakeImmudbClient(fail_set=1)]
-
-    def factory() -> FakeImmudbClient:
-        return clients.pop(0)
-
-    store = LedgerStore(client_factory=factory, sleep=lambda _: None)
-
-    try:
-        store.append_event(
-            _request(
-                "session_start",
-                {
-                    "session_id": "session-1",
-                    "session_kind": "operator",
-                    "subject_id": "ray",
-                    "started_by": "operator",
-                },
-            )
-        )
-    except LedgerConnectionError as error:
-        assert error.code == LEDGER_CONNECTION_ERROR
-    else:
-        raise AssertionError("expected connection error")
+"""
+test_store.py — Tests for ImmudbStore / MockImmudbStore interface.
+
+All tests use MockImmudbStore (from conftest.py) — no live immudb required.
+MockImmudbStore implements the same interface contract as ImmudbStore; these
+tests verify that the mock behaves correctly, which enables the API tests
+(test_api.py) to trust the mock's behavior.
+
+≥10 tests required.
+"""
+import threading
+import pytest
+
+from ledger.errors import LedgerConnectionError, LedgerSequenceError
+
+# MockImmudbStore is imported from conftest (fixtures)
+# For direct use in tests without fixtures, import from conftest module
+from conftest import MockImmudbStore
+
+
+# ---------------------------------------------------------------------------
+# connect() tests
+# ---------------------------------------------------------------------------
+
+def test_connect_fails_if_database_missing():
+    """connect() raises LedgerConnectionError when database is absent (D6 CLR-001)."""
+    store = MockImmudbStore(has_database=False)
+    with pytest.raises(LedgerConnectionError) as exc_info:
+        store.connect()
+    assert exc_info.value.code == "LEDGER_CONNECTION_ERROR"
+
+
+def test_connect_succeeds_with_database_present():
+    """connect() returns without error when database is present."""
+    store = MockImmudbStore(has_database=True)
+    store.connect()  # must not raise
+    assert store._connected is True
+
+
+# ---------------------------------------------------------------------------
+# set() and get() tests
+# ---------------------------------------------------------------------------
+
+def test_set_and_get_roundtrip(mock_store):
+    """set() then get() must return the same bytes."""
+    key = "00000000000000000000"
+    value = b'{"event_type":"session_start"}'
+    mock_store.set(key, value)
+    result = mock_store.get(key)
+    assert result == value
+
+
+def test_get_missing_key_raises_sequence_error(mock_store):
+    """get() on a key that does not exist raises LedgerSequenceError."""
+    with pytest.raises(LedgerSequenceError) as exc_info:
+        mock_store.get("99999999999999999999")
+    assert exc_info.value.code == "LEDGER_SEQUENCE_ERROR"
+
+
+def test_set_connection_failure_raises_connection_error():
+    """set() raises LedgerConnectionError when all writes are configured to fail."""
+    store = MockImmudbStore(fail_all_sets=True)
+    store.connect()
+    with pytest.raises(LedgerConnectionError) as exc_info:
+        store.set("00000000000000000000", b"data")
+    assert exc_info.value.code == "LEDGER_CONNECTION_ERROR"
+
+
+def test_set_retry_succeeds_on_second_attempt():
+    """
+    After a first failure, set() succeeds on the second attempt.
+    Validates the mock supports fail-once simulation for retry tests in test_api.py.
+    """
+    store = MockImmudbStore()
+    store.connect()
+    store._fail_next_n_sets = 1  # first set raises, second succeeds
+
+    with pytest.raises(LedgerConnectionError):
+        store.set("00000000000000000000", b"data1")
+
+    # Second call succeeds (fail counter exhausted)
+    store.set("00000000000000000000", b"data1")
+    assert store.get_count() == 1
+
+
+def test_set_state_unchanged_after_connection_failure():
+    """
+    A failed set() must leave the store unchanged.
+    get_count() is unchanged; the key is not present.
+    """
+    store = MockImmudbStore(fail_all_sets=True)
+    store.connect()
+
+    initial_count = store.get_count()
+    with pytest.raises(LedgerConnectionError):
+        store.set("00000000000000000000", b"data")
+
+    assert store.get_count() == initial_count
+    with pytest.raises(LedgerSequenceError):
+        store.get("00000000000000000000")
+
+
+# ---------------------------------------------------------------------------
+# scan() tests
+# ---------------------------------------------------------------------------
+
+def test_scan_returns_ascending_order(mock_store):
+    """
+    scan() returns values in ascending lexicographic key order.
+    Since keys are zero-padded 20-char sequences, this equals ascending numeric order.
+    """
+    mock_store.set("00000000000000000000", b"seq0")
+    mock_store.set("00000000000000000002", b"seq2")
+    mock_store.set("00000000000000000001", b"seq1")
+
+    results = mock_store.scan("00000000000000000000", "00000000000000000002")
+    assert results == [b"seq0", b"seq1", b"seq2"]
+
+
+def test_scan_end_exclusive_filtering(mock_store):
+    """scan() includes start and end keys (inclusive on both ends)."""
+    mock_store.set("00000000000000000000", b"seq0")
+    mock_store.set("00000000000000000001", b"seq1")
+    mock_store.set("00000000000000000002", b"seq2")
+
+    # Range [0, 1] returns only seq0 and seq1, not seq2
+    results = mock_store.scan("00000000000000000000", "00000000000000000001")
+    assert results == [b"seq0", b"seq1"]
+
+
+# ---------------------------------------------------------------------------
+# get_count() tests
+# ---------------------------------------------------------------------------
+
+def test_get_count_zero_on_empty(mock_store):
+    """Fresh store has count 0."""
+    assert mock_store.get_count() == 0
+
+
+def test_get_count_increments_after_set(mock_store):
+    """After set() with one key, get_count() returns 1."""
+    mock_store.set("00000000000000000000", b"data")
+    assert mock_store.get_count() == 1
+
+
+def test_get_count_multiple_sets(mock_store):
+    """get_count() tracks all keys."""
+    for i in range(5):
+        mock_store.set(f"{i:020d}", f"data{i}".encode())
+    assert mock_store.get_count() == 5
+
+
+# ---------------------------------------------------------------------------
+# threading / lock tests
+# ---------------------------------------------------------------------------
+
+def test_lock_serializes_concurrent_sets(mock_store):
+    """
+    Two threads calling set() with different keys simultaneously must both
+    complete; get_count() == 2; no exceptions raised.
+    This tests basic thread-safety of the MockImmudbStore dict operations.
+    """
+    errors = []
+
+    def do_set(key, value):
+        try:
+            mock_store.set(key, value)
+        except Exception as e:
+            errors.append(e)
+
+    t1 = threading.Thread(target=do_set, args=("00000000000000000000", b"v0"))
+    t2 = threading.Thread(target=do_set, args=("00000000000000000001", b"v1"))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert errors == [], f"Unexpected errors: {errors}"
+    assert mock_store.get_count() == 2

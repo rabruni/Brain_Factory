@@ -1,105 +1,148 @@
-# D2: Specification — FMWK-001-ledger
-Meta: pkg:FMWK-001-ledger | v:1.0.0 | status:Final | author:spec-agent | sources:architecture/NORTH_STAR.md, architecture/BUILDER_SPEC.md, architecture/OPERATIONAL_SPEC.md, architecture/FWK-0-DRAFT.md, architecture/BUILD-PLAN.md, sawmill/FMWK-001-ledger/TASK.md, sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md | constitution:D1_CONSTITUTION.md
+# D2: Specification — Ledger (FMWK-001)
+Meta: pkg:FMWK-001-ledger | v:1.0.0 | status:Final | author:spec-agent | sources:BUILDER_SPEC.md v3.0, NORTH_STAR.md v3.0, FWK-0-DRAFT.md v1.0.0, SOURCE_MATERIAL.md | constitution:D1 v1.0.0
+
+---
 
 ## Purpose
-FMWK-001 provides the append-only, hash-chained event store that acts as the sole source of truth for DoPeJarMo state. It owns the canonical event envelope, deterministic sequence assignment, ordered replay, and mechanical chain verification so every acknowledged mutation can be replayed and validated from cold storage without relying on cognitive runtime services.
+
+The Ledger is the append-only, hash-chained event store for DoPeJarMo. It is the sole source of truth for all system state. Every mutation in the system is recorded as a Ledger event — node creations, signal deltas, mode changes, work order transitions, session boundaries, and package installs all enter the system as Ledger events. The in-memory Graph (FMWK-005) is derived entirely from Ledger replay: destroy the Graph, rebuild it by reading the Ledger from genesis (or from the last snapshot plus subsequent events). The Ledger provides durable, ordered, tamper-evident storage backed by immudb, with cryptographic integrity verification runnable from cold storage using only the immudb data volume and no other running services.
+
+---
 
 ## NOT
-- FMWK-001-ledger is NOT the Write Path. It does not fold events into Graph state or compute methylation.
-- FMWK-001-ledger is NOT the Graph. It does not execute queries over resolved runtime state.
-- FMWK-001-ledger is NOT Package Lifecycle. It does not run gates or decide install validity.
-- FMWK-001-ledger is NOT infrastructure provisioning. It does not create the `ledger` database during runtime connect.
-- FMWK-001-ledger is NOT a business logic engine. It does not interpret event meaning beyond envelope validation and chain integrity.
+
+- The Ledger is NOT a query database. It does not support filtering by payload fields, text search, aggregation, or any query beyond retrieval by sequence number or sequence range.
+- The Ledger is NOT a message queue. It does not push events to consumers. Consumers pull events by sequence number via read(), read_range(), or read_since().
+- The Ledger is NOT responsible for fold logic, signal accumulation, or Graph construction. It stores events; FMWK-002 (Write Path) reads them and folds them into the Graph.
+- The Ledger is NOT responsible for gate validation or package lifecycle management. It stores package_install and framework_install events; FMWK-006 (Package Lifecycle) runs the gates before those events are written.
+- The Ledger is NOT responsible for work order state management or orchestration. It stores work_order_transition events; FMWK-003 (Orchestration) manages the work order lifecycle.
+- The Ledger is NOT responsible for creating or initializing the immudb database. Database provisioning is a bootstrap operation; the Ledger's connect() fails fast if the database does not exist.
+- The Ledger is NOT a snapshot store. It records that a snapshot was taken (snapshot_created event); the snapshot files themselves are stored separately and owned by FMWK-005 (Graph).
+
+---
 
 ## Scenarios
+
 ### Primary
-#### SC-001
-- Priority: P0(blocker)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Observable hash chain behaviors"; BUILDER_SPEC.md Ledger primitive
-- GIVEN an empty ledger WHEN the first event is appended THEN the ledger assigns `sequence = 0`, sets `previous_hash` to `sha256:` plus 64 zeros, computes the event hash from canonical JSON, and persists the event synchronously.
-- Testing Approach: Integration test against a clean ledger plus fixture assertion on assigned sequence, previous hash, and hash format.
 
-#### SC-002
-- Priority: P0(blocker)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Sequence numbering" and "Observable hash chain behaviors"
-- GIVEN a ledger with an existing tip WHEN a new event is appended THEN the ledger reads the current tip atomically, assigns the next global sequence, copies the prior event hash into `previous_hash`, computes the new hash, and persists exactly one new event.
-- Testing Approach: Sequential append test with deterministic fixtures and immudb-backed persistence verification.
+#### SC-001 — Append first event (genesis)
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (hash chain section), BUILDER_SPEC.md §Ledger
+- GIVEN an empty Ledger (no events yet appended) WHEN append() is called with a valid node_creation event THEN the Ledger assigns sequence=0 AND sets previous_hash=sha256:0000000000000000000000000000000000000000000000000000000000000000 AND computes hash=SHA-256 of the canonical JSON (hash field excluded) AND persists the event to immudb AND returns sequence_number=0
+- Testing Approach: Unit test with MockProvider. Verify sequence_number=0, previous_hash=sha256+64zeros, hash computed correctly, get_tip() returns {sequence_number:0, hash:<correct_hash>}.
 
-#### SC-003
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Event Schema" and "immudb Integration"
-- GIVEN an append request for a supported event type WHEN the request omits ledger-owned fields THEN the ledger validates the envelope, fills ledger-owned fields, and stores a self-describing event containing event type, schema version, provenance, payload, previous hash, and computed hash.
-- Testing Approach: Contract tests for request/response shape and stored event shape using minimum payload schemas for `node_creation`, `signal_delta`, `package_install`, and `session_start`.
+#### SC-002 — Append subsequent event (chain continuation)
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (hash chain section), BUILDER_SPEC.md §Ledger
+- GIVEN a Ledger with N events (sequence 0 through N-1, tip.sequence_number=N-1) WHEN append() is called with a valid event THEN the Ledger assigns sequence=N AND sets previous_hash=hash_of_event_at_sequence_N-1 AND computes hash=SHA-256 of canonical JSON (hash excluded) AND persists the event AND returns sequence_number=N AND get_tip() returns {sequence_number:N, hash:<hash_of_new_event>}
+- Testing Approach: Append 5 events sequentially. Verify each gets sequence 0,1,2,3,4. Verify each event's previous_hash equals the hash of the preceding event.
 
-#### SC-004
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "immudb Integration"
-- GIVEN a stored ledger WHEN a caller requests `read`, `read_range`, or `read_since` THEN the ledger returns events in ascending sequence order without altering the stored payload bytes.
-- Testing Approach: Integration test with fixture events covering single read, bounded range read, and replay-after-sequence behavior.
+#### SC-003 — Read event by sequence number
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (interface section)
+- GIVEN a Ledger with events at sequences 0 through 10 WHEN read(5) is called THEN returns the complete LedgerEvent stored at sequence 5 with all fields: event_id, sequence=5, event_type, schema_version, timestamp, provenance, previous_hash, payload, hash
+- Testing Approach: Append events, read back specific sequences, compare all fields.
 
-#### SC-005
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Observable hash chain behaviors" and OPERATIONAL_SPEC.md recovery sections
-- GIVEN a valid ledger WHEN `verify_chain` runs online or against exported ledger data offline THEN the ledger recomputes canonical SHA-256 hashes for each event in order and returns `valid=true` when the chain is intact.
-- Testing Approach: Dual-path verification test comparing online and offline results over the same exported event set.
+#### SC-004 — Read range of events
+- Priority: P1 (must)
+- Source: SOURCE_MATERIAL.md (interface section)
+- GIVEN a Ledger with events at sequences 0 through 10 WHEN read_range(3, 7) is called THEN returns exactly 5 events, at sequences 3,4,5,6,7 in ascending order, with all fields intact
+- Testing Approach: Append 11 events, read_range(3,7), verify count=5, sequences=[3,4,5,6,7], events are in order.
 
-#### SC-006
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "immudb Integration"
-- GIVEN a non-empty ledger WHEN `get_tip` is requested THEN the ledger returns the latest sequence number and hash as the authoritative append point for the next write.
-- Testing Approach: Integration test after multiple appends verifying exact latest sequence/hash pair.
+#### SC-005 — Read all events since a sequence number
+- Priority: P1 (must)
+- Source: SOURCE_MATERIAL.md (interface section)
+- GIVEN a Ledger with events at sequences 0 through 10 WHEN read_since(5) is called THEN returns exactly 5 events at sequences 6,7,8,9,10 in ascending order
+- Testing Approach: Append 11 events, read_since(5), verify count=5, sequences=[6,7,8,9,10].
 
-#### SC-007
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Snapshots"
-- GIVEN a snapshot reference event request WHEN a snapshot is recorded THEN the ledger stores a `snapshot_created` event whose payload contains the snapshot file hash and snapshot sequence reference, while leaving snapshot file contents to the graph-owned snapshot format.
-- Testing Approach: Contract test on `snapshot_created` payload schema and replay boundary behavior using a simulated snapshot reference.
+#### SC-006 — Get tip (latest sequence and hash)
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (interface section)
+- GIVEN a Ledger with events at sequences 0 through N WHEN get_tip() is called THEN returns TipRecord with sequence_number=N and hash=hash_of_event_at_sequence_N AND a subsequent append followed by get_tip() returns sequence_number=N+1
+- Testing Approach: Append events, call get_tip() after each, verify sequence_number and hash match the last appended event.
+
+---
 
 ### Edge Cases
-#### SC-008
-- Priority: P0(blocker)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Observable hash chain behaviors" and OPERATIONAL_SPEC.md failure matrix
-- GIVEN a ledger with a corrupted event WHEN `verify_chain` runs THEN the ledger returns `valid=false` and `break_at` equal to the first corrupted sequence and MUST NOT report success.
-- Testing Approach: Tampered fixture test with exact break-point assertion.
 
-#### SC-009
-- Priority: P0(blocker)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Sequence numbering"
-- GIVEN a concurrent append race or any tip mismatch WHEN the ledger cannot preserve a single linear next sequence THEN it rejects the append with `LedgerSequenceError` rather than creating a fork.
-- Testing Approach: Concurrency or fault-injection test that forces a tip mismatch and asserts explicit rejection.
+#### SC-007 — Verify intact hash chain
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (observable hash chain behaviors)
+- GIVEN a Ledger with 6 events at sequences 0 through 5, no corruption WHEN verify_chain(0, 5) is called THEN returns {valid: true, break_at: null}
+- Testing Approach: Append 6 clean events, verify_chain(0,5), assert result.valid=True, result.break_at=None.
 
-#### SC-010
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Database initialization" and "Connection handling"
-- GIVEN the `ledger` database is absent or immudb is unreachable WHEN the ledger connects or appends THEN it fails fast with `LedgerConnectionError`, may perform one reconnect retry on disconnect, and MUST NOT provision the database during runtime.
-- Testing Approach: Connection-failure integration test covering absent database, disconnect/retry-once, and final failure surface.
+#### SC-008 — Detect corruption at specific sequence
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (observable hash chain behaviors)
+- GIVEN a Ledger with events at sequences 0 through 9 where the event at sequence 3 has been corrupted (its stored hash no longer matches a recomputed SHA-256 of its canonical JSON) WHEN verify_chain() is called with no arguments THEN returns {valid: false, break_at: 3}
+- Testing Approach: In test harness, inject a corrupted event. Call verify_chain(). Assert result.valid=False, result.break_at=3.
 
-#### SC-011
-- Priority: P1(must)
-- Source: sawmill/FMWK-001-ledger/SOURCE_MATERIAL.md "Canonical JSON rules" and "Error types"
-- GIVEN an event cannot be serialized under the canonical UTF-8 JSON rules WHEN append or verify requires hash input bytes THEN the ledger fails with `LedgerSerializationError` and MUST NOT persist a partial event.
-- Testing Approach: Serialization failure fixture asserting no event is appended and the explicit error code is returned.
+#### SC-009 — Offline cold-storage verification
+- Priority: P0 (blocker)
+- Source: SOURCE_MATERIAL.md (observable hash chain behaviors), OPERATIONAL_SPEC.md Q3, D1 Article 8
+- GIVEN a Ledger with events 0 through N verified online WHEN verify_chain() is called from a CLI tool connecting directly to immudb (kernel process stopped) THEN returns the same {valid, break_at} result as the online verification
+- Testing Approach: Run verify_chain() online, stop kernel, run via CLI tool, compare results.
+
+#### SC-010 — immudb unreachable on append
+- Priority: P1 (must)
+- Source: SOURCE_MATERIAL.md (durability section), OPERATIONAL_SPEC.md Q4
+- GIVEN immudb is unreachable (connection refused or timeout) WHEN append() is called THEN raises LedgerConnectionError AND the Ledger state is unchanged (no partial write, tip unchanged, chain intact) AND the caller receives the error immediately after one reconnect attempt
+- Testing Approach: MockProvider simulates connection failure. Assert LedgerConnectionError raised. Assert get_tip() unchanged after failure.
+
+#### SC-011 — Concurrent append attempt (design violation)
+- Priority: P1 (must)
+- Source: SOURCE_MATERIAL.md (sequence numbering section)
+- GIVEN a single-writer architecture where concurrent append is a design violation WHEN two append() calls arrive concurrently (e.g., during a test of the in-process mutex) THEN exactly one append succeeds AND the other receives LedgerSequenceError AND the Ledger state contains exactly one new event (no fork, no duplicate sequence number, chain intact)
+- Testing Approach: Concurrent append via threading in unit test. Assert exactly one success, one LedgerSequenceError, get_tip().sequence_number incremented by exactly 1.
+
+---
 
 ## Deferred Capabilities
-### DEF-001
-- What: Full payload schema catalog for event types beyond `node_creation`, `signal_delta`, `package_install`, `session_start`, and the ledger-owned snapshot reference payload.
-- Why Deferred: Source material explicitly allows other payload schemas to be deferred to the frameworks that own those behaviors.
-- Trigger to add: When the owning framework reaches spec/build and needs its payload contract formalized.
-- Impact if never added: Cross-framework event validation remains incomplete for those event types until each owner specifies its payload.
 
-### DEF-002
-- What: Snapshot file content format.
-- Why Deferred: Source material marks snapshot format OPEN and ties the decision to FMWK-005 graph needs; ledger owns only the reference event, path convention, and replay boundary.
-- Trigger to add: FMWK-005 defines snapshot serialization for Graph state.
-- Impact if never added: Replay can still function from full ledger replay, but snapshot loading optimization cannot be standardized.
+**DEF-001 — Snapshot file format**
+- What: The binary/serialization format of snapshot files (JSON, protobuf, custom binary, etc.)
+- Why Deferred: Snapshot format depends on how FMWK-005 (Graph) structures its state. The Ledger's responsibility is only to record the snapshot_created event (with file hash); the format is FMWK-005's concern.
+- Trigger to add: FMWK-005 (Graph) spec is written and snapshot format is decided.
+- Impact if never added: Cold replay from genesis is always required; no snapshot-based startup optimization.
+
+**DEF-002 — Payload schemas for events owned by other frameworks**
+- What: Type-specific payload schemas for: methylation_delta, suppression, unsuppression, mode_change, consolidation, work_order_transition, intent_transition, package_uninstall, framework_install
+- Why Deferred: These events are owned by their respective frameworks (FMWK-002, FMWK-003, FMWK-006, FMWK-021). The Ledger accepts payload as an opaque JSON object and does not validate payload structure beyond JSON serializability.
+- Trigger to add: Each owning framework writes its spec.
+- Impact if never added: Those frameworks cannot be built until their payload schemas are defined.
+
+**DEF-003 — Read performance optimization**
+- What: Caching, secondary indexes, or range-read optimization for high-volume replay
+- Why Deferred: Initial scale does not require it. immudb's native scan is sufficient for KERNEL build.
+- Trigger to add: Replay time from genesis exceeds acceptable startup threshold (TBD operational threshold).
+- Impact if never added: Startup time grows linearly with Ledger size; acceptable for early builds.
+
+---
 
 ## Success Criteria
-- [ ] Ledger appends assign sequence numbers internally and never accept caller-supplied sequence values.
-- [ ] First-event and next-event append behaviors produce exact `previous_hash` and sequence outcomes.
-- [ ] Canonical event hashes are deterministic byte-for-byte across online and offline verification.
-- [ ] `read`, `read_range`, `read_since`, `get_tip`, and `verify_chain` operate over a linear ordered event stream.
-- [ ] Corruption, connection, sequence, and serialization failures surface as explicit ledger errors and do not create partial writes.
-- [ ] The ledger remains verifiable from exported data without Graph, HO1, HO2, or kernel runtime services.
+
+- [ ] append() returns monotonically increasing sequence numbers starting at 0
+- [ ] Every appended event's previous_hash equals the hash of the preceding event (or 64-zero hash for genesis)
+- [ ] Every appended event's hash equals SHA-256 of its canonical JSON (hash field excluded)
+- [ ] read(N) returns the complete event stored at sequence N
+- [ ] read_range(start, end) returns events in ascending order, inclusive bounds
+- [ ] read_since(N) returns events with sequence > N in ascending order
+- [ ] get_tip() returns correct sequence_number and hash of the latest event
+- [ ] verify_chain() returns {valid:true} for an intact chain
+- [ ] verify_chain() returns {valid:false, break_at:N} for a corrupted chain
+- [ ] verify_chain() produces identical results online and offline (CLI → immudb direct)
+- [ ] LedgerConnectionError raised when immudb unreachable; Ledger state unchanged
+- [ ] LedgerSequenceError raised on concurrent append; no fork created
+- [ ] LedgerSerializationError raised when event cannot be serialized to canonical JSON
+- [ ] No immudb administrative methods callable through Ledger interface
+- [ ] All unit tests pass with MockProvider (no live immudb required)
+
+---
 
 ## Clarifications
-All clarifications live in D6. Use pointers only: See D6 CLR-001, CLR-002, CLR-003.
+
+All clarifications live in D6. Use pointers only:
+- See D6 CLR-001 (database initialization separation)
+- See D6 CLR-002 (get_tip on empty ledger)
+- See D6 CLR-003 (float serialization in payload)
+- See D6 CLR-004 (read_range inclusive vs exclusive bounds)

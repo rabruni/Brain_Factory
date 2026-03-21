@@ -1,80 +1,108 @@
-"""Typed models for FMWK-001-ledger."""
+"""
+ledger.models — Data model for FMWK-001-ledger.
 
+Four @dataclass entities + EventType enum (15 values).
+All entities from D3 (E-001 through E-004).
+
+Canonical JSON note: null fields (pack_id=None) MUST appear as `"pack_id":null`
+in canonical JSON, NOT be omitted. This is enforced in serialization.py.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
-from typing import Any
+from enum import Enum
+from typing import Any, Dict, Optional
 
 
-HASH_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
-UUIDV7_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
+class EventType(str, Enum):
+    """
+    15 Ledger-owned event types. All state mutations in DoPeJarMo
+    enter the Ledger as one of these types (D3 / D4 EventType Enum).
+
+    Stored as string values in canonical JSON.
+    """
+    NODE_CREATION = "node_creation"
+    SIGNAL_DELTA = "signal_delta"
+    METHYLATION_DELTA = "methylation_delta"
+    SUPPRESSION = "suppression"
+    UNSUPPRESSION = "unsuppression"
+    MODE_CHANGE = "mode_change"
+    CONSOLIDATION = "consolidation"
+    WORK_ORDER_TRANSITION = "work_order_transition"
+    INTENT_TRANSITION = "intent_transition"
+    SESSION_START = "session_start"
+    SESSION_END = "session_end"
+    PACKAGE_INSTALL = "package_install"
+    PACKAGE_UNINSTALL = "package_uninstall"
+    FRAMEWORK_INSTALL = "framework_install"
+    SNAPSHOT_CREATED = "snapshot_created"
 
 
-def _require(condition: bool, message: str) -> None:
-    if not condition:
-        raise ValueError(message)
-
-
-@dataclass(frozen=True)
+@dataclass
 class Provenance:
+    """
+    E-002: Identifies the framework, pack, and actor responsible for an event.
+
+    Attributes:
+        framework_id: Required. E.g. "FMWK-002".
+        pack_id:      Optional. May be None.
+        actor:        Required. One of "system", "operator", "agent".
+    """
     framework_id: str
-    pack_id: str
     actor: str
-
-    def __post_init__(self) -> None:
-        _require(self.framework_id.startswith("FMWK-"), "framework_id must be a framework id")
-        _require(bool(self.pack_id), "pack_id must be non-empty")
-        _require(self.actor in {"system", "operator", "agent"}, "actor must be approved")
+    pack_id: Optional[str]
 
 
-@dataclass(frozen=True)
+@dataclass
 class LedgerEvent:
+    """
+    E-001: A single immutable event in the Ledger. All 9 fields required.
+
+    Fields assigned by the Ledger (not by the caller):
+        event_id, sequence, previous_hash, hash
+
+    Fields supplied by the caller (via event_data dict):
+        event_type, schema_version, timestamp, provenance, payload
+
+    Hash chain invariants:
+        event[0].previous_hash = "sha256:" + "0" * 64   (genesis sentinel)
+        event[N].previous_hash = event[N-1].hash
+        event[N].hash          = canonical_hash(event[N] without hash field)
+    """
     event_id: str
     sequence: int
-    event_type: str
+    event_type: str          # EventType enum value as string
     schema_version: str
-    timestamp: str
+    timestamp: str           # ISO-8601 UTC+Z, e.g. "2026-03-21T03:21:00Z"
     provenance: Provenance
-    previous_hash: str
-    payload: dict[str, Any]
-    hash: str
-
-    def __post_init__(self) -> None:
-        _require(UUIDV7_PATTERN.match(self.event_id) is not None, "event_id must be UUIDv7")
-        _require(self.sequence >= 0, "sequence must be >= 0")
-        _require(bool(self.event_type), "event_type must be non-empty")
-        _require(self.schema_version == "1.0.0", "schema_version must be 1.0.0")
-        _require(self.timestamp.endswith("Z"), "timestamp must be UTC ISO-8601")
-        _require(isinstance(self.provenance, Provenance), "provenance must be typed")
-        _require(HASH_PATTERN.match(self.previous_hash) is not None, "previous_hash must be sha256")
-        _require(isinstance(self.payload, dict), "payload must be an object")
-        _require(HASH_PATTERN.match(self.hash) is not None, "hash must be sha256")
+    previous_hash: str       # "sha256:" + 64 hex chars
+    payload: Dict[str, Any]
+    hash: str                # "sha256:" + 64 hex chars
 
 
-@dataclass(frozen=True)
-class VerificationResult:
+@dataclass
+class TipRecord:
+    """
+    E-003: The current tip of the Ledger (highest sequence and its hash).
+
+    Empty Ledger sentinel (D6 CLR-002):
+        TipRecord(sequence_number=-1, hash="sha256:" + "0" * 64)
+
+    This sentinel lets the Write Path compute next_sequence = -1 + 1 = 0
+    for the genesis event without a special case.
+    """
+    sequence_number: int     # -1 if Ledger is empty
+    hash: str                # "sha256:" + 64 hex chars
+
+
+@dataclass
+class ChainVerificationResult:
+    """
+    E-004: Result of verify_chain() or walk_chain().
+
+    Attributes:
+        valid:    True if every event's hash and previous_hash are correct.
+        break_at: None if valid; the LOWEST corrupted sequence number otherwise.
+    """
     valid: bool
-    start_sequence: int
-    end_sequence: int
-    break_at: int | None = None
-
-    def __post_init__(self) -> None:
-        _require(self.start_sequence >= 0, "start_sequence must be >= 0")
-        _require(self.end_sequence >= self.start_sequence, "end_sequence must be >= start_sequence")
-        if self.valid:
-            _require(self.break_at is None, "break_at must be omitted for valid results")
-        else:
-            _require(self.break_at is not None, "break_at is required for invalid results")
-
-
-@dataclass(frozen=True)
-class LedgerTip:
-    sequence_number: int
-    hash: str
-
-    def __post_init__(self) -> None:
-        _require(self.sequence_number >= 0, "sequence_number must be >= 0")
-        _require(HASH_PATTERN.match(self.hash) is not None, "hash must be sha256")
+    break_at: Optional[int]  # None when valid=True

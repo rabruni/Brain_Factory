@@ -1,61 +1,64 @@
-"""Canonical event serialization helpers for FMWK-001-ledger."""
+"""
+ledger.serialization — Canonical JSON serialization and SHA-256 hashing.
 
-from __future__ import annotations
+CRITICAL: The canonical JSON format is the foundation of the hash chain.
+Any deviation from this exact format breaks verify_chain() for all future
+events. Do NOT change without human approval (D1 ASK FIRST boundary).
 
-from dataclasses import asdict, is_dataclass
+D3 Canonical JSON Constraint + D4 SIDE-002:
+  json.dumps(d, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+  encoded as UTF-8 bytes, then SHA-256.
+
+Rules enforced here:
+  - sort_keys=True: deterministic key ordering (alphabetical)
+  - separators=(',', ':'): no whitespace in output
+  - ensure_ascii=False: literal UTF-8 chars (e.g. "café" not "\\u0063\\u0061\\u0066\\u00e9")
+  - Null fields included as "key":null, NOT omitted
+  - Float values in payloads MUST be passed as strings "0.1", not numbers 0.1
+    (D5 RQ-003 — cross-language IEEE 754 divergence breaks hash matching)
+  - The `hash` field is excluded when computing a new event's hash
+"""
 import hashlib
 import json
-from typing import Any, Mapping
+from typing import Any, Dict
 
-from ledger.errors import LedgerSerializationError
-
-
-ZERO_HASH = "sha256:" + ("0" * 64)
-HASH_PREFIX = "sha256:"
-BASE_ENVELOPE_FIELDS = {
-    "event_id",
-    "sequence",
-    "event_type",
-    "schema_version",
-    "timestamp",
-    "provenance",
-    "previous_hash",
-    "payload",
-}
+# Empty-Ledger sentinel hash: the genesis event's previous_hash (D6 CLR-002)
+GENESIS_PREVIOUS_HASH = "sha256:" + "0" * 64
 
 
-def _to_plain_data(event: Any) -> dict[str, Any]:
-    if is_dataclass(event):
-        data = asdict(event)
-    elif isinstance(event, Mapping):
-        data = dict(event)
-    else:
-        raise LedgerSerializationError("event must be a dataclass or mapping")
-    data.pop("hash", None)
-    return data
+def canonical_json(event_dict: Dict[str, Any]) -> str:
+    """
+    Serialize event_dict to canonical JSON string.
+
+    Guarantees:
+      - Keys sorted alphabetically at every nesting level
+      - No whitespace (compact separators)
+      - Literal UTF-8 characters (ensure_ascii=False)
+      - null values serialized as JSON null (not omitted)
+
+    Args:
+        event_dict: Any dict (may contain nested dicts, lists, nulls).
+
+    Returns:
+        Canonical JSON string.
+    """
+    return json.dumps(event_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _ensure_no_base_envelope_floats(data: Mapping[str, Any]) -> None:
-    for field in BASE_ENVELOPE_FIELDS:
-        if isinstance(data.get(field), float):
-            raise LedgerSerializationError(f"float values are not allowed in base envelope field {field}")
+def canonical_hash(event_dict: Dict[str, Any]) -> str:
+    """
+    Compute the SHA-256 hash of event_dict's canonical JSON representation,
+    EXCLUDING the 'hash' field (which would be circular).
 
+    Args:
+        event_dict: Full event dict. If 'hash' key is present, it is excluded
+                    from the serialization before hashing.
 
-def canonical_event_bytes(event: Any) -> bytes:
-    data = _to_plain_data(event)
-    _ensure_no_base_envelope_floats(data)
-    try:
-        return json.dumps(
-            data,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as error:
-        raise LedgerSerializationError(f"event cannot be serialized canonically: {error}") from error
-
-
-def compute_event_hash(event: Any) -> str:
-    digest = hashlib.sha256(canonical_event_bytes(event)).hexdigest()
-    return f"{HASH_PREFIX}{digest}"
+    Returns:
+        str: "sha256:" followed by 64 lowercase hex characters (71 chars total).
+    """
+    # Exclude the 'hash' field — it would be circular
+    d = {k: v for k, v in event_dict.items() if k != "hash"}
+    canonical_bytes = canonical_json(d).encode("utf-8")
+    digest = hashlib.sha256(canonical_bytes).hexdigest()
+    return "sha256:" + digest

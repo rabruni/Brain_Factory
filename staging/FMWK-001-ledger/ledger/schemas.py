@@ -1,102 +1,135 @@
-"""Append request and payload validation for FMWK-001-ledger."""
+"""
+ledger.schemas — Input validation for LedgerClient.append().
 
-from __future__ import annotations
+validate_event_data() is called BEFORE the write lock is acquired so that
+invalid input is rejected without touching Ledger state.
 
-import re
-from typing import Any, Mapping
+Required fields in event_data dict (fields assigned by Ledger are NOT required):
+  event_type   — string, must be one of the 15 EventType values
+  schema_version — string
+  timestamp      — string (ISO-8601 UTC+Z format)
+  provenance     — dict with framework_id (str) and actor (str; "system"|"operator"|"agent")
+  payload        — dict, must be JSON-serializable
+
+Raises:
+  LedgerSerializationError — any validation failure
+"""
+import json
+from typing import Any, Dict
 
 from ledger.errors import LedgerSerializationError
-from ledger.models import HASH_PATTERN, Provenance
+from ledger.models import EventType
+
+# Valid actor values for provenance
+_VALID_ACTORS = {"system", "operator", "agent"}
+
+# EventType valid values (by string value, not enum member name)
+_VALID_EVENT_TYPES = {et.value for et in EventType}
+
+# Required top-level keys in event_data
+_REQUIRED_KEYS = {"event_type", "schema_version", "timestamp", "provenance", "payload"}
+
+# Required keys in provenance sub-dict
+_REQUIRED_PROVENANCE_KEYS = {"framework_id", "actor"}
 
 
-SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
-SNAPSHOT_PATH_PATTERN = re.compile(r"^/snapshots/\d+\.snapshot$")
-APPROVED_EVENT_TYPES = {
-    "node_creation",
-    "signal_delta",
-    "package_install",
-    "session_start",
-    "snapshot_created",
-}
+def validate_event_data(event_data: Dict[str, Any]) -> None:
+    """
+    Validate event_data dict before appending to the Ledger.
 
+    Checks:
+      1. event_data is a dict
+      2. All required top-level keys are present
+      3. event_type is one of the 15 valid EventType values
+      4. provenance is a dict with framework_id and actor
+      5. actor is one of "system", "operator", "agent"
+      6. payload is a dict
+      7. payload is JSON-serializable (catches non-serializable Python objects)
+      8. schema_version and timestamp are non-empty strings
 
-def _fail(message: str) -> None:
-    raise LedgerSerializationError(message)
+    Args:
+        event_data: Dict supplied by the caller to LedgerClient.append().
 
+    Raises:
+        LedgerSerializationError: On any validation failure.
+    """
+    # 1. Must be a dict
+    if not isinstance(event_data, dict):
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"event_data must be a dict, got {type(event_data).__name__}",
+        )
 
-def _require(condition: bool, message: str) -> None:
-    if not condition:
-        _fail(message)
+    # 2. All required keys present
+    missing = _REQUIRED_KEYS - set(event_data.keys())
+    if missing:
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"Missing required field(s): {sorted(missing)}",
+        )
 
+    # 3. event_type must be a valid EventType value
+    event_type = event_data["event_type"]
+    if not isinstance(event_type, str) or event_type not in _VALID_EVENT_TYPES:
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=(
+                f"Invalid event_type: {event_type!r}. "
+                f"Must be one of {sorted(_VALID_EVENT_TYPES)}"
+            ),
+        )
 
-def _require_non_empty_string(value: Any, field: str) -> None:
-    _require(isinstance(value, str) and bool(value), f"{field} must be a non-empty string")
+    # 4. schema_version must be a non-empty string
+    schema_version = event_data["schema_version"]
+    if not isinstance(schema_version, str) or not schema_version.strip():
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"schema_version must be a non-empty string, got {schema_version!r}",
+        )
 
+    # 5. timestamp must be a non-empty string
+    timestamp = event_data["timestamp"]
+    if not isinstance(timestamp, str) or not timestamp.strip():
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"timestamp must be a non-empty string, got {timestamp!r}",
+        )
 
-def _require_hash(value: Any, field: str) -> None:
-    _require(isinstance(value, str) and HASH_PATTERN.match(value) is not None, f"{field} must be sha256 hash")
+    # 6. provenance must be a dict with required keys
+    provenance = event_data["provenance"]
+    if not isinstance(provenance, dict):
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"provenance must be a dict, got {type(provenance).__name__}",
+        )
+    missing_prov = _REQUIRED_PROVENANCE_KEYS - set(provenance.keys())
+    if missing_prov:
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"provenance missing required field(s): {sorted(missing_prov)}",
+        )
 
+    # 7. actor must be one of the valid values
+    actor = provenance["actor"]
+    if actor not in _VALID_ACTORS:
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"provenance.actor must be one of {sorted(_VALID_ACTORS)}, got {actor!r}",
+        )
 
-def validate_append_request(request: Mapping[str, Any]) -> None:
-    forbidden = {"sequence", "previous_hash", "hash"} & set(request.keys())
-    if forbidden:
-        _fail(f"caller must not supply {', '.join(sorted(forbidden))}")
+    # 8. payload must be a dict
+    payload = event_data["payload"]
+    if not isinstance(payload, dict):
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"payload must be a dict, got {type(payload).__name__}",
+        )
 
-    _require(request.get("event_type") in APPROVED_EVENT_TYPES, "event_type must be approved")
-    _require(request.get("schema_version") == "1.0.0", "schema_version must be 1.0.0")
-    _require_non_empty_string(request.get("timestamp"), "timestamp")
-    _require(str(request["timestamp"]).endswith("Z"), "timestamp must be UTC ISO-8601")
-    _require(isinstance(request.get("provenance"), Mapping), "provenance must be an object")
-    _require(isinstance(request.get("payload"), Mapping), "payload must be an object")
-
-    Provenance(**dict(request["provenance"]))
-    validate_payload(str(request["event_type"]), request["payload"])
-
-
-def validate_payload(event_type: str, payload: Mapping[str, Any]) -> None:
-    if event_type == "node_creation":
-        _require_non_empty_string(payload.get("node_id"), "node_id")
-        _require_non_empty_string(payload.get("node_type"), "node_type")
-        _require(isinstance(payload.get("initial_state"), Mapping), "initial_state must be an object")
-        associated = payload.get("associated_entities")
-        if associated is not None:
-            _require(isinstance(associated, list), "associated_entities must be an array")
-            _require(all(isinstance(item, str) and bool(item) for item in associated), "associated_entities entries must be strings")
-        session_id = payload.get("session_id")
-        if session_id is not None:
-            _require_non_empty_string(session_id, "session_id")
-        return
-
-    if event_type == "signal_delta":
-        _require_non_empty_string(payload.get("node_id"), "node_id")
-        _require_non_empty_string(payload.get("signal_name"), "signal_name")
-        delta = payload.get("delta")
-        _require(isinstance(delta, int) and not isinstance(delta, bool) and delta != 0, "delta must be non-zero integer")
-        if "reason" in payload and payload["reason"] is not None:
-            _require(isinstance(payload["reason"], str), "reason must be a string")
-        if "session_id" in payload and payload["session_id"] is not None:
-            _require_non_empty_string(payload["session_id"], "session_id")
-        return
-
-    if event_type == "package_install":
-        _require_non_empty_string(payload.get("package_id"), "package_id")
-        _require_non_empty_string(payload.get("framework_id"), "framework_id")
-        _require(isinstance(payload.get("version"), str) and SEMVER_PATTERN.match(payload["version"]) is not None, "version must be semver")
-        _require_non_empty_string(payload.get("install_scope"), "install_scope")
-        _require_hash(payload.get("manifest_hash"), "manifest_hash")
-        return
-
-    if event_type == "session_start":
-        _require_non_empty_string(payload.get("session_id"), "session_id")
-        _require(payload.get("session_kind") in {"operator", "user"}, "session_kind must be approved")
-        _require_non_empty_string(payload.get("subject_id"), "subject_id")
-        _require(payload.get("started_by") in {"system", "operator", "agent"}, "started_by must be approved")
-        return
-
-    if event_type == "snapshot_created":
-        _require(isinstance(payload.get("snapshot_sequence"), int) and payload["snapshot_sequence"] >= 0, "snapshot_sequence must be >= 0")
-        _require(isinstance(payload.get("snapshot_path"), str) and SNAPSHOT_PATH_PATTERN.match(payload["snapshot_path"]) is not None, "snapshot_path must match snapshot contract")
-        _require_hash(payload.get("snapshot_hash"), "snapshot_hash")
-        return
-
-    _fail(f"unsupported event_type {event_type}")
+    # 9. payload must be JSON-serializable (catches datetime, set, custom objects, etc.)
+    try:
+        json.dumps(payload)
+    except (TypeError, ValueError) as exc:
+        raise LedgerSerializationError(
+            code="LEDGER_SERIALIZATION_ERROR",
+            message=f"payload is not JSON-serializable: {exc}",
+        ) from exc

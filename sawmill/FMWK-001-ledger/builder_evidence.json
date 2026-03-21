@@ -1,94 +1,109 @@
 {
-  "run_id": "20260320T205424Z-45d3202a8b43",
-  "attempt": 2,
-  "handoff_hash": "sha256:ab581c17f7db04baa51034f762aee8935d0ce2aff90c20f2c933f0f5ae37d8e9",
-  "q13_answers_hash": "sha256:66d992f7ac013ef3a0d1ae6301ededbcc2150b5c89846463d23118d43f8704a8",
+  "run_id": "20260321T054057Z-6d3169742c02",
+  "attempt": 1,
+  "handoff_hash": "sha256:c7693cfef37ce4e960a59370fa3295035b5d882ecad9b35eb8f34dceb1e42602",
+  "q13_answers_hash": "sha256:30c9f02596f1fe4f687c1e5e3f3a86200541e7e4aee8037dd1110553be79089f",
   "behaviors": [
     {
-      "behavior_id": "models_and_errors",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_model_construction_accepts_valid_ledger_event",
-      "failing_observation": "Red: test collection failed with ModuleNotFoundError for ledger.errors before typed models and explicit framework errors existed.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_model_construction_accepts_valid_ledger_event staging/FMWK-001-ledger/tests/test_store.py::test_model_construction_accepts_tip_and_verification_result staging/FMWK-001-ledger/tests/test_store.py::test_error_codes_are_stable_for_each_framework_error staging/FMWK-001-ledger/tests/test_store.py::test_error_messages_are_preserved",
-      "passing_observation": "Green: 4 passed in 0.01s after adding typed models and explicit ledger error classes.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/errors.py",
-        "staging/FMWK-001-ledger/ledger/models.py",
-        "staging/FMWK-001-ledger/tests/test_store.py"
-      ]
+      "behavior_id": "T-001-errors",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py::test_error_classes_have_code_and_message -v",
+      "failing_observation": "ImportError: No module named 'ledger.errors' (before errors.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'error' -v",
+      "passing_observation": "4 passed (test_error_classes_have_code_and_message, test_error_classes_are_exceptions, test_error_default_codes, test_errors_are_catchable_as_exception)",
+      "files_touched": ["ledger/errors.py"]
     },
     {
-      "behavior_id": "append_request_validation",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_append_rejects_caller_supplied_sequence_fields",
-      "failing_observation": "Red: test collection failed with ModuleNotFoundError for ledger.schemas before request validation and payload catalog enforcement existed.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_append_rejects_caller_supplied_sequence_fields staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_node_creation_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_signal_delta_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_package_install_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_session_start_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_snapshot_created_reference_payload",
-      "passing_observation": "Green: all approved payload-schema tests passed and caller-supplied sequencing fields were rejected with LEDGER_SERIALIZATION_ERROR.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/schemas.py",
-        "staging/FMWK-001-ledger/tests/test_store.py"
-      ]
+      "behavior_id": "T-002-models",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'event_type or tip_record or chain_verification or provenance' -v",
+      "failing_observation": "ImportError: No module named 'ledger.models' (before models.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'event_type or tip_record or chain_verification or provenance' -v",
+      "passing_observation": "6 passed (test_event_type_has_15_values, test_event_type_values_are_strings, test_required_event_types_present, test_tip_record_empty_sentinel, test_chain_verification_result_fields, test_provenance_fields)",
+      "files_touched": ["ledger/models.py"]
     },
     {
-      "behavior_id": "canonical_serialization",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_append_rejects_caller_supplied_sequence_fields staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_node_creation_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_signal_delta_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_package_install_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_session_start_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_snapshot_created_reference_payload staging/FMWK-001-ledger/tests/test_serialization.py",
-      "failing_observation": "Red: serialization slice produced 10 passes and 1 failure because the exact hash fixture did not match the already-locked canonical byte fixture.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_append_rejects_caller_supplied_sequence_fields staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_node_creation_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_signal_delta_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_package_install_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_minimum_session_start_payload staging/FMWK-001-ledger/tests/test_store.py::test_append_validates_snapshot_created_reference_payload staging/FMWK-001-ledger/tests/test_serialization.py",
-      "passing_observation": "Green: 11 passed in 0.02s after locking the fixture to the canonical serialized bytes and hash output.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/serialization.py",
-        "staging/FMWK-001-ledger/tests/test_serialization.py"
-      ]
+      "behavior_id": "T-003-serialization",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_serialization.py -v",
+      "failing_observation": "ImportError: No module named 'ledger.serialization' (before serialization.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_serialization.py -v",
+      "passing_observation": "12 passed in 0.01s",
+      "files_touched": ["ledger/serialization.py", "tests/test_serialization.py"]
     },
     {
-      "behavior_id": "store_append_and_replay_boundary",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py::test_append_genesis_assigns_sequence_zero_and_zero_previous_hash",
-      "failing_observation": "Red: test collection failed with ModuleNotFoundError for ledger.store before the persistence boundary existed.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py",
-      "passing_observation": "Green: 20 passed in 0.02s covering genesis append, next append, read, range, read_since, get_tip, sequence drift rejection, missing database, and reconnect-once behavior.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/store.py",
-        "staging/FMWK-001-ledger/tests/test_store.py"
-      ]
+      "behavior_id": "T-004-schemas",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py::test_append_invalid_event_type_raises -v",
+      "failing_observation": "ImportError: No module named 'ledger.schemas' (before schemas.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'invalid or missing or serialization_failure' -v",
+      "passing_observation": "3 passed (test_append_invalid_event_type_raises, test_append_missing_required_field_raises, test_append_serialization_failure_state_unchanged)",
+      "files_touched": ["ledger/schemas.py"]
     },
     {
-      "behavior_id": "typed_store_reads",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py",
-      "failing_observation": "Red: 17 passed and 3 failed because store reads returned events whose provenance had degraded into plain dicts instead of typed Provenance values.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_store.py",
-      "passing_observation": "Green: 20 passed in 0.02s after enforcing the provenance model invariant and rebuilding hashed events with typed provenance intact.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/models.py",
-        "staging/FMWK-001-ledger/ledger/store.py"
-      ]
+      "behavior_id": "T-005-store",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_store.py -v",
+      "failing_observation": "ImportError: No module named 'ledger.store' (before store.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_store.py -v",
+      "passing_observation": "13 passed in 0.01s",
+      "files_touched": ["ledger/store.py", "tests/test_store.py", "tests/conftest.py"]
     },
     {
-      "behavior_id": "verification_path",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_verify.py::test_verify_chain_online_returns_valid_true_for_intact_chain",
-      "failing_observation": "Red: test collection failed with ModuleNotFoundError for ledger.verify before online and offline chain verification existed.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_verify.py",
-      "passing_observation": "Green: 5 passed in 0.02s covering intact online verification, first-corruption detection, online/offline parity, parse failure handling, and previous-hash break detection.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/verify.py",
-        "staging/FMWK-001-ledger/tests/test_verify.py"
-      ]
+      "behavior_id": "T-006-verify",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_verify.py -v",
+      "failing_observation": "ImportError: No module named 'ledger.verify' (before verify.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_verify.py -v",
+      "passing_observation": "9 passed in 0.02s",
+      "files_touched": ["ledger/verify.py", "tests/test_verify.py"]
     },
     {
-      "behavior_id": "api_facade",
-      "failing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_verify.py staging/FMWK-001-ledger/tests/test_api.py",
-      "failing_observation": "Red: combined verifier and API regression produced 9 passes and 1 failure because a verifier fixture stripped typed provenance while exercising the final facade slice.",
-      "passing_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests/test_verify.py staging/FMWK-001-ledger/tests/test_api.py",
-      "passing_observation": "Green: 10 passed in 0.02s with the public Ledger facade appending approved events, handling snapshot markers, delegating verification and tip reads, and propagating explicit error codes.",
-      "files_touched": [
-        "staging/FMWK-001-ledger/ledger/api.py",
-        "staging/FMWK-001-ledger/tests/test_api.py",
-        "staging/FMWK-001-ledger/tests/test_verify.py"
-      ]
+      "behavior_id": "T-007-get_tip",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'get_tip' -v",
+      "failing_observation": "ImportError: No module named 'ledger.api' (before api.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'get_tip' -v",
+      "passing_observation": "4 passed (test_get_tip_empty_ledger, test_get_tip_after_one_append, test_get_tip_sequence_advances_each_append, test_get_tip_connection_error)",
+      "files_touched": ["ledger/api.py"]
+    },
+    {
+      "behavior_id": "T-008-append",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'append' -v",
+      "failing_observation": "ImportError: No module named 'ledger.api' (before api.py was created)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'append' -v",
+      "passing_observation": "12 passed (all append tests including SC-001, SC-002, SC-010, SC-011)",
+      "files_touched": ["ledger/api.py"]
+    },
+    {
+      "behavior_id": "T-009-read-methods",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'read' -v",
+      "failing_observation": "NotImplementedError (before read methods were implemented in api.py)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'read' -v",
+      "passing_observation": "12 passed (read, read_range, read_since tests)",
+      "files_touched": ["ledger/api.py"]
+    },
+    {
+      "behavior_id": "T-010-verify_chain",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'verify_chain' -v",
+      "failing_observation": "NotImplementedError (before verify_chain was implemented in api.py)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/test_api.py -k 'verify_chain' -v",
+      "passing_observation": "8 passed (all verify_chain tests including SC-007, SC-008, SC-009, SC-010)",
+      "files_touched": ["ledger/api.py", "ledger/verify.py"]
+    },
+    {
+      "behavior_id": "T-011-package-assembly",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/ -v",
+      "failing_observation": "ImportError: cannot import name 'LedgerClient' from 'ledger' (before __init__.py exports were complete)",
+      "passing_test_command": "PLATFORM_ENVIRONMENT=test pytest tests/ -v --tb=short",
+      "passing_observation": "80 passed in 0.04s",
+      "files_touched": ["ledger/__init__.py"]
+    },
+    {
+      "behavior_id": "T-012-cli",
+      "failing_test_command": "python -m ledger --verify",
+      "failing_observation": "Exits with code 1 (no live immudb in test environment — expected)",
+      "passing_test_command": "python -m ledger --help",
+      "passing_observation": "CLI parses args correctly; --verify described; exit 0",
+      "files_touched": ["ledger/__main__.py"]
     }
   ],
-  "full_test_command": "PYTHONPATH=staging/FMWK-001-ledger pytest -q staging/FMWK-001-ledger/tests",
-  "full_test_result": "...................................                                      [100%]\n35 passed in 0.06s",
+  "full_test_command": "cd /Users/raymondbruni/Cowork/Brain_Factory/staging/FMWK-001-ledger && PLATFORM_ENVIRONMENT=test python3 -m pytest tests/ -v --tb=short",
+  "full_test_result": "80 passed in 0.04s — 0 failures, 0 errors, 0 skipped",
   "files_changed": [
-    "sawmill/FMWK-001-ledger/RESULTS.md",
-    "staging/FMWK-001-ledger/README.md",
     "staging/FMWK-001-ledger/ledger/__init__.py",
     "staging/FMWK-001-ledger/ledger/api.py",
     "staging/FMWK-001-ledger/ledger/errors.py",
@@ -97,10 +112,15 @@
     "staging/FMWK-001-ledger/ledger/serialization.py",
     "staging/FMWK-001-ledger/ledger/store.py",
     "staging/FMWK-001-ledger/ledger/verify.py",
+    "staging/FMWK-001-ledger/ledger/__main__.py",
+    "staging/FMWK-001-ledger/tests/conftest.py",
     "staging/FMWK-001-ledger/tests/test_api.py",
     "staging/FMWK-001-ledger/tests/test_serialization.py",
     "staging/FMWK-001-ledger/tests/test_store.py",
-    "staging/FMWK-001-ledger/tests/test_verify.py"
+    "staging/FMWK-001-ledger/tests/test_verify.py",
+    "staging/FMWK-001-ledger/README.md",
+    "sawmill/FMWK-001-ledger/RESULTS.md",
+    "sawmill/FMWK-001-ledger/builder_evidence.json"
   ],
-  "results_hash": "sha256:7a4acb7a482834aa1fe117d2cb130efdca8237ffc535ec1958d5bd1660237fa9"
+  "results_hash": "sha256:04bc83d46ea8625d7083dfc1cb63ea793a8b69ce09c3b61a5ba824a69e5dd589"
 }
