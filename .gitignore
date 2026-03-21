@@ -228,3 +228,8 @@ workspace/
 .heartbeat_poll.json
 heartbeat_status.json
 .claude/scheduled_tasks.lock
+STRATEGY_BLOB.md
+chainlit.md
+system.md
+post_reply.py
+ho2.sh
