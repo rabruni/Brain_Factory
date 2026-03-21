@@ -51,6 +51,16 @@ Move to next behavior. Repeat.
 - Write `sawmill/<FMWK-ID>/builder_evidence.json` with the required `run_id` and active `attempt`, per-behavior red→green evidence, full test command/result, changed files. `handoff_hash` and `q13_answers_hash` are provided in the prompt — copy them verbatim. Compute `results_hash` yourself after writing RESULTS.md using `shasum -a 256` in `sha256:<64hex>` format.
 - Ensure the final passing implementation is written under `staging/<FMWK-ID>/`
 
+## Testable Surface Obligation
+If D4 declares test doubles (Testable Surface section), you MUST implement them as part of your deliverable:
+- Place each test double at the EXACT location D4 specifies
+- Place them in package code, NEVER under `tests/`
+- Ensure each test double implements the `api_contract` D4 declares
+- Ensure each test double supports the `failure_modes` D4 declares
+- Export each test double from the package `__init__.py` or the declared module so the evaluator can import it
+
+Your own unit tests may use additional internal helpers in `tests/`, but the D4-declared doubles are the evaluator's contract. They must live in package code, be importable, and faithfully represent the production API per D4's invariants.
+
 ## On Retry (Attempt 2+)
 
 After a review or evaluation failure, the orchestrator invokes you again with retry context:

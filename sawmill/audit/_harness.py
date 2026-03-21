@@ -13,6 +13,14 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
+HEARTBEAT_STATUS_DEFAULTS = {
+    "last_worker_phase": "",
+    "last_worker_heartbeat_at": "",
+    "last_orchestrator_phase": "",
+    "last_orchestrator_heartbeat_at": "",
+    "worker_stale": False,
+    "orchestrator_stale": False,
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -92,7 +100,9 @@ def rebuild_status(run_dir: Path) -> None:
     )
     after = load_json(status_path)
     backup.unlink(missing_ok=True)
-    assert_condition(before == after, f"{run_dir}: status.json rebuild changed projected state")
+    normalized_before = {**HEARTBEAT_STATUS_DEFAULTS, **before}
+    normalized_after = {**HEARTBEAT_STATUS_DEFAULTS, **after}
+    assert_condition(normalized_before == normalized_after, f"{run_dir}: status.json rebuild changed projected state")
 
 
 def check_evidence_isolation(run_dir: Path) -> None:

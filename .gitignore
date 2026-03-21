@@ -220,3 +220,10 @@ docs/spec-packs/
 docs/staging/
 docs/holdouts/
 docs/sawmill-source/
+
+# Local agent UI / workspace state
+.chainlit/
+.gemini/
+workspace/
+.heartbeat_poll.json
+heartbeat_status.json

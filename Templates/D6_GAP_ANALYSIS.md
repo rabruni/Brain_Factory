@@ -14,6 +14,45 @@
 <!-- Walk every boundary this component touches. For each category, identify whether
      existing contracts cover the need, or whether a gap exists that must be resolved. -->
 
+### Isolation Boundary Completeness Check
+
+<!-- Before closing D6, walk every Sawmill isolation boundary that will consume this spec pack.
+     For each consumer, verify that every field definition, payload schema, enum, error code, format
+     convention, response shape, behavioral postcondition, temporal invariant, and failure-routing instruction needed to produce correct output is fully
+     defined in documents that consumer is allowed to read.
+     Minimum check:
+       - Turn C / Holdout reads D2 + D4 only
+       - Turn D / Builder reads D10 + handoff + D3 + D4
+       - Turn E / Evaluator reads D9 + staging only
+     If any consumer would need to read a forbidden document to produce correct output, record a gap as OPEN.
+     OPEN isolation-boundary completeness gaps block D7.
+
+     D4-D3 RESTATEMENT CHECK: For every payload schema inlined in D4, verify it matches D3 exactly —
+     same field names, same types, same required/optional status. D4 restates D3 for consumer
+     self-containment; it does not define its own fields. If D4 has a field D3 doesn't, or vice versa,
+     or required/optional differs, record as OPEN.
+
+     HOLDOUT BEHAVIOR CHECK: For each D2 scenario that Turn C will encode, verify that D2+D4 define the
+     observable pass/fail behavior tightly enough that Holdout does not need to invent temporal assertions
+     or stronger semantics. If a D9 assertion would require unstated behavior, record as OPEN. -->
+
+| Consumer Boundary | Allowed Inputs | Completeness Status | Notes |
+|-------------------|----------------|---------------------|-------|
+| Turn C / Holdout | D2 + D4 only | [RESOLVED/OPEN] | [Can Holdout derive all valid requests, verdict checks, and temporal postconditions from allowed docs alone?] |
+| Turn D / Builder | D10 + handoff + D3 + D4 | [RESOLVED/OPEN] | [Can Builder implement and retry correctly without forbidden docs?] |
+| Turn E / Evaluator | D9 + staging only | [RESOLVED/OPEN] | [Can Evaluator execute and route failures without forbidden docs?] |
+
+**Isolation gaps found:** [None / list gaps]
+
+### Testable Surface Completeness (BLOCKING — if OPEN, Turn C/D/E results are not trusted)
+
+- Every D9 scenario that requires setup beyond production API calls: does D4 declare the required test double?
+- Every declared test double: does it specify failure modes matching D4 error contracts?
+- Every declared test double: is its location in package code (NOT `tests/`)?
+- If a scenario requires concurrent/timing behavior: does D4 declare how to deterministically reproduce it?
+- Status: CLEAR / OPEN (with gap description)
+- If OPEN: this gap BLOCKS Turn C holdout authoring, Turn D build, and Turn E evaluation. Resolve before proceeding.
+
 ### 1. Data In
 
 [Brief description of how data enters this component.]
@@ -139,4 +178,4 @@
 | Resource Accounting | [N] | [N] | [N] | [N] |
 | **TOTAL** | **[N]** | **[N]** | **[N]** | **[N]** |
 
-**Gate verdict: [PASS — zero open items. D7 Plan may proceed. | FAIL — [N] open items remain.]**
+**Gate verdict: [PASS — zero open items, including zero OPEN isolation-boundary completeness gaps. D7 Plan may proceed. | FAIL — [N] open items remain, including any OPEN isolation-boundary completeness gap.]**

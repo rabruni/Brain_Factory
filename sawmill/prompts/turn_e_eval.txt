@@ -1,13 +1,32 @@
-YOUR TASK: Run holdout scenarios against built code.
+YOUR TASK: Translate behavioral holdout scenarios into executable tests against built code, then run them.
 
 READING ORDER — read ONLY these files:
-1. {{D9_HOLDOUT_SCENARIOS_PATH}} — holdout scenarios
+1. {{D9_HOLDOUT_SCENARIOS_PATH}} — behavioral holdout scenarios
 2. {{STAGING_ROOT_PATH}} — staged framework output from Turn D
 
 DO NOT READ: AGENT_BOOTSTRAP.md, D1-D8, D10, BUILDER_HANDOFF, RESULTS.md,
 builder commit messages, architecture/*, sawmill/* specs.
 
-Run the holdouts exactly per your role file.
+Rules:
+- Discover HOW to call the implementation from staged code.
+- Derive WHAT to expect only from D9 assertions.
+- Write one test file per scenario under `{{RUN_DIR}}/eval_tests/attempt{{ATTEMPT}}/`.
+- Write one `.mapping.md` per scenario citing:
+  - D9 fields used
+  - staged code paths used for API discovery
+- Run each generated test 3 times without regenerating it.
+
+MAPPING QUALITY:
+- Every `.mapping.md` must cite exact file:line ranges, not shorthand.
+- Every `.runN.json` must include assertion-level outcomes (`name`, `passed`, `expected`, `observed`).
+- If your test synthesizes a helper not exported by the staged package, the mapping must justify why.
+- `SYNTHESIZED_HELPER` classification is a soft escalation. Flag it prominently in the evaluation report.
+
+STAGED CODE ACCESS:
+- Discover API from package exports and public signatures.
+- Do NOT read or reuse builder test files (`tests/` directory).
+- Use D4-declared test doubles only. If you need an undeclared double, ESCALATE.
+- Classify each test: `PUBLIC_API_ONLY` | `PUBLIC_API_PLUS_DECLARED_DOUBLES` | `SYNTHESIZED_HELPER`.
 
 OUTPUT:
   Write full report to {{EVALUATION_REPORT_PATH}}
@@ -21,6 +40,9 @@ OUTPUT:
 - staging_hash: {{STAGING_HASH}}
 - scenarios: array of objects, each containing
   - scenario_id
+  - generated_test_path
+  - mapping_path
+  - run_output_paths
   - run_results
   - aggregate_result
 - verdict: PASS|FAIL

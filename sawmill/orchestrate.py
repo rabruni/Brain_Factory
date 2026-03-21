@@ -39,12 +39,14 @@ from sawmill.registry import (
 )
 from sawmill.registry._core import extract_prompt_contract_version
 from sawmill.run_state import (
+    append_heartbeat,
     append_event,
     build_run_metadata,
     init_run,
     iso_timestamp,
     new_event_id,
     new_run_id,
+    orchestrator_heartbeat_path,
     project_status,
     write_status,
 )
@@ -146,6 +148,28 @@ class Orchestrator:
         self.audit_role_file = ROOT / self.roles["auditor"]["role_file"]
 
         self._export_base_environment()
+
+    def heartbeat(self, kind: str, phase: str, summary: str, *, detail: str = "", artifact_refs: list[str] | None = None) -> None:
+        if not self.run_dir:
+            return
+        append_heartbeat(
+            orchestrator_heartbeat_path(self.run_dir),
+            {
+                "timestamp": iso_timestamp(),
+                "run_id": self.run_id,
+                "turn": self.current_event_turn,
+                "step": self.current_event_step,
+                "role": self.current_event_role,
+                "backend": self.current_event_backend,
+                "attempt": self.current_event_attempt,
+                "source": "orchestrator",
+                "kind": kind,
+                "phase": phase,
+                "summary": summary,
+                "detail": detail,
+                "artifact_refs": artifact_refs or [],
+            },
+        )
 
     def _resolve_backend(self, role_name: str) -> str:
         metadata = self.roles[role_name]
@@ -452,6 +476,7 @@ class Orchestrator:
         )
 
     def preflight(self) -> None:
+        self.heartbeat("phase", "preflight", "Running preflight checks")
         result = self._run_cli(
             [
                 "-m",
@@ -494,10 +519,12 @@ class Orchestrator:
             0,
             f"Preflight passed for {self.ctx.framework_id}",
         )
+        self.heartbeat("phase", "preflight", "Preflight passed")
         self.log("Preflight passed. Starting pipeline.")
         print("")
 
     def update_status_page(self) -> None:
+        self.heartbeat("phase", "processing_result", "Updating status page")
         self._run_cli(
             [
                 "-m",
@@ -521,6 +548,7 @@ class Orchestrator:
         self.log(f"Portal updated: {self.artifact_path('status_page').relative_to(ROOT)}")
 
     def run_stage_audit(self, stage: str) -> bool:
+        self.heartbeat("phase", "auditing_stage", f"Running stage audit for {stage}")
         result = self._run_cli(
             [
                 "-m",
@@ -549,9 +577,11 @@ class Orchestrator:
         output = (result.stdout or "") + (result.stderr or "")
         if output.strip():
             print(output.strip())
+        self.heartbeat("decision", "auditing_stage", f"Stage audit {'passed' if result.returncode == 0 else 'failed'} for {stage}")
         return result.returncode == 0
 
     def validate_convergence(self) -> bool:
+        self.heartbeat("phase", "finalizing", "Validating convergence")
         self.update_status_page()
         result = self._run_cli(
             [
@@ -581,6 +611,7 @@ class Orchestrator:
         output = (result.stdout or "") + (result.stderr or "")
         if output.strip():
             print(output.strip())
+        self.heartbeat("decision", "finalizing", f"Convergence {'passed' if result.returncode == 0 else 'failed'}")
         return result.returncode == 0
 
     def complete_run(self, parent_event_id: str, summary: str, failure_summary: str) -> None:
@@ -591,6 +622,7 @@ class Orchestrator:
                 failure_summary,
             )
             raise PipelineAbort(1)
+        self.heartbeat("phase", "complete", summary)
         self.emit(
             "run_completed",
             "passed",
@@ -758,6 +790,7 @@ class Orchestrator:
     def invoke_agent(self, backend: str, role_file: Path, prompt: str, prompt_key: str, prompt_event_id: str) -> bool:
         role_name = role_file.stem
         self.log(f"Invoking {backend} with role {role_name} ({role_file.relative_to(ROOT)})")
+        self.heartbeat("waiting", "waiting_for_worker", f"Waiting for {prompt_key} worker progress")
         result = invoke_full(
             backend=backend,
             role_file=role_file,
@@ -773,10 +806,12 @@ class Orchestrator:
             operator_mode=self.ctx.operator_mode,
             model_policy=self.model_policy_for_role(role_name),
             prompt=prompt,
+            orchestrator_heartbeat_path=orchestrator_heartbeat_path(self.run_dir),
         )
         self.last_agent_exit_event_id = result["LAST_AGENT_EXIT_EVENT_ID"]
         self.last_failure_event_id = result["LAST_FAILURE_EVENT_ID"]
         self.last_failure_code = result["LAST_FAILURE_CODE"]
+        self.heartbeat("phase", "processing_result", f"Processing result for {prompt_key}")
         if result["RESULT_TIMED_OUT"] == "true" or result["RESULT_OUTCOME"] == "timeout":
             self.last_failure_code = self.last_failure_code or "AGENT_TIMEOUT"
             return False
@@ -796,6 +831,7 @@ class Orchestrator:
         self.current_event_backend = backend
         self.current_event_attempt = self.attempt or 1
         os.environ["ATTEMPT"] = str(self.current_event_attempt)
+        self.heartbeat("phase", "dispatching", f"Dispatching {prompt_key}")
 
         if prompt_owner != expected_role:
             ownership_failure = self.emit(
@@ -973,6 +1009,7 @@ class Orchestrator:
             )
 
     def run_turn_a(self) -> None:
+        self.heartbeat("phase", "dispatching", "Starting Turn A")
         event_id = self.emit("turn_started", "started", "none", self.run_started_event_id, "A", "turn_a_spec", "spec-agent", self.spec_agent, 1, "Turn A started")
         self.log("═══ TURN A: Specification (D1-D6) ═══")
         self.attempt = 1
@@ -995,6 +1032,7 @@ class Orchestrator:
 
     def run_turn_bc(self) -> None:
         self.log("═══ TURN B + C: Plan (D7-D8-D10) + Holdouts (D9) — parallel ═══")
+        self.heartbeat("phase", "dispatching", "Starting Turn B/C")
         turn_b_event_id = ""
         turn_c_event_id = ""
         futures = []
@@ -1025,6 +1063,7 @@ class Orchestrator:
 
     def run_turn_d(self) -> None:
         self.log("═══ TURN D: Build ═══")
+        self.heartbeat("phase", "dispatching", f"Starting Turn D attempt {self.attempt + 1}")
         if self.attempt < 0:
             self.attempt = 0
         turn_d_parent_id = self.last_retry_event_id or self.last_turn_completed_event_id or self.run_started_event_id
@@ -1076,12 +1115,15 @@ class Orchestrator:
                 self.fail(f"Review: RETRY (attempt {self.attempt}/{self.ctx.max_attempts})")
                 if self.attempt >= self.ctx.max_attempts:
                     self.record_escalation(self.last_decision_event_id, "REVIEW_RETRY_EXHAUSTED", f"Build failed after {self.ctx.max_attempts} attempts. Reviewer never approved implementation.")
+                    self.heartbeat("decision", "retry_decision", "Review retry budget exhausted")
                     raise PipelineAbort(1)
                 self.emit("retry_started", "retrying", "REVIEW_RETRY", self.last_decision_event_id, "D", "turn_d_retry", "orchestrator", "runtime", self.attempt, "Retrying Turn D after reviewer RETRY")
+                self.heartbeat("decision", "retry_decision", f"Retrying Turn D after reviewer RETRY (attempt {self.attempt})")
                 continue
             elif verdict == "ESCALATE":
                 self.last_decision_event_id = self.emit("review_verdict_recorded", "escalate", "REVIEW_ESCALATE", review_agent_exit_event_id, "D", "turn_d_review", "reviewer", self.review_agent, self.attempt, "Reviewer escalated the build")
                 self.record_escalation(self.last_decision_event_id, "REVIEW_ESCALATE", f"Review: ESCALATE. See {self.artifact_path('review_report')} and {self.artifact_path('review_errors')}")
+                self.heartbeat("decision", "retry_decision", "Reviewer escalated")
                 raise PipelineAbort(1)
             else:
                 failure_event_id = self.emit("output_verified", "failed", "INVALID_REVIEW_VERDICT", review_agent_exit_event_id, "D", "turn_d_review", "reviewer", self.review_agent, self.attempt, "Reviewer did not produce a parseable verdict")
@@ -1107,6 +1149,7 @@ class Orchestrator:
 
     def run_turn_e(self, parent_event_id: str | None = None, standalone: bool = False) -> None:
         self.log("═══ TURN E: Evaluation ═══")
+        self.heartbeat("phase", "dispatching", f"Starting Turn E attempt {self.attempt or 1}")
         if standalone and not self.ensure_artifact_ids("Turn E input", "d9_holdout_scenarios", "staging_root", "results"):
             self.record_run_failed(self.run_started_event_id, "MISSING_INPUT_ARTIFACT", f"Missing Turn E input: {self.last_missing_artifact_path}")
             raise PipelineAbort(1)
@@ -1142,9 +1185,11 @@ class Orchestrator:
             raise PipelineAbort(1)
         if standalone or self.attempt >= self.ctx.max_attempts:
             self.record_escalation(self.last_decision_event_id, "EVALUATION_FAIL" if standalone else "EVALUATION_FAIL_EXHAUSTED", "Evaluation: FAIL" if standalone else f"Build failed after {self.ctx.max_attempts} attempts. Returning to spec author.")
+            self.heartbeat("decision", "retry_decision", "Evaluation failed with no retries remaining")
             raise PipelineAbort(1)
         self.fail(f"Evaluation: FAIL (attempt {self.attempt}/{self.ctx.max_attempts})")
         self.last_retry_event_id = self.emit("retry_started", "retrying", "EVALUATION_FAIL", self.last_decision_event_id, "E", "turn_e_retry", "orchestrator", "runtime", self.attempt, "Retrying after evaluator FAIL")
+        self.heartbeat("decision", "retry_decision", f"Retrying after evaluator FAIL (attempt {self.attempt})")
         return
 
     def run(self) -> int:

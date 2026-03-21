@@ -12,16 +12,22 @@ from sawmill.evidence import parse_evaluation_verdict
 from sawmill.registry import build_stage_maps, load_artifact_registry
 
 from ._core import (
+    append_heartbeat,
     append_event,
     build_run_metadata,
     current_status_field,
+    heartbeat_is_stale,
     iso_timestamp,
+    latest_heartbeat,
     load_json,
+    load_heartbeat_records,
     main_extract_heartbeats,
     main_project_run_status,
     new_event_id,
     new_run_id,
+    orchestrator_heartbeat_path,
     project_status,
+    worker_heartbeat_path,
     write_status,
 )
 
@@ -133,6 +139,40 @@ def _emit_liveness(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir)
     for raw in new_lines:
         record = json.loads(raw)
+        observation = str(record["observation"])
+        kind = "alive"
+        phase = "running_backend"
+        if observation in {"progressing", "heartbeat_seen", "output_seen"}:
+            kind = "progress"
+        if observation == "started":
+            kind = "phase"
+            phase = "boot"
+        elif observation in {"alive", "heartbeat_seen", "progressing", "output_seen"}:
+            phase = "running_backend"
+        elif observation == "exited":
+            kind = "phase"
+            phase = "complete"
+        elif observation in {"stalled", "transport_blocked", "timed_out"}:
+            kind = "error"
+            phase = "waiting"
+        append_heartbeat(
+            worker_heartbeat_path(run_dir, args.step, args.attempt),
+            {
+                "timestamp": record["timestamp"],
+                "run_id": record["run_id"],
+                "turn": args.turn,
+                "step": args.step,
+                "role": args.role,
+                "backend": args.backend,
+                "attempt": args.attempt,
+                "source": "worker",
+                "kind": kind,
+                "phase": phase,
+                "summary": f"{observation} observed from {record['source']}",
+                "detail": "",
+                "artifact_refs": [str(liveness_path)],
+            },
+        )
         append_event(
             run_dir,
             {
@@ -155,6 +195,88 @@ def _emit_liveness(args: argparse.Namespace) -> int:
         )
     write_status(run_dir, project_status(run_dir))
     state_file.write_text(str(len(lines)), encoding="utf-8")
+    return 0
+
+
+def _append_structured_heartbeat(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    source = args.source
+    if source == "orchestrator":
+        path = orchestrator_heartbeat_path(run_dir)
+    else:
+        path = worker_heartbeat_path(run_dir, args.step, args.attempt)
+    append_heartbeat(
+        path,
+        {
+            "timestamp": args.timestamp or iso_timestamp(),
+            "run_id": args.run_id,
+            "turn": args.turn,
+            "step": args.step,
+            "role": args.role,
+            "backend": args.backend,
+            "attempt": args.attempt,
+            "source": source,
+            "kind": args.kind,
+            "phase": args.phase,
+            "summary": args.summary,
+            "detail": args.detail,
+            "artifact_refs": args.artifact_ref,
+        },
+    )
+    return 0
+
+
+def _latest_structured_heartbeat(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    record = latest_heartbeat(load_heartbeat_records(run_dir), args.source)
+    if record is None:
+        return 0
+    print(json.dumps(record, indent=2, sort_keys=True))
+    return 0
+
+
+def _watch_run(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    status = project_status(run_dir).status
+    records = load_heartbeat_records(run_dir)
+    latest_worker = latest_heartbeat(records, "worker")
+    latest_orchestrator = latest_heartbeat(records, "orchestrator")
+    summary = {
+        "run_id": status["run_id"],
+        "framework_id": status["framework_id"],
+        "state": status["state"],
+        "turn": status["current_turn"],
+        "step": status["current_step"],
+        "role": status["current_role"],
+        "backend": status["current_backend"],
+        "attempt": status["current_attempt"],
+        "latest_failure_code": status["latest_failure_code"],
+        "worker_observation": status["worker_observation"],
+        "last_worker_progress_at": status.get("last_worker_progress_at", ""),
+        "last_worker_phase": status.get("last_worker_phase", ""),
+        "last_orchestrator_phase": status.get("last_orchestrator_phase", ""),
+        "worker_stale": status.get("worker_stale", False),
+        "orchestrator_stale": status.get("orchestrator_stale", False),
+        "latest_worker_heartbeat": latest_worker,
+        "latest_orchestrator_heartbeat": latest_orchestrator,
+    }
+    if args.format == "json":
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return 0
+    print(f"{summary['framework_id']} {summary['run_id']}")
+    print(f"state={summary['state']} turn={summary['turn']} step={summary['step']} role={summary['role']} backend={summary['backend']} attempt={summary['attempt']}")
+    print(
+        f"failure_code={summary['latest_failure_code']} worker_observation={summary['worker_observation']} "
+        f"worker_phase={summary['last_worker_phase'] or 'unknown'} orchestrator_phase={summary['last_orchestrator_phase'] or 'unknown'}"
+    )
+    print(
+        f"worker_progress={summary['last_worker_progress_at'] or 'n/a'} worker_stale={str(summary['worker_stale']).lower()} "
+        f"orchestrator_stale={str(summary['orchestrator_stale']).lower()}"
+    )
+    if latest_worker:
+        print(f"latest_worker={latest_worker['timestamp']} {latest_worker['kind']} {latest_worker['phase']} {latest_worker['summary']}")
+    if latest_orchestrator:
+        print(f"latest_orchestrator={latest_orchestrator['timestamp']} {latest_orchestrator['kind']} {latest_orchestrator['phase']} {latest_orchestrator['summary']}")
     return 0
 
 
@@ -327,6 +449,33 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--attempt", required=True, type=int)
         parser.add_argument("--state-file", required=True)
         return _emit_liveness(parser.parse_args(argv[1:]))
+    if argv and argv[0] == "append-heartbeat":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--run-dir", required=True)
+        parser.add_argument("--run-id", required=True)
+        parser.add_argument("--turn", required=True)
+        parser.add_argument("--step", required=True)
+        parser.add_argument("--role", required=True)
+        parser.add_argument("--backend", required=True)
+        parser.add_argument("--attempt", required=True, type=int)
+        parser.add_argument("--source", choices=["worker", "orchestrator"], required=True)
+        parser.add_argument("--kind", required=True)
+        parser.add_argument("--phase", required=True)
+        parser.add_argument("--summary", required=True)
+        parser.add_argument("--detail", default="")
+        parser.add_argument("--timestamp")
+        parser.add_argument("--artifact-ref", action="append", default=[])
+        return _append_structured_heartbeat(parser.parse_args(argv[1:]))
+    if argv and argv[0] == "latest-heartbeat":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--run-dir", required=True)
+        parser.add_argument("--source", choices=["worker", "orchestrator"], required=True)
+        return _latest_structured_heartbeat(parser.parse_args(argv[1:]))
+    if argv and argv[0] == "watch":
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--run-dir", required=True)
+        parser.add_argument("--format", choices=["text", "json"], default="text")
+        return _watch_run(parser.parse_args(argv[1:]))
     if argv and argv[0] == "update-status":
         parser = argparse.ArgumentParser()
         parser.add_argument("--framework-id", required=True)
@@ -346,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     import sys
 
     print(
-        "FAIL: use one of: init-run, append-event, project-status, heartbeats, new-run-id, new-event-id, iso-timestamp, status-field, build-metadata, emit, emit-liveness",
+        "FAIL: use one of: init-run, append-event, project-status, heartbeats, new-run-id, new-event-id, iso-timestamp, status-field, build-metadata, emit, emit-liveness, append-heartbeat, latest-heartbeat, watch",
         file=sys.stderr,
     )
     return 1

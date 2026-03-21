@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sawmill.run_state import iso_timestamp, new_event_id
+from sawmill.run_state import append_heartbeat, iso_timestamp, new_event_id
 
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (1, 2, 4)
@@ -563,6 +563,7 @@ def invoke_full(
     operator_mode: str,
     model_policy: str,
     prompt: str,
+    orchestrator_heartbeat_path: Path | None = None,
 ) -> dict[str, str]:
     role_name = role_file.stem
     step_prefix = run_dir / "logs" / f"{prompt_key}.attempt{attempt}"
@@ -627,6 +628,7 @@ def invoke_full(
         liveness_path=liveness_path,
     )
 
+    last_orch_heartbeat = time.monotonic()
     child = subprocess.Popen([sys.executable, "-m", "sawmill.agent", "invoke", "--meta", str(meta_path)])
     while child.poll() is None:
         subprocess.run(
@@ -658,6 +660,27 @@ def invoke_full(
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        if orchestrator_heartbeat_path and (time.monotonic() - last_orch_heartbeat) >= 30:
+            append_heartbeat(
+                orchestrator_heartbeat_path,
+                {
+                    "timestamp": iso_timestamp(),
+                    "run_id": run_id,
+                    "turn": turn,
+                    "step": prompt_key,
+                    "role": "orchestrator",
+                    "backend": "runtime",
+                    "attempt": attempt,
+                    "source": "orchestrator",
+                    "kind": "alive",
+                    "phase": "waiting_for_worker",
+                    "summary": f"Orchestrator alive, waiting for {prompt_key} worker",
+                    "detail": "",
+                    "artifact_refs": [str(liveness_path)],
+                    "active_child_step": prompt_key,
+                },
+            )
+            last_orch_heartbeat = time.monotonic()
         time.sleep(1)
     runner_exit_code = child.wait()
     subprocess.run(

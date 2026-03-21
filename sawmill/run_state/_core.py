@@ -43,7 +43,7 @@ EVENT_TYPES = {
 PARENT_RULES: dict[str, set[str]] = {
     "run_started": set(),
     "preflight_passed": {"run_started"},
-    "turn_started": {"run_started", "turn_completed"},
+    "turn_started": {"run_started", "turn_completed", "retry_started"},
     "prompt_rendered": {"turn_started"},
     "agent_invoked": {"prompt_rendered"},
     "agent_liveness_observed": {"agent_invoked"},
@@ -70,6 +70,11 @@ PARENT_RULES: dict[str, set[str]] = {
 
 HEARTBEAT_PREFIX = "SAWMILL_HEARTBEAT: "
 HEARTBEAT_FILE_PATTERN = re.compile(r"^(?P<step>.+)\.attempt(?P<attempt>\d+)\.log$")
+STRUCTURED_HEARTBEAT_GLOB = "*.jsonl"
+WORKER_HEARTBEAT_SUFFIX = ".worker.jsonl"
+ORCHESTRATOR_HEARTBEAT_FILE = "orchestrator.jsonl"
+WORKER_STALE_SECONDS = 300
+ORCHESTRATOR_STALE_SECONDS = 120
 
 
 @dataclass
@@ -127,6 +132,7 @@ def init_run(run_dir: Path, metadata_file: Path) -> None:
     run_json_path = run_dir / "run.json"
     status_json_path = run_dir / "status.json"
     events_path = run_dir / "events.jsonl"
+    (run_dir / "heartbeats").mkdir(exist_ok=True)
     with run_json_path.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2, sort_keys=True)
         handle.write("\n")
@@ -145,6 +151,12 @@ def init_run(run_dir: Path, metadata_file: Path) -> None:
         "worker_observation": "unknown",
         "last_worker_observed_at": "",
         "last_worker_progress_at": "",
+        "last_worker_phase": "",
+        "last_worker_heartbeat_at": "",
+        "last_orchestrator_phase": "",
+        "last_orchestrator_heartbeat_at": "",
+        "worker_stale": False,
+        "orchestrator_stale": False,
     }
     with status_json_path.open("w", encoding="utf-8") as handle:
         json.dump(initial_status, handle, indent=2, sort_keys=True)
@@ -159,6 +171,58 @@ def append_event(run_dir: Path, event: dict[str, Any]) -> None:
     with events_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, sort_keys=True))
         handle.write("\n")
+
+
+def append_heartbeat(path: Path, record: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True))
+        handle.write("\n")
+
+
+def load_heartbeat_records(run_dir: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    heartbeats_dir = run_dir / "heartbeats"
+    if not heartbeats_dir.exists():
+        return records
+    for heartbeat_path in sorted(heartbeats_dir.glob(STRUCTURED_HEARTBEAT_GLOB)):
+        for line_number, raw in enumerate(heartbeat_path.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON on line {line_number} of {heartbeat_path}: {exc}") from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"Heartbeat on line {line_number} of {heartbeat_path} must be an object")
+            record.setdefault("_path", str(heartbeat_path))
+            records.append(record)
+    return sorted(records, key=lambda record: (str(record.get("timestamp", "")), str(record.get("_path", ""))))
+
+
+def latest_heartbeat(records: list[dict[str, Any]], source: str) -> dict[str, Any] | None:
+    matches = [record for record in records if str(record.get("source", "")) == source]
+    if not matches:
+        return None
+    return matches[-1]
+
+
+def _parse_timestamp(timestamp: str) -> datetime | None:
+    if not timestamp:
+        return None
+    try:
+        return datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def heartbeat_is_stale(timestamp: str, threshold_seconds: int, *, now: datetime | None = None) -> bool:
+    parsed = _parse_timestamp(timestamp)
+    if parsed is None:
+        return False
+    baseline = now or datetime.now(timezone.utc)
+    return (baseline - parsed).total_seconds() > threshold_seconds
 
 
 def validate_parent(
@@ -308,6 +372,22 @@ def project_status(run_dir: Path) -> ProjectionResult:
         event_index[event_id] = event
         event_positions[event_id] = current_position
         apply_event(status, event, operator_mode)
+    heartbeat_records = load_heartbeat_records(run_dir)
+    latest_worker = latest_heartbeat(heartbeat_records, "worker")
+    latest_orchestrator = latest_heartbeat(heartbeat_records, "orchestrator")
+    if latest_worker:
+        status["last_worker_phase"] = str(latest_worker.get("phase", ""))
+        status["last_worker_heartbeat_at"] = str(latest_worker.get("timestamp", ""))
+        if str(latest_worker.get("kind", "")) == "progress":
+            status["last_worker_progress_at"] = str(latest_worker.get("timestamp", "")) or status["last_worker_progress_at"]
+    if latest_orchestrator:
+        status["last_orchestrator_phase"] = str(latest_orchestrator.get("phase", ""))
+        status["last_orchestrator_heartbeat_at"] = str(latest_orchestrator.get("timestamp", ""))
+    status["worker_stale"] = heartbeat_is_stale(str(status.get("last_worker_heartbeat_at", "")), WORKER_STALE_SECONDS)
+    status["orchestrator_stale"] = heartbeat_is_stale(
+        str(status.get("last_orchestrator_heartbeat_at", "")),
+        ORCHESTRATOR_STALE_SECONDS,
+    )
     status["governed_path_intact"] = bool(status["governed_path_intact"])
     return ProjectionResult(status=status, events=[event for _, event in ordered])
 
@@ -397,6 +477,14 @@ def parse_sidecar_filename(heartbeat_path: Path) -> tuple[str, int | None]:
     if not match:
         return "unknown", None
     return match.group("step"), int(match.group("attempt"))
+
+
+def worker_heartbeat_path(run_dir: Path, step: str, attempt: int) -> Path:
+    return run_dir / "heartbeats" / f"{step}.attempt{attempt}{WORKER_HEARTBEAT_SUFFIX}"
+
+
+def orchestrator_heartbeat_path(run_dir: Path) -> Path:
+    return run_dir / "heartbeats" / ORCHESTRATOR_HEARTBEAT_FILE
 
 
 def extract_heartbeats(run_dir: Path) -> list[dict]:
