@@ -26,6 +26,10 @@ ingress:
       httpHostHeader: localhost
   - hostname: mcp.dopejarmo.com
     service: http://localhost:8502
+  - hostname: chat.dopejarmo.com
+    service: http://localhost:8503
+    originRequest:
+      httpHostHeader: localhost
   - service: http_status:404
 EOF
 
@@ -34,5 +38,6 @@ launchctl kickstart -k system/com.cloudflare.cloudflared
 echo "Done. Services:"
 echo "  portal.dopejarmo.com     → Streamlit portal (:8501)"
 echo "  mcp.dopejarmo.com        → MCP HTTP API (:8502)"
+echo "  chat.dopejarmo.com       → Chat UI (:8503)"
 echo "  backstage.dopejarmo.com  → Backstage UI (:3000)"
 echo "  backstage-api.dopejarmo.com → Backstage API (:7007)"
