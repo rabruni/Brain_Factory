@@ -359,6 +359,12 @@ def get_working_changes():
 import workspace as ws
 
 
+def _brain():
+    from shell.helpers import brain
+
+    return brain
+
+
 # ── MCP Protocol (JSON-RPC over stdio) ────────────────────────────────────────
 
 TOOLS = {
@@ -451,6 +457,59 @@ TOOLS = {
         "description": "List all registered agents with their CLI, description, and capabilities.",
         "inputSchema": {"type": "object", "properties": {}},
         "handler": lambda args: ws.list_agents(),
+    },
+    "capture_thought": {
+        "description": "Capture a thought into the brain — DoPeJarMo's shared semantic memory. Anything stored here is retrievable by meaning from any agent session.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Thought content to store"},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags"},
+                "source": {"type": "string", "description": "Optional source label"},
+            },
+            "required": ["content"],
+        },
+        "handler": lambda args: _brain().capture(
+            content=args["content"],
+            tags=args.get("tags", []),
+            source=args.get("source", ""),
+        ),
+    },
+    "search_thoughts": {
+        "description": "Search the brain by meaning. Use this before starting work to check what's already known.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Semantic search query"},
+                "limit": {"type": "integer", "description": "Max results", "default": 10},
+                "tag": {"type": "string", "description": "Optional tag filter"},
+            },
+            "required": ["query"],
+        },
+        "handler": lambda args: _brain().search(
+            query=args["query"],
+            limit=args.get("limit", 10),
+            tag=args.get("tag", ""),
+        ),
+    },
+    "list_thoughts": {
+        "description": "List recent thoughts stored in the brain, optionally filtered by tag.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max results", "default": 50},
+                "tag": {"type": "string", "description": "Optional tag filter"},
+            },
+        },
+        "handler": lambda args: _brain().list_recent(
+            limit=args.get("limit", 50),
+            tag=args.get("tag", ""),
+        ),
+    },
+    "thought_stats": {
+        "description": "Get summary stats for the brain, including total thoughts and tag counts.",
+        "inputSchema": {"type": "object", "properties": {}},
+        "handler": lambda args: _brain().stats(),
     },
     "route_workspace_item": {
         "description": "Route a workspace item to a different recipient (e.g. send to gemini for review before codex executes).",
