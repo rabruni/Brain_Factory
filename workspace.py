@@ -11,12 +11,17 @@ Legacy YAML / JSON files are imported on first use for compatibility.
 
 import datetime
 import json
+import os
 import pathlib
+import re
 import sqlite3
 import uuid
 
 
 WORKSPACE_DIR = pathlib.Path(__file__).parent / "workspace"
+_override = os.environ.get("WORKSPACE_DIR_OVERRIDE", "")
+if _override:
+    WORKSPACE_DIR = pathlib.Path(_override)
 AUDIT_LOG = WORKSPACE_DIR / "audit.jsonl"
 TOKENS_FILE = WORKSPACE_DIR / "tokens.json"
 AGENT_REGISTRY = WORKSPACE_DIR / "agents.yaml"
@@ -26,6 +31,18 @@ VALID_TYPES = {"plan", "results", "review", "prompt", "handoff", "question", "co
 VALID_STATUSES = {"sent", "read", "complete"}
 VALID_CLIS = {"claude", "codex", "gemini", "human", "any"}
 DEFAULT_MAX_DEPTH = 2
+VALID_AGENT_TYPES = {"worker", "interactive", "sawmill-role", "human"}
+VALID_CONTEXT_MODES = {"full_thread", "last_n", "task_only"}
+VALID_PROVIDERS = {"codex-cli", "ollama", "anthropic", "openai", "google"}
+RESERVED_AGENT_NAMES = {"builder", "reviewer", "evaluator", "spec-agent", "holdout-agent", "orchestrator", "auditor"}
+AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
+PROVIDER_TO_CLI = {
+    "anthropic": "claude",
+    "openai": "openai",
+    "ollama": "local",
+    "google": "gemini",
+    "codex-cli": "codex",
+}
 
 
 def _utc_now():
@@ -141,6 +158,14 @@ def _ensure_schema(conn):
             registered_at TEXT NOT NULL DEFAULT '',
             last_seen TEXT NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS thoughts (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
         """
     )
     columns = _column_names(conn, "items")
@@ -161,6 +186,27 @@ def _ensure_schema(conn):
     ]
     for column_name, statement in migrations:
         if column_name not in columns:
+            conn.execute(statement)
+    agent_columns = _column_names(conn, "agents")
+    agent_migrations = [
+        ("provider", "ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT ''"),
+        ("model", "ALTER TABLE agents ADD COLUMN model TEXT NOT NULL DEFAULT ''"),
+        ("api_base", "ALTER TABLE agents ADD COLUMN api_base TEXT NOT NULL DEFAULT ''"),
+        ("credentials_ref", "ALTER TABLE agents ADD COLUMN credentials_ref TEXT NOT NULL DEFAULT ''"),
+        ("instructions", "ALTER TABLE agents ADD COLUMN instructions TEXT NOT NULL DEFAULT ''"),
+        ("task_types_json", "ALTER TABLE agents ADD COLUMN task_types_json TEXT NOT NULL DEFAULT '[]'"),
+        ("context_mode", "ALTER TABLE agents ADD COLUMN context_mode TEXT NOT NULL DEFAULT 'full_thread'"),
+        ("context_n", "ALTER TABLE agents ADD COLUMN context_n INTEGER NOT NULL DEFAULT 0"),
+        ("context_budget", "ALTER TABLE agents ADD COLUMN context_budget INTEGER NOT NULL DEFAULT 8000"),
+        ("max_output_tokens", "ALTER TABLE agents ADD COLUMN max_output_tokens INTEGER NOT NULL DEFAULT 4000"),
+        ("timeout", "ALTER TABLE agents ADD COLUMN timeout INTEGER NOT NULL DEFAULT 180"),
+        ("sandbox", "ALTER TABLE agents ADD COLUMN sandbox TEXT NOT NULL DEFAULT 'read-only'"),
+        ("max_retries", "ALTER TABLE agents ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 2"),
+        ("agent_type", "ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'worker'"),
+        ("enabled", "ALTER TABLE agents ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1"),
+    ]
+    for column_name, statement in agent_migrations:
+        if column_name not in agent_columns:
             conn.execute(statement)
     conn.commit()
 
@@ -224,6 +270,87 @@ def _audit(event_type, item_id, actor="system", detail=""):
             "actor": actor,
             "detail": detail,
         }) + "\n")
+
+
+def _normalize_bool(value):
+    return 1 if bool(value) else 0
+
+
+def _row_to_agent(row):
+    if row is None:
+        return None
+    return {
+        "name": row["name"],
+        "cli": row["cli"],
+        "description": row["description"],
+        "capabilities": json.loads(row["capabilities_json"] or "[]"),
+        "registered_at": row["registered_at"],
+        "last_seen": row["last_seen"],
+        "provider": row["provider"],
+        "model": row["model"],
+        "api_base": row["api_base"],
+        "credentials_ref": row["credentials_ref"],
+        "instructions": row["instructions"],
+        "task_types": json.loads(row["task_types_json"] or "[]"),
+        "context_mode": row["context_mode"],
+        "context_n": row["context_n"],
+        "context_budget": row["context_budget"],
+        "max_output_tokens": row["max_output_tokens"],
+        "timeout": row["timeout"],
+        "sandbox": row["sandbox"],
+        "max_retries": row["max_retries"],
+        "agent_type": row["agent_type"],
+        "enabled": bool(row["enabled"]),
+    }
+
+
+def _row_to_thought(row):
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "content": row["content"],
+        "tags": json.loads(row["tags_json"] or "[]"),
+        "source": row["source"],
+        "created_at": row["created_at"],
+    }
+
+
+def _validate_agent_name(name):
+    if not AGENT_NAME_RE.match(name or ""):
+        raise ValueError("Agent name must match ^[a-z][a-z0-9-]{1,63}$")
+    if name in RESERVED_AGENT_NAMES:
+        raise ValueError(f"Reserved agent name: {name}")
+
+
+def _validate_agent_config(*, name, provider, model, instructions, task_types, context_mode, context_n, timeout, max_retries, agent_type, credentials_ref):
+    _validate_agent_name(name)
+    if provider not in VALID_PROVIDERS:
+        raise ValueError(f"Unsupported provider: {provider}")
+    if not str(model or "").strip():
+        raise ValueError("Agent model is required")
+    if not str(instructions or "").strip():
+        raise ValueError("Agent instructions are required")
+    if agent_type not in VALID_AGENT_TYPES:
+        raise ValueError(f"Invalid agent_type: {agent_type}")
+    if context_mode not in VALID_CONTEXT_MODES:
+        raise ValueError(f"Invalid context_mode: {context_mode}")
+    if agent_type == "interactive":
+        task_types = []
+    else:
+        if not isinstance(task_types, list) or not task_types:
+            raise ValueError("task_types must be a non-empty list")
+        invalid_task_types = [task_type for task_type in task_types if task_type not in VALID_TYPES]
+        if invalid_task_types:
+            raise ValueError(f"Invalid task_types: {', '.join(sorted(invalid_task_types))}")
+    if provider in {"anthropic", "openai", "google"} and not str(credentials_ref or "").strip():
+        raise ValueError(f"credentials_ref is required for provider {provider}")
+    if int(context_n) < 0:
+        raise ValueError("context_n must be >= 0")
+    if int(timeout) <= 0:
+        raise ValueError("timeout must be > 0")
+    if int(max_retries) < 0:
+        raise ValueError("max_retries must be >= 0")
 
 
 def _import_legacy_items(conn):
@@ -838,8 +965,8 @@ def register_agent(name, cli, description="", capabilities=None):
         existing = conn.execute("SELECT registered_at FROM agents WHERE name = ?", (name,)).fetchone()
         conn.execute(
             """
-            INSERT INTO agents(name, cli, description, capabilities_json, registered_at, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO agents(name, cli, description, capabilities_json, registered_at, last_seen, agent_type, enabled)
+            VALUES (?, ?, ?, ?, ?, ?, 'interactive', 1)
             ON CONFLICT(name) DO UPDATE SET
                 cli = excluded.cli,
                 description = excluded.description,
@@ -864,17 +991,224 @@ def list_agents():
     with _connect() as conn:
         _ensure_schema(conn)
         rows = conn.execute("SELECT * FROM agents ORDER BY name ASC").fetchall()
-    return [
-        {
-            "name": row["name"],
-            "cli": row["cli"],
-            "description": row["description"],
-            "capabilities": json.loads(row["capabilities_json"] or "[]"),
-            "registered_at": row["registered_at"],
-            "last_seen": row["last_seen"],
-        }
-        for row in rows
-    ]
+    return [_row_to_agent(row) for row in rows]
+
+
+def list_agent_configs(agent_type=None, enabled=None):
+    query = "SELECT * FROM agents"
+    clauses = []
+    params = []
+    if agent_type is not None:
+        clauses.append("agent_type = ?")
+        params.append(agent_type)
+    if enabled is not None:
+        clauses.append("enabled = ?")
+        params.append(_normalize_bool(enabled))
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY name ASC"
+    with _connect() as conn:
+        _ensure_schema(conn)
+        rows = conn.execute(query, params).fetchall()
+    return [_row_to_agent(row) for row in rows]
+
+
+def get_agent_config(name):
+    with _connect() as conn:
+        _ensure_schema(conn)
+        row = conn.execute("SELECT * FROM agents WHERE name = ?", (name,)).fetchone()
+    if not row:
+        return None
+    return _row_to_agent(row)
+
+
+def create_agent(
+    name,
+    provider,
+    model,
+    instructions,
+    task_types,
+    *,
+    api_base="",
+    credentials_ref="",
+    description="",
+    capabilities=None,
+    context_mode="full_thread",
+    context_n=0,
+    context_budget=8000,
+    max_output_tokens=4000,
+    timeout=180,
+    sandbox="read-only",
+    max_retries=2,
+    agent_type="worker",
+    enabled=True,
+):
+    _validate_agent_config(
+        name=name,
+        provider=provider,
+        model=model,
+        instructions=instructions,
+        task_types=task_types,
+        context_mode=context_mode,
+        context_n=context_n,
+        timeout=timeout,
+        max_retries=max_retries,
+        agent_type=agent_type,
+        credentials_ref=credentials_ref,
+    )
+    if get_agent_config(name):
+        raise ValueError(f"Agent already exists: {name}")
+    now = _utc_now()
+    cli = PROVIDER_TO_CLI.get(provider, provider or "any")
+    with _connect() as conn:
+        _ensure_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO agents(
+                name, cli, description, capabilities_json, registered_at, last_seen,
+                provider, model, api_base, credentials_ref, instructions, task_types_json,
+                context_mode, context_n, context_budget, max_output_tokens, timeout,
+                sandbox, max_retries, agent_type, enabled
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                cli,
+                description,
+                json.dumps(capabilities or []),
+                now,
+                "",
+                provider,
+                model,
+                api_base,
+                credentials_ref,
+                instructions,
+                json.dumps(task_types),
+                context_mode,
+                int(context_n),
+                int(context_budget),
+                int(max_output_tokens),
+                int(timeout),
+                sandbox,
+                int(max_retries),
+                agent_type,
+                _normalize_bool(enabled),
+            ),
+        )
+        existing_token = conn.execute(
+            "SELECT token FROM agent_tokens WHERE label = ? OR name = ? ORDER BY created_at DESC LIMIT 1",
+            (name, name),
+        ).fetchone()
+        if not existing_token:
+            token = str(uuid.uuid4())[:12]
+            conn.execute(
+                """
+                INSERT INTO agent_tokens(token, created_at, label, active, name, cli, registered_at, last_seen)
+                VALUES (?, ?, ?, 1, ?, ?, ?, '')
+                """,
+                (token, now, name, name, cli, now),
+            )
+        conn.commit()
+    _audit("agent_created", name, actor="human", detail=provider)
+    return get_agent_config(name)
+
+
+def update_agent(name, **kwargs):
+    current = get_agent_config(name)
+    if not current:
+        return {"error": f"Agent not found: {name}"}
+    updated = dict(current)
+    updated.update(kwargs)
+    _validate_agent_config(
+        name=name,
+        provider=updated.get("provider", ""),
+        model=updated.get("model", ""),
+        instructions=updated.get("instructions", ""),
+        task_types=updated.get("task_types", []),
+        context_mode=updated.get("context_mode", "full_thread"),
+        context_n=updated.get("context_n", 0),
+        timeout=updated.get("timeout", 180),
+        max_retries=updated.get("max_retries", 2),
+        agent_type=updated.get("agent_type", "worker"),
+        credentials_ref=updated.get("credentials_ref", ""),
+    )
+    cli = updated.get("cli") or PROVIDER_TO_CLI.get(updated.get("provider", ""), current.get("cli", "any"))
+    with _connect() as conn:
+        _ensure_schema(conn)
+        conn.execute(
+            """
+            UPDATE agents
+            SET cli = ?, description = ?, capabilities_json = ?, provider = ?, model = ?, api_base = ?,
+                credentials_ref = ?, instructions = ?, task_types_json = ?, context_mode = ?, context_n = ?,
+                context_budget = ?, max_output_tokens = ?, timeout = ?, sandbox = ?, max_retries = ?,
+                agent_type = ?, enabled = ?
+            WHERE name = ?
+            """,
+            (
+                cli,
+                updated.get("description", ""),
+                json.dumps(updated.get("capabilities", [])),
+                updated.get("provider", ""),
+                updated.get("model", ""),
+                updated.get("api_base", ""),
+                updated.get("credentials_ref", ""),
+                updated.get("instructions", ""),
+                json.dumps(updated.get("task_types", [])),
+                updated.get("context_mode", "full_thread"),
+                int(updated.get("context_n", 0)),
+                int(updated.get("context_budget", 8000)),
+                int(updated.get("max_output_tokens", 4000)),
+                int(updated.get("timeout", 180)),
+                updated.get("sandbox", "read-only"),
+                int(updated.get("max_retries", 2)),
+                updated.get("agent_type", "worker"),
+                _normalize_bool(updated.get("enabled", True)),
+                name,
+            ),
+        )
+        conn.execute(
+            "UPDATE agent_tokens SET cli = ?, name = COALESCE(NULLIF(name, ''), ?) WHERE label = ? OR name = ?",
+            (cli, name, name, name),
+        )
+        conn.commit()
+    _audit("agent_updated", name, actor="human", detail="config updated")
+    return get_agent_config(name)
+
+
+def set_agent_enabled(name, enabled):
+    current = get_agent_config(name)
+    if not current:
+        return {"error": f"Agent not found: {name}"}
+    with _connect() as conn:
+        _ensure_schema(conn)
+        conn.execute("UPDATE agents SET enabled = ? WHERE name = ?", (_normalize_bool(enabled), name))
+        conn.commit()
+    _audit("agent_enabled" if enabled else "agent_disabled", name, actor="human", detail="")
+    return get_agent_config(name)
+
+
+def delete_agent(name, deactivate_tokens=True):
+    current = get_agent_config(name)
+    if not current:
+        return {"error": f"Agent not found: {name}"}
+    if deactivate_tokens:
+        with _connect() as conn:
+            _ensure_schema(conn)
+            conn.execute("UPDATE agent_tokens SET active = 0 WHERE name = ? OR label = ?", (name, name))
+            conn.commit()
+    for item in list_items(status="sent"):
+        if item.get("claimed_by") == name:
+            release_claim(item["id"], worker_name=name)
+    stranded = []
+    for item in list_items(status="sent", to=name):
+        stranded.append(item["id"])
+        _audit("agent_deleted_pending_item", item["id"], actor="human", detail=f"Pending item remains addressed to deleted agent {name}")
+    with _connect() as conn:
+        _ensure_schema(conn)
+        conn.execute("DELETE FROM agents WHERE name = ?", (name,))
+        conn.commit()
+    _audit("agent_deleted", name, actor="human", detail=f"stranded={len(stranded)}")
+    return {"name": name, "status": "deleted", "stranded_items": stranded}
 
 
 def get_routable_targets():
@@ -1102,3 +1436,77 @@ def get_audit_log(item_id=None, limit=50):
         }
         for row in rows
     ]
+
+
+def capture_thought(content, tags=None, source=""):
+    thought_id = str(uuid.uuid4())[:8]
+    now = _utc_now()
+    thought = {
+        "id": thought_id,
+        "content": str(content or ""),
+        "tags": list(tags or []),
+        "source": str(source or ""),
+        "created_at": now,
+    }
+    with _connect() as conn:
+        _ensure_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO thoughts(id, content, tags_json, source, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                thought["id"],
+                thought["content"],
+                json.dumps(thought["tags"]),
+                thought["source"],
+                thought["created_at"],
+            ),
+        )
+        conn.commit()
+    _audit("thought_captured", thought_id, actor="system", detail=thought["content"][:80])
+    return thought
+
+
+def get_thought(thought_id):
+    with _connect() as conn:
+        _ensure_schema(conn)
+        row = conn.execute("SELECT * FROM thoughts WHERE id = ?", (thought_id,)).fetchone()
+    return _row_to_thought(row)
+
+
+def list_thoughts(limit=50, tag=None):
+    query = "SELECT * FROM thoughts"
+    params = []
+    if tag:
+        query += " WHERE tags_json LIKE ?"
+        params.append(f'%"{tag}"%')
+    query += " ORDER BY created_at DESC, rowid DESC LIMIT ?"
+    params.append(int(limit))
+    with _connect() as conn:
+        _ensure_schema(conn)
+        rows = conn.execute(query, params).fetchall()
+    return [_row_to_thought(row) for row in rows]
+
+
+def thought_stats():
+    with _connect() as conn:
+        _ensure_schema(conn)
+        total = conn.execute("SELECT COUNT(*) AS count FROM thoughts").fetchone()["count"]
+        rows = conn.execute("SELECT tags_json FROM thoughts").fetchall()
+    tags = {}
+    for row in rows:
+        for tag in json.loads(row["tags_json"] or "[]"):
+            tags[tag] = tags.get(tag, 0) + 1
+    return {"total": total, "tags": tags}
+
+
+def delete_thought(thought_id):
+    with _connect() as conn:
+        _ensure_schema(conn)
+        result = conn.execute("DELETE FROM thoughts WHERE id = ?", (thought_id,))
+        conn.commit()
+    deleted = bool(result.rowcount)
+    if deleted:
+        _audit("thought_deleted", thought_id, actor="system", detail="")
+    return {"deleted": deleted}
