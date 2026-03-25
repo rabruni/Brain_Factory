@@ -10,18 +10,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
 import textwrap
 import threading
 import time
+import urllib.error
+import urllib.request
 from typing import Any
 
+import backends
 import workspace as ws
 
 
 REPO_DIR = pathlib.Path(__file__).parent
+DISABLE_DB_CONFIGS_ENV = "WORKSPACE_DISPATCHER_DISABLE_DB_CONFIGS"
 
 WORKER_PROFILES: dict[str, dict[str, Any]] = {
     "codex-builder": {
@@ -135,7 +140,7 @@ def parse_output(output_path: pathlib.Path) -> dict[str, Any]:
     return data
 
 
-def run_worker(worker_name: str, profile: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+def _run_codex_worker(worker_name: str, profile: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
     prompt = build_prompt(item, profile)
     with tempfile.TemporaryDirectory(prefix="codex-dispatch-") as tmpdir:
         tmp = pathlib.Path(tmpdir)
@@ -183,6 +188,16 @@ def run_worker(worker_name: str, profile: dict[str, Any], item: dict[str, Any]) 
         if not last_message_path.exists():
             raise RuntimeError("codex exec did not produce an output file")
         return parse_output(last_message_path)
+
+
+def run_worker(worker_name: str, profile: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+    provider = str(profile.get("provider", "") or "codex-cli")
+    if provider == "codex-cli":
+        return _run_codex_worker(worker_name, profile, item)
+    if provider in {"ollama", "anthropic", "openai", "google"}:
+        prompt = build_prompt(item, profile)
+        return backends.invoke_agent({"name": worker_name, **profile}, prompt)
+    raise ValueError(f"Unsupported provider: {provider}")
 
 
 def deliver_result(worker_name: str, item: dict[str, Any], payload: dict[str, Any]) -> None:
@@ -252,9 +267,11 @@ def handle_item(worker_name: str, profile: dict[str, Any], item: dict[str, Any])
 
 def run_once(worker_names: list[str] | None = None) -> None:
     ws.expire_stale_claims()
-    profiles = WORKER_PROFILES
-    for worker_name, profile in profiles.items():
+    for worker_name in discover_worker_names():
         if worker_names and worker_name not in worker_names:
+            continue
+        profile = get_worker_config(worker_name)
+        if not profile:
             continue
         allowed_types = set(profile["task_types"])
         items = ws.get_claimable_items(worker_name)
@@ -262,6 +279,30 @@ def run_once(worker_names: list[str] | None = None) -> None:
             if item.get("type") not in allowed_types:
                 continue
             handle_item(worker_name, profile, item)
+
+
+def db_configs_enabled() -> bool:
+    return os.environ.get(DISABLE_DB_CONFIGS_ENV, "").strip().lower() not in {"1", "true", "yes", "on"}
+
+
+def get_worker_config(worker_name: str) -> dict[str, Any] | None:
+    if db_configs_enabled():
+        config = ws.get_agent_config(worker_name)
+        if config and config.get("enabled") and config.get("agent_type") == "worker" and config.get("provider"):
+            return config
+    if worker_name in WORKER_PROFILES:
+        fallback = dict(WORKER_PROFILES[worker_name])
+        fallback.setdefault("provider", "codex-cli")
+        return fallback
+    return None
+
+
+def discover_worker_names() -> list[str]:
+    names = set(WORKER_PROFILES)
+    if db_configs_enabled():
+        for agent in ws.list_agent_configs(agent_type="worker", enabled=True):
+            names.add(agent["name"])
+    return sorted(names)
 
 
 def ensure_workers_registered(worker_names: list[str] | None = None) -> None:

@@ -18,10 +18,10 @@ import sys
 sys.path.insert(0, '$PROJECT_DIR')
 import workspace as ws
 
-# Check all registered agents for this CLI
+# Check all registered agents for this CLI — skip interactive agents (handled by shell)
 agents = ws.list_agents()
 for agent in agents:
-    if agent.get('cli') == 'claude':
+    if agent.get('cli') == 'claude' and agent.get('agent_type') != 'interactive':
         items = ws.list_items(status='sent', to=agent['name'])
         if items:
             print(f'{len(items)} items waiting for {agent[\"name\"]}')

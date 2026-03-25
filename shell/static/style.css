@@ -219,6 +219,21 @@ body {
   margin-top: 4px;
 }
 
+.tools-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 6px;
+}
+
+.tools-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .run-card {
   margin: 8px;
   padding: 10px 12px;

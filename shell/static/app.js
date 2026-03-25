@@ -1085,6 +1085,7 @@ function renderAgentDetail(agent) {
         <div class="label">Type</div><div>${escHtml(agent.agent_type || '')}</div>
         <div class="label">Enabled</div><div>${agent.enabled ? 'yes' : 'no'}</div>
         <div class="label">Task Types</div><div>${escHtml((agent.task_types || []).join(', '))}</div>
+        <div class="label">Tools</div><div>${escHtml((agent.tools || []).join(', ') || 'none')}</div>
         <div class="label">Context</div><div>${escHtml(agent.context_mode || '')}</div>
         <div class="label">Timeout</div><div>${escHtml(String(agent.timeout || ''))}</div>
         <div class="label">Max Retries</div><div>${escHtml(String(agent.max_retries || ''))}</div>
@@ -1610,8 +1611,24 @@ function toggleAgentProviderFields() {
 function toggleAgentTypeFields() {
   const agentType = document.getElementById('agent-agent-type').value;
   const interactive = agentType === 'interactive';
+  document.getElementById('agent-tools-wrap').style.display = interactive ? '' : 'none';
   document.getElementById('agent-task-types-wrap').style.display = interactive ? 'none' : '';
   document.getElementById('agent-context-mode-wrap').style.display = interactive ? 'none' : '';
+}
+
+function selectedToolValues() {
+  return [
+    ['tool-read-file', 'read_file'],
+    ['tool-list-directory', 'list_directory'],
+    ['tool-search-files', 'search_files'],
+  ].filter(([id]) => document.getElementById(id).checked).map(([, value]) => value);
+}
+
+function setSelectedTools(tools=[]) {
+  const set = new Set(tools || []);
+  document.getElementById('tool-read-file').checked = set.has('read_file');
+  document.getElementById('tool-list-directory').checked = set.has('list_directory');
+  document.getElementById('tool-search-files').checked = set.has('search_files');
 }
 
 async function fetchProviderModels() {
@@ -1659,6 +1676,7 @@ function showAgentModal(name='') {
   document.getElementById('agent-api-key-status').style.color = agent && agent.has_secret ? '#22c55e' : 'var(--text-dim)';
   document.getElementById('agent-instructions').value = agent ? (agent.instructions || '') : '';
   document.getElementById('agent-task-types').value = agent ? (agent.task_types || []).join(',') : 'prompt,question';
+  setSelectedTools(agent ? (agent.tools || []) : []);
   document.getElementById('agent-context-mode').value = agent ? (agent.context_mode || 'full_thread') : 'full_thread';
   document.getElementById('agent-timeout').value = agent ? (agent.timeout || 180) : 180;
   document.getElementById('agent-max-retries').value = agent ? (agent.max_retries || 2) : 2;
@@ -1693,6 +1711,7 @@ async function saveAgent() {
     task_types: document.getElementById('agent-agent-type').value === 'interactive'
       ? []
       : document.getElementById('agent-task-types').value.split(',').map(s => s.trim()).filter(Boolean),
+    tools: document.getElementById('agent-agent-type').value === 'interactive' ? selectedToolValues() : [],
     context_mode: document.getElementById('agent-agent-type').value === 'interactive'
       ? 'full_thread'
       : document.getElementById('agent-context-mode').value,
@@ -1770,6 +1789,7 @@ async function testAgentConnection() {
     api_base: document.getElementById('agent-api-base').value.trim(),
     credentials_ref: credentialsRef,
     instructions: document.getElementById('agent-instructions').value.trim(),
+    tools: document.getElementById('agent-agent-type').value === 'interactive' ? selectedToolValues() : [],
   };
   const r = await fetch('/api/agents/test', {
     method: 'POST',

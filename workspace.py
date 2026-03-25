@@ -34,6 +34,7 @@ DEFAULT_MAX_DEPTH = 2
 VALID_AGENT_TYPES = {"worker", "interactive", "sawmill-role", "human"}
 VALID_CONTEXT_MODES = {"full_thread", "last_n", "task_only"}
 VALID_PROVIDERS = {"codex-cli", "ollama", "anthropic", "openai", "google"}
+VALID_TOOLS = {"read_file", "list_directory", "search_files"}
 RESERVED_AGENT_NAMES = {"builder", "reviewer", "evaluator", "spec-agent", "holdout-agent", "orchestrator", "auditor"}
 AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
 PROVIDER_TO_CLI = {
@@ -195,6 +196,7 @@ def _ensure_schema(conn):
         ("credentials_ref", "ALTER TABLE agents ADD COLUMN credentials_ref TEXT NOT NULL DEFAULT ''"),
         ("instructions", "ALTER TABLE agents ADD COLUMN instructions TEXT NOT NULL DEFAULT ''"),
         ("task_types_json", "ALTER TABLE agents ADD COLUMN task_types_json TEXT NOT NULL DEFAULT '[]'"),
+        ("tools_json", "ALTER TABLE agents ADD COLUMN tools_json TEXT NOT NULL DEFAULT '[]'"),
         ("context_mode", "ALTER TABLE agents ADD COLUMN context_mode TEXT NOT NULL DEFAULT 'full_thread'"),
         ("context_n", "ALTER TABLE agents ADD COLUMN context_n INTEGER NOT NULL DEFAULT 0"),
         ("context_budget", "ALTER TABLE agents ADD COLUMN context_budget INTEGER NOT NULL DEFAULT 8000"),
@@ -292,6 +294,7 @@ def _row_to_agent(row):
         "credentials_ref": row["credentials_ref"],
         "instructions": row["instructions"],
         "task_types": json.loads(row["task_types_json"] or "[]"),
+        "tools": json.loads(row["tools_json"] or "[]"),
         "context_mode": row["context_mode"],
         "context_n": row["context_n"],
         "context_budget": row["context_budget"],
@@ -323,7 +326,7 @@ def _validate_agent_name(name):
         raise ValueError(f"Reserved agent name: {name}")
 
 
-def _validate_agent_config(*, name, provider, model, instructions, task_types, context_mode, context_n, timeout, max_retries, agent_type, credentials_ref):
+def _validate_agent_config(*, name, provider, model, instructions, task_types, tools, context_mode, context_n, timeout, max_retries, agent_type, credentials_ref):
     _validate_agent_name(name)
     if provider not in VALID_PROVIDERS:
         raise ValueError(f"Unsupported provider: {provider}")
@@ -337,7 +340,13 @@ def _validate_agent_config(*, name, provider, model, instructions, task_types, c
         raise ValueError(f"Invalid context_mode: {context_mode}")
     if agent_type == "interactive":
         task_types = []
+        if not isinstance(tools, list):
+            raise ValueError("tools must be a list")
+        invalid_tools = [tool for tool in tools if tool not in VALID_TOOLS]
+        if invalid_tools:
+            raise ValueError(f"Invalid tools: {', '.join(sorted(invalid_tools))}")
     else:
+        tools = []
         if not isinstance(task_types, list) or not task_types:
             raise ValueError("task_types must be a non-empty list")
         invalid_task_types = [task_type for task_type in task_types if task_type not in VALID_TYPES]
@@ -1028,6 +1037,7 @@ def create_agent(
     model,
     instructions,
     task_types,
+    tools=None,
     *,
     api_base="",
     credentials_ref="",
@@ -1049,6 +1059,7 @@ def create_agent(
         model=model,
         instructions=instructions,
         task_types=task_types,
+        tools=tools or [],
         context_mode=context_mode,
         context_n=context_n,
         timeout=timeout,
@@ -1066,10 +1077,10 @@ def create_agent(
             """
             INSERT INTO agents(
                 name, cli, description, capabilities_json, registered_at, last_seen,
-                provider, model, api_base, credentials_ref, instructions, task_types_json,
+                provider, model, api_base, credentials_ref, instructions, task_types_json, tools_json,
                 context_mode, context_n, context_budget, max_output_tokens, timeout,
                 sandbox, max_retries, agent_type, enabled
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1084,6 +1095,7 @@ def create_agent(
                 credentials_ref,
                 instructions,
                 json.dumps(task_types),
+                json.dumps(tools or []),
                 context_mode,
                 int(context_n),
                 int(context_budget),
@@ -1125,6 +1137,7 @@ def update_agent(name, **kwargs):
         model=updated.get("model", ""),
         instructions=updated.get("instructions", ""),
         task_types=updated.get("task_types", []),
+        tools=updated.get("tools", []),
         context_mode=updated.get("context_mode", "full_thread"),
         context_n=updated.get("context_n", 0),
         timeout=updated.get("timeout", 180),
@@ -1139,7 +1152,7 @@ def update_agent(name, **kwargs):
             """
             UPDATE agents
             SET cli = ?, description = ?, capabilities_json = ?, provider = ?, model = ?, api_base = ?,
-                credentials_ref = ?, instructions = ?, task_types_json = ?, context_mode = ?, context_n = ?,
+                credentials_ref = ?, instructions = ?, task_types_json = ?, tools_json = ?, context_mode = ?, context_n = ?,
                 context_budget = ?, max_output_tokens = ?, timeout = ?, sandbox = ?, max_retries = ?,
                 agent_type = ?, enabled = ?
             WHERE name = ?
@@ -1154,6 +1167,7 @@ def update_agent(name, **kwargs):
                 updated.get("credentials_ref", ""),
                 updated.get("instructions", ""),
                 json.dumps(updated.get("task_types", [])),
+                json.dumps(updated.get("tools", [])),
                 updated.get("context_mode", "full_thread"),
                 int(updated.get("context_n", 0)),
                 int(updated.get("context_budget", 8000)),
