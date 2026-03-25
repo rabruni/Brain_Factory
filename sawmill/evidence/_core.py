@@ -79,9 +79,12 @@ def expect_list(value: Any, field_name: str, path: Path) -> list[Any]:
     return value
 
 
-def validate_common(data: dict[str, Any], path: Path, run_id: str, attempt: int) -> None:
-    if data.get("run_id") != run_id:
-        raise ValueError(f"{path} run_id mismatch: expected {run_id}, found {data.get('run_id')}")
+def validate_common(data: dict[str, Any], path: Path, run_id: str, attempt: int, lineage_run_ids: list[str] | None = None) -> None:
+    accepted_run_ids = {run_id, *(lineage_run_ids or [])}
+    if data.get("run_id") not in accepted_run_ids:
+        raise ValueError(
+            f"{path} run_id mismatch: expected one of {sorted(accepted_run_ids)}, found {data.get('run_id')}"
+        )
     if data.get("attempt") != attempt:
         raise ValueError(f"{path} attempt mismatch: expected {attempt}, found {data.get('attempt')}")
 
@@ -102,7 +105,7 @@ def validate_builder(data: dict[str, Any], path: Path, args: argparse.Namespace)
             "results_hash",
         ],
     )
-    validate_common(data, path, args.run_id, args.attempt)
+    validate_common(data, path, args.run_id, args.attempt, getattr(args, "lineage_run_ids", None))
     expect_string(data["handoff_hash"], "handoff_hash", path)
     expect_string(data["q13_answers_hash"], "q13_answers_hash", path)
     expect_string(data["full_test_command"], "full_test_command", path)
@@ -164,7 +167,7 @@ def validate_reviewer(data: dict[str, Any], path: Path, args: argparse.Namespace
             "failure_code",
         ],
     )
-    validate_common(data, path, args.run_id, args.attempt)
+    validate_common(data, path, args.run_id, args.attempt, getattr(args, "lineage_run_ids", None))
     expect_string(data["q13_answers_hash"], "q13_answers_hash", path)
     expect_string(data["builder_prompt_contract_version_reviewed"], "builder_prompt_contract_version_reviewed", path)
     expect_string(data["reviewer_prompt_contract_version"], "reviewer_prompt_contract_version", path)
@@ -195,7 +198,7 @@ def validate_evaluator(data: dict[str, Any], path: Path, args: argparse.Namespac
             "pass_rate",
         ],
     )
-    validate_common(data, path, args.run_id, args.attempt)
+    validate_common(data, path, args.run_id, args.attempt, getattr(args, "lineage_run_ids", None))
     expect_string(data["holdout_hash"], "holdout_hash", path)
     expect_string(data["staging_hash"], "staging_hash", path)
     scenarios = expect_list(data["scenarios"], "scenarios", path)
@@ -302,4 +305,3 @@ def main_validate_evidence_artifacts(argv: list[str] | None = None) -> int:
         return 1
     print(f"PASS: {args.kind} evidence valid ({artifact_path})")
     return 0
-

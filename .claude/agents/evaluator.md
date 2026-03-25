@@ -83,12 +83,15 @@ However, you MUST observe these boundaries:
    - explain why the D4-declared surface is insufficient
    - document exactly what the synthesized helper does
    - confirm that the helper does not encode implementation knowledge or builder test conventions
+4. If a synthesized helper would replace or simulate an undeclared framework dependency (for example ledger client, graph store, snapshot store, provider, failure injector, or other DI collaborator), that is NOT a soft helper. It is an undeclared test double and you MUST escalate instead of proceeding.
 
 ### Classification in Mapping Files:
 Every mapping file must state which category its test falls into:
 - **PUBLIC_API_ONLY** — test uses only exported public symbols
 - **PUBLIC_API_PLUS_DECLARED_DOUBLES** — test uses public symbols plus D4-declared test doubles
-- **SYNTHESIZED_HELPER** — test required a helper not in D4. This is allowed ONLY when D9 cannot be expressed via public API plus D4-declared doubles. Flag it as a soft escalation candidate in the evaluation report. If used on a P0 scenario, call it out prominently in the report summary.
+- **SYNTHESIZED_HELPER** — test required a minor wrapper not in D4. This is allowed ONLY for non-dependency helper logic such as timing wrappers, assertion helpers, or serialization harnesses that do not replace a framework dependency or encode implementation knowledge. Flag it as a soft escalation candidate in the evaluation report. If used on a P0 scenario, call it out prominently in the report summary.
+
+If a needed helper replaces an undeclared dependency double, failure injector, or observable collaborator, do NOT classify it as `SYNTHESIZED_HELPER`. Escalate instead.
 
 ## Run Order
 P0 scenarios first. If any P0 fails, STOP — overall FAIL.

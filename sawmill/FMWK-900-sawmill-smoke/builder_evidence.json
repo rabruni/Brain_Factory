@@ -1,27 +1,28 @@
 {
+  "run_id": "20260322T000705Z-2cc56e4f0789",
   "attempt": 2,
+  "handoff_hash": "sha256:83cd88e4b345337cd6e4f89c853906c14c2014cd598aa9fca41ba53603497138",
+  "q13_answers_hash": "sha256:938eeaa53b4f3559b5f6293c76fa5aeee5ca1ae65d260e1ee1d32c91f6c890c8",
   "behaviors": [
     {
-      "behavior_id": "ping_returns_pong",
-      "failing_observation": "Behavior defined before implementation in deterministic canary path",
-      "failing_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py",
+      "behavior_id": "test_ping",
+      "failing_test_command": "cd staging/FMWK-900-sawmill-smoke && pytest -q test_smoke.py",
+      "failing_observation": "ERROR collecting test_smoke.py: ModuleNotFoundError: No module named 'smoke'",
+      "passing_test_command": "cd staging/FMWK-900-sawmill-smoke && pytest -q test_smoke.py",
+      "passing_observation": ".                                                                        [100%]\n1 passed in 0.00s",
       "files_touched": [
-        "staging/FMWK-900-sawmill-smoke/smoke.py",
-        "staging/FMWK-900-sawmill-smoke/test_smoke.py"
-      ],
-      "passing_observation": "1 passed",
-      "passing_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py"
+        "staging/FMWK-900-sawmill-smoke/test_smoke.py",
+        "staging/FMWK-900-sawmill-smoke/smoke.py"
+      ]
     }
   ],
+  "full_test_command": "cd staging/FMWK-900-sawmill-smoke && pytest -q",
+  "full_test_result": ".                                                                        [100%]\n1 passed in 0.00s",
   "files_changed": [
     "staging/FMWK-900-sawmill-smoke/smoke.py",
     "staging/FMWK-900-sawmill-smoke/test_smoke.py",
-    "sawmill/FMWK-900-sawmill-smoke/RESULTS.md"
+    "sawmill/FMWK-900-sawmill-smoke/RESULTS.md",
+    "sawmill/FMWK-900-sawmill-smoke/builder_evidence.json"
   ],
-  "full_test_command": "pytest -q staging/FMWK-900-sawmill-smoke/test_smoke.py",
-  "full_test_result": "1 passed",
-  "handoff_hash": "sha256:d761187d0c094454e583f4c0d9a90fcf6cc2887a96d8230ccf7638d57ac59361",
-  "q13_answers_hash": "sha256:56ab3cfed1f38b9516dab0f6baaa8a66e3fe9822d8d39b9ff04e2dc5de731d98",
-  "results_hash": "sha256:f870a468d9d5917eb886f1c34ec098bc2671a7df7cf7519abe92c4884eba61bf",
-  "run_id": "20260320T212822Z-3a895a647548"
+  "results_hash": "sha256:88f88d56f17071850d8c4bb1af5ae3d08d4f09168e5491a663c607d6773178c4"
 }

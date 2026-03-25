@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -55,6 +56,8 @@ from sawmill.run_state import (
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINE_STAGES = ("A", "B", "C", "D", "E")
 TURN_RANK = {"A": 1, "B": 2, "C": 3, "D": 4, "E": 5}
+LAUNCH_MANIFEST_FILENAME = "launch_manifest.json"
+RUN_MANIFEST_FILENAME = "run_manifest.json"
 
 
 @dataclass
@@ -113,6 +116,11 @@ class Orchestrator:
         self.last_missing_artifact_path = ""
         self.last_missing_artifact_label = ""
         self.last_prompt_verification_error = ""
+        self.launch_manifest_path = self.ctx.sawmill_dir / LAUNCH_MANIFEST_FILENAME
+        self.launch_manifest: dict[str, Any] = {}
+        self.role_runtime_config: dict[str, dict[str, str]] = {}
+        self.resumed_from_run_id = ""
+        self.lineage_root_run_id = ""
 
         self.role_registry = load_role_registry(ctx.role_registry_path)
         validate_role_registry(self.role_registry, ctx.role_registry_path)
@@ -133,12 +141,18 @@ class Orchestrator:
             ROOT / "Templates/REVIEWER_PROMPT_CONTRACT.md"
         )
 
-        self.spec_agent = self._resolve_backend("spec-agent")
-        self.build_agent = self._resolve_backend("builder")
-        self.holdout_agent = self._resolve_backend("holdout-agent")
-        self.review_agent = self._resolve_backend("reviewer")
-        self.eval_agent = self._resolve_backend("evaluator")
-        self.audit_agent = self._resolve_backend("auditor")
+        self.launch_manifest = self._load_launch_manifest()
+        self.role_runtime_config = {
+            role_name: self._resolve_role_runtime(role_name)
+            for role_name in self.roles
+        }
+
+        self.spec_agent = self.role_runtime_config["spec-agent"]["backend"]
+        self.build_agent = self.role_runtime_config["builder"]["backend"]
+        self.holdout_agent = self.role_runtime_config["holdout-agent"]["backend"]
+        self.review_agent = self.role_runtime_config["reviewer"]["backend"]
+        self.eval_agent = self.role_runtime_config["evaluator"]["backend"]
+        self.audit_agent = self.role_runtime_config["auditor"]["backend"]
 
         self.spec_role_file = ROOT / self.roles["spec-agent"]["role_file"]
         self.holdout_role_file = ROOT / self.roles["holdout-agent"]["role_file"]
@@ -171,20 +185,58 @@ class Orchestrator:
             },
         )
 
-    def _resolve_backend(self, role_name: str) -> str:
+    def _default_runtime_for_role(self, role_name: str) -> dict[str, str]:
         metadata = self.roles[role_name]
-        default = (
-            metadata["production_backend"]
-            if os.environ.get("SAWMILL_USE_PROD_BACKENDS") == "1"
-            else metadata["default_backend"]
-        )
-        selected = os.environ.get(metadata["env_override"], default)
+        return {
+            "backend": str(metadata["backend"]),
+            "model": str(metadata["model"]),
+            "effort": str(metadata["effort"]),
+            "source": "registry",
+        }
+
+    def _load_launch_manifest(self) -> dict[str, Any]:
+        if not self.launch_manifest_path.exists():
+            return {}
+        manifest = load_evidence_json(self.launch_manifest_path)
+        roles = manifest.get("roles", {})
+        if not isinstance(roles, dict):
+            raise ValueError(f"{self.launch_manifest_path} roles must be an object")
+        for role_name, config in roles.items():
+            if role_name not in self.roles:
+                raise ValueError(f"{self.launch_manifest_path} references unknown role '{role_name}'")
+            if not isinstance(config, dict):
+                raise ValueError(f"{self.launch_manifest_path} role '{role_name}' must map to an object")
+            backend = str(config.get("backend", ""))
+            if backend not in self.roles[role_name]["allowed_backends"]:
+                raise ValueError(
+                    f"{self.launch_manifest_path} role '{role_name}' backend '{backend}' is not allowed ({self.roles[role_name]['allowed_backends']})"
+                )
+        return manifest
+
+    def _resolve_role_runtime(self, role_name: str) -> dict[str, str]:
+        metadata = self.roles[role_name]
+        runtime = self._default_runtime_for_role(role_name)
+        manifest_roles = self.launch_manifest.get("roles", {})
+        manifest_role = manifest_roles.get(role_name) if isinstance(manifest_roles, dict) else None
+        if isinstance(manifest_role, dict):
+            runtime = {
+                "backend": str(manifest_role.get("backend", runtime["backend"])),
+                "model": str(manifest_role.get("model", runtime["model"])),
+                "effort": str(manifest_role.get("effort", runtime["effort"])),
+                "source": "launch_manifest",
+            }
+        selected = os.environ.get(metadata["env_override"], runtime["backend"])
         if selected not in metadata["allowed_backends"]:
             self.fail(
                 f"Role '{role_name}' resolved backend '{selected}' via {metadata['env_override']} is not allowed ({metadata['allowed_backends']})"
             )
             raise PipelineAbort(1)
-        return selected
+        if selected != runtime["backend"]:
+            runtime["backend"] = selected
+            runtime["model"] = "default"
+            runtime["effort"] = "default"
+            runtime["source"] = f"env_override:{metadata['env_override']}"
+        return runtime
 
     def _sha256_file(self, path: Path) -> str:
         digest = hashlib.sha256()
@@ -219,12 +271,18 @@ class Orchestrator:
         os.environ["REVIEW_ROLE_FILE"] = str(self.review_role_file)
         os.environ["EVAL_ROLE_FILE"] = str(self.eval_role_file)
         os.environ["AUDIT_ROLE_FILE"] = str(self.audit_role_file)
-        os.environ["SPEC_MODEL_POLICY"] = self.roles["spec-agent"]["model_policy"]
-        os.environ["HOLDOUT_MODEL_POLICY"] = self.roles["holdout-agent"]["model_policy"]
-        os.environ["BUILD_MODEL_POLICY"] = self.roles["builder"]["model_policy"]
-        os.environ["REVIEW_MODEL_POLICY"] = self.roles["reviewer"]["model_policy"]
-        os.environ["EVAL_MODEL_POLICY"] = self.roles["evaluator"]["model_policy"]
-        os.environ["AUDIT_MODEL_POLICY"] = self.roles["auditor"]["model_policy"]
+        os.environ["SPEC_MODEL_POLICY"] = self.role_runtime_config["spec-agent"]["effort"]
+        os.environ["HOLDOUT_MODEL_POLICY"] = self.role_runtime_config["holdout-agent"]["effort"]
+        os.environ["BUILD_MODEL_POLICY"] = self.role_runtime_config["builder"]["effort"]
+        os.environ["REVIEW_MODEL_POLICY"] = self.role_runtime_config["reviewer"]["effort"]
+        os.environ["EVAL_MODEL_POLICY"] = self.role_runtime_config["evaluator"]["effort"]
+        os.environ["AUDIT_MODEL_POLICY"] = self.role_runtime_config["auditor"]["effort"]
+        os.environ["SPEC_MODEL"] = self.role_runtime_config["spec-agent"]["model"]
+        os.environ["HOLDOUT_MODEL"] = self.role_runtime_config["holdout-agent"]["model"]
+        os.environ["BUILD_MODEL"] = self.role_runtime_config["builder"]["model"]
+        os.environ["REVIEW_MODEL"] = self.role_runtime_config["reviewer"]["model"]
+        os.environ["EVAL_MODEL"] = self.role_runtime_config["evaluator"]["model"]
+        os.environ["AUDIT_MODEL"] = self.role_runtime_config["auditor"]["model"]
         os.environ["BUILDER_PROMPT_CONTRACT_VERSION"] = self.builder_prompt_contract_version
         os.environ["REVIEWER_PROMPT_CONTRACT_VERSION"] = self.reviewer_prompt_contract_version
         os.environ["ALL_PROMPT_KEYS"] = " ".join(sorted(self.prompts))
@@ -308,7 +366,7 @@ class Orchestrator:
             "evaluator": self.eval_agent,
             "auditor": self.audit_agent,
         }
-        model_policies = {role: str(metadata["model_policy"]) for role, metadata in self.roles.items()}
+        model_policies = {role: runtime["effort"] for role, runtime in self.role_runtime_config.items()}
         role_file_hashes = {
             str(ROOT / metadata["role_file"]): self._sha256_file(ROOT / metadata["role_file"])
             for metadata in self.roles.values()
@@ -330,11 +388,16 @@ class Orchestrator:
                 "builder_prompt_contract": self.builder_prompt_contract_version,
                 "reviewer_prompt_contract": self.reviewer_prompt_contract_version,
             },
+            role_runtime_config=self.role_runtime_config,
             role_file_hashes=role_file_hashes,
             prompt_file_hashes=prompt_file_hashes,
             artifact_registry_version_hash=self._sha256_file(self.ctx.artifact_registry_path),
             graph_version="none",
             operator_mode=self.ctx.operator_mode,
+            resumed_from_run_id=self.resumed_from_run_id,
+            lineage_root_run_id=self.lineage_root_run_id or self.run_id,
+            launch_manifest_path=str(self.launch_manifest_path) if self.launch_manifest_path.exists() else "",
+            launch_manifest_hash=self._sha256_file(self.launch_manifest_path) if self.launch_manifest_path.exists() else "",
         )
         metadata_file.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return metadata_file
@@ -431,6 +494,7 @@ class Orchestrator:
     def initialize_run_harness(self) -> None:
         self.run_started_at = iso_timestamp()
         self.run_id = new_run_id()
+        self.resolved_resume_lineage()
         self.run_dir = self.ctx.sawmill_dir / "runs" / self.run_id
         self.run_json_path = self.run_dir / "run.json"
         self.status_json_path = self.run_dir / "status.json"
@@ -451,6 +515,8 @@ class Orchestrator:
         metadata_file = self.build_run_metadata_file()
         init_run(self.run_dir, metadata_file)
         metadata_file.unlink(missing_ok=True)
+        if self.launch_manifest_path.exists():
+            shutil.copy2(self.launch_manifest_path, self.run_dir / RUN_MANIFEST_FILENAME)
         self.run_invocations_dir.mkdir(parents=True, exist_ok=True)
         self.run_heartbeats_dir.mkdir(parents=True, exist_ok=True)
         self.run_started_event_id = self.emit(
@@ -465,6 +531,53 @@ class Orchestrator:
             0,
             f"Run started for {self.ctx.framework_id}",
         )
+
+    def resolved_resume_lineage(self) -> None:
+        if self.ctx.from_turn == "A":
+            self.resumed_from_run_id = ""
+            self.lineage_root_run_id = ""
+            return
+        runs_dir = self.ctx.sawmill_dir / "runs"
+        candidates = (
+            sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda path: path.name)
+            if runs_dir.exists()
+            else []
+        )
+        if not candidates:
+            self.resumed_from_run_id = ""
+            self.lineage_root_run_id = ""
+            return
+        interrupted = []
+        for candidate in candidates:
+            try:
+                projected = project_status(candidate)
+            except Exception:
+                continue
+            if projected.status.get("state") == "interrupted":
+                interrupted.append(candidate)
+        previous = interrupted[-1] if interrupted else candidates[-1]
+        previous_run = load_evidence_json(previous / "run.json")
+        self.resumed_from_run_id = str(previous_run.get("run_id", previous.name))
+        self.lineage_root_run_id = str(previous_run.get("lineage_root_run_id") or self.resumed_from_run_id)
+
+    def scan_interrupted_runs(self) -> None:
+        runs_dir = self.ctx.sawmill_dir / "runs"
+        if not runs_dir.exists():
+            return
+        for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+            status_path = run_dir / "status.json"
+            if not status_path.exists():
+                continue
+            try:
+                result = project_status(run_dir)
+            except Exception as exc:
+                self.log(f"Skipped interrupted-run scan for {run_dir.name}: {exc}")
+                continue
+            if result.status.get("state") == "interrupted":
+                write_status(run_dir, result)
+                self.log(
+                    f"Marked interrupted run {run_dir.name}: {result.status.get('interruption_reason', 'unknown')}"
+                )
 
     def _run_cli(self, args: list[str], check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -784,8 +897,11 @@ class Orchestrator:
             retry_context += f"\n\n{title}:\nRead {path} for the latest failures. Fix ONLY what failed. Do not rewrite passing work."
         return retry_context
 
-    def model_policy_for_role(self, role_name: str) -> str:
-        return str(self.roles[role_name]["model_policy"])
+    def model_for_role(self, role_name: str) -> str:
+        return str(self.role_runtime_config[role_name]["model"])
+
+    def effort_for_role(self, role_name: str) -> str:
+        return str(self.role_runtime_config[role_name]["effort"])
 
     def invoke_agent(self, backend: str, role_file: Path, prompt: str, prompt_key: str, prompt_event_id: str) -> bool:
         role_name = role_file.stem
@@ -804,7 +920,8 @@ class Orchestrator:
             framework_id=self.ctx.framework_id,
             timeout_seconds=self.ctx.agent_timeout_seconds,
             operator_mode=self.ctx.operator_mode,
-            model_policy=self.model_policy_for_role(role_name),
+            model=self.model_for_role(role_name),
+            effort=self.effort_for_role(role_name),
             prompt=prompt,
             orchestrator_heartbeat_path=orchestrator_heartbeat_path(self.run_dir),
         )
@@ -940,6 +1057,7 @@ class Orchestrator:
                 self.artifact_path("builder_evidence"),
                 argparse.Namespace(
                     run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
                     attempt=self.attempt,
                     handoff=str(self.artifact_path("builder_handoff")),
                     q13_answers=str(self.artifact_path("q13_answers")),
@@ -955,7 +1073,12 @@ class Orchestrator:
             validate_reviewer(
                 load_evidence_json(self.artifact_path("reviewer_evidence")),
                 self.artifact_path("reviewer_evidence"),
-                argparse.Namespace(run_id=self.run_id, attempt=self.attempt, q13_answers=str(self.artifact_path("q13_answers"))),
+                argparse.Namespace(
+                    run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
+                    attempt=self.attempt,
+                    q13_answers=str(self.artifact_path("q13_answers")),
+                ),
             )
             return True
         except ValueError:
@@ -968,6 +1091,7 @@ class Orchestrator:
                 self.artifact_path("evaluator_evidence"),
                 argparse.Namespace(
                     run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
                     attempt=self.attempt,
                     holdouts=str(self.artifact_path("d9_holdout_scenarios")),
                     staging_root=str(self.artifact_path("staging_root")),
@@ -984,6 +1108,7 @@ class Orchestrator:
                 self.artifact_path("builder_evidence"),
                 argparse.Namespace(
                     run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
                     attempt=self.attempt,
                     handoff=str(self.artifact_path("builder_handoff")),
                     q13_answers=str(self.artifact_path("q13_answers")),
@@ -994,7 +1119,12 @@ class Orchestrator:
             validate_reviewer(
                 load_evidence_json(self.artifact_path("reviewer_evidence")),
                 self.artifact_path("reviewer_evidence"),
-                argparse.Namespace(run_id=self.run_id, attempt=self.attempt, q13_answers=str(self.artifact_path("q13_answers"))),
+                argparse.Namespace(
+                    run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
+                    attempt=self.attempt,
+                    q13_answers=str(self.artifact_path("q13_answers")),
+                ),
             )
         if self.artifact_path("evaluator_evidence").exists():
             validate_evaluator(
@@ -1002,6 +1132,7 @@ class Orchestrator:
                 self.artifact_path("evaluator_evidence"),
                 argparse.Namespace(
                     run_id=self.run_id,
+                    lineage_run_ids=[value for value in (self.resumed_from_run_id, self.lineage_root_run_id) if value],
                     attempt=self.attempt,
                     holdouts=str(self.artifact_path("d9_holdout_scenarios")),
                     staging_root=str(self.artifact_path("staging_root")),
@@ -1196,6 +1327,7 @@ class Orchestrator:
         self.ctx.sawmill_dir.mkdir(parents=True, exist_ok=True)
         self.ctx.holdout_dir.mkdir(parents=True, exist_ok=True)
         self.ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+        self.scan_interrupted_runs()
         self.initialize_run_harness()
         self.log(f"Sawmill run: {self.ctx.framework_id}")
         self.log(f"From turn:     {self.ctx.from_turn}")

@@ -1,28 +1,158 @@
 {
+  "run_id": "20260322T000705Z-2cc56e4f0789",
   "attempt": 2,
-  "holdout_hash": "sha256:74cba7ac9ca303a36586aa704fe4285b9be5c78f930baa3e82eeb19569746ad6",
-  "pass_rate": 100.0,
-  "run_id": "20260320T212822Z-3a895a647548",
+  "holdout_hash": "sha256:41514c354b6ae1f3c4a14b381bd21646fda57cdcb4e112e8a16943c30581f67b",
+  "staging_hash": "sha256:c3675554cb0b29e2aa138adc1c7709c802d3987b86f72ed10e2c9dce3de7bb86",
   "scenarios": [
     {
-      "aggregate_result": "PASS",
-      "run_results": [
-        "PASS",
-        "PASS",
-        "PASS"
+      "scenario_id": "HS-001",
+      "generated_test_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-001.py",
+      "mapping_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-001.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-001.run1.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-001.run2.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-001.run3.json"
       ],
-      "scenario_id": "HS-001"
+      "run_results": [
+        {
+          "run": 1,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.151
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.148
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.141
+        }
+      ],
+      "aggregate_result": "PASS"
     },
     {
-      "aggregate_result": "PASS",
-      "run_results": [
-        "PASS",
-        "PASS",
-        "PASS"
+      "scenario_id": "HS-002",
+      "generated_test_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-002.py",
+      "mapping_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-002.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-002.run1.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-002.run2.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-002.run3.json"
       ],
-      "scenario_id": "HS-002"
+      "run_results": [
+        {
+          "run": 1,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.145
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.147
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.145
+        }
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-003",
+      "generated_test_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-003.py",
+      "mapping_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-003.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-003.run1.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-003.run2.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-003.run3.json"
+      ],
+      "run_results": [
+        {
+          "run": 1,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 4,
+          "assertions_passed": 4,
+          "duration_seconds": 0.16
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 4,
+          "assertions_passed": 4,
+          "duration_seconds": 0.158
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 4,
+          "assertions_passed": 4,
+          "duration_seconds": 0.143
+        }
+      ],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-004",
+      "generated_test_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-004.py",
+      "mapping_path": "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-004.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-004.run1.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-004.run2.json",
+        "runs/20260322T000705Z-2cc56e4f0789/eval_tests/attempt2/HS-004.run3.json"
+      ],
+      "run_results": [
+        {
+          "run": 1,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.151
+        },
+        {
+          "run": 2,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.153
+        },
+        {
+          "run": 3,
+          "passed": true,
+          "exit_code": 0,
+          "assertion_count": 5,
+          "assertions_passed": 5,
+          "duration_seconds": 0.142
+        }
+      ],
+      "aggregate_result": "PASS"
     }
   ],
-  "staging_hash": "sha256:c4284dd4f504e21041747316a835e177f158cf3cb246cfab50ecdde8bcb78b77",
-  "verdict": "PASS"
+  "verdict": "PASS",
+  "pass_rate": 100.0
 }

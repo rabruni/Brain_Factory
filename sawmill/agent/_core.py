@@ -56,8 +56,12 @@ def build_invocation(backend: str, payload_path: str, meta: dict[str, Any]) -> d
         "SAWMILL_ACTIVE_FMWK": framework_id,
         "SAWMILL_HEARTBEAT_FILE": meta["heartbeat_file"],
     }
+    model = str(meta.get("model", "default"))
+    effort = str(meta.get("effort", "default"))
     if backend == "codex":
         argv = ["codex", "exec", "--full-auto", payload]
+        if model != "default":
+            argv.extend(["--model", model])
     elif backend == "claude":
         argv = [
             "claude",
@@ -70,12 +74,14 @@ def build_invocation(backend: str, payload_path: str, meta: dict[str, Any]) -> d
             "--dangerously-skip-permissions",
             "--no-session-persistence",
         ]
-        if meta.get("model_policy") == "max_capability":
-            argv.extend(["--model", "opus", "--effort", "max"])
-        else:
-            argv.extend(["--model", "sonnet", "--effort", "high"])
+        if model != "default":
+            argv.extend(["--model", model])
+        if effort != "default":
+            argv.extend(["--effort", effort])
     elif backend == "gemini":
         argv = ["gemini", "-p", payload, "--yolo"]
+        if model != "default":
+            argv.extend(["-m", model])
     elif backend == "mock":
         argv = [
             "python3",
@@ -508,7 +514,8 @@ def _write_meta(
     heartbeat_file: Path,
     payload_path: Path,
     prompt_key: str,
-    model_policy: str,
+    model: str,
+    effort: str,
     operator_mode: str,
     agent_invoked_event_id: str,
     result_path: Path,
@@ -530,7 +537,8 @@ def _write_meta(
             "heartbeat_file": str(heartbeat_file),
             "payload_path": str(payload_path),
             "prompt_key": prompt_key,
-            "model_policy": model_policy,
+            "model": model,
+            "effort": effort,
             "operator_mode": operator_mode,
             "agent_invoked_event_id": agent_invoked_event_id,
             "result_path": str(result_path),
@@ -561,7 +569,8 @@ def invoke_full(
     framework_id: str,
     timeout_seconds: int,
     operator_mode: str,
-    model_policy: str,
+    model: str,
+    effort: str,
     prompt: str,
     orchestrator_heartbeat_path: Path | None = None,
 ) -> dict[str, str]:
@@ -621,7 +630,8 @@ def invoke_full(
         heartbeat_file=heartbeat_file,
         payload_path=payload_path,
         prompt_key=prompt_key,
-        model_policy=model_policy,
+        model=model,
+        effort=effort,
         operator_mode=operator_mode,
         agent_invoked_event_id=agent_invoked_event_id,
         result_path=result_path,
@@ -852,7 +862,8 @@ def main_invoke_full(argv: list[str] | None = None) -> int:
     parser.add_argument("--framework-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, required=True)
     parser.add_argument("--operator-mode", required=True)
-    parser.add_argument("--model-policy", default="default")
+    parser.add_argument("--model", default="default")
+    parser.add_argument("--effort", default="default")
     args = parser.parse_args(argv)
 
     result = invoke_full(
@@ -868,7 +879,8 @@ def main_invoke_full(argv: list[str] | None = None) -> int:
         framework_id=args.framework_id,
         timeout_seconds=args.timeout_seconds,
         operator_mode=args.operator_mode,
-        model_policy=args.model_policy,
+        model=args.model,
+        effort=args.effort,
         prompt=sys.stdin.read(),
     )
     print(_shell_assignments(result))

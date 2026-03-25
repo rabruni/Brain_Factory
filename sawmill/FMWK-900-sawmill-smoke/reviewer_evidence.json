@@ -1,10 +1,59 @@
 {
+  "run_id": "20260322T000705Z-2cc56e4f0789",
   "attempt": 2,
+  "q13_answers_hash": "sha256:938eeaa53b4f3559b5f6293c76fa5aeee5ca1ae65d260e1ee1d32c91f6c890c8",
   "builder_prompt_contract_version_reviewed": "1.0.0",
-  "failure_code": "",
-  "findings": [],
-  "q13_answers_hash": "sha256:56ab3cfed1f38b9516dab0f6baaa8a66e3fe9822d8d39b9ff04e2dc5de731d98",
   "reviewer_prompt_contract_version": "1.0.0",
-  "run_id": "20260320T212822Z-3a895a647548",
-  "verdict": "PASS"
+  "findings": [
+    {
+      "id": "F-001",
+      "area": "scope_boundaries",
+      "status": "pass",
+      "detail": "Two-file scope matches D1 NEVER, D2 NOT, and handoff constraints exactly."
+    },
+    {
+      "id": "F-002",
+      "area": "file_paths",
+      "status": "pass",
+      "detail": "All paths match handoff section 9 and D10 directory structure."
+    },
+    {
+      "id": "F-003",
+      "area": "interface_contracts",
+      "status": "pass",
+      "detail": "IN-001 zero-arg and OUT-001 exact pong correctly captured. D4 JSON example correctly interpreted as documentation."
+    },
+    {
+      "id": "F-004",
+      "area": "test_obligations",
+      "status": "pass",
+      "detail": "One test matches handoff section 6. No synthetic inflation."
+    },
+    {
+      "id": "F-005",
+      "area": "dtt_discipline",
+      "status": "pass",
+      "detail": "Builder explicitly flags code-before-test as a violation. Will follow handoff step order."
+    },
+    {
+      "id": "F-006",
+      "area": "integration_understanding",
+      "status": "pass",
+      "detail": "Zero integration surface correctly stated. Matches D1 Article 5 and D10 pattern 4."
+    },
+    {
+      "id": "F-007",
+      "area": "critical_review_flag",
+      "status": "resolved_acceptable",
+      "detail": "Manifest expectations describe constraints, not a file creation requirement. Builder interpretation correct."
+    },
+    {
+      "id": "F-008",
+      "area": "adversarial_awareness",
+      "status": "pass",
+      "detail": "Fail-fast modes, semantic audit, and overbuild risk all correctly identified."
+    }
+  ],
+  "verdict": "PASS",
+  "failure_code": "none"
 }

@@ -18,15 +18,15 @@ except ImportError as exc:  # pragma: no cover
 ROLE_REQUIRED_FIELDS = {
     "role_file",
     "execution_scope",
-    "default_backend",
-    "production_backend",
-    "model_policy",
+    "backend",
+    "model",
+    "effort",
     "allowed_backends",
     "env_override",
 }
 SUPPORTED_BACKENDS = {"claude", "codex", "gemini", "mock"}
 VALID_EXECUTION_SCOPES = {"orchestrator", "worker"}
-VALID_MODEL_POLICIES = {"default", "max_capability"}
+VALID_EFFORTS = {"default", "high", "max"}
 REQUIRED_RUNTIME_ROLES = (
     "spec-agent",
     "holdout-agent",
@@ -130,16 +130,18 @@ def validate_role_registry(data: dict, registry_path: Path) -> None:
 
         role_file = metadata["role_file"]
         execution_scope = metadata["execution_scope"]
-        default_backend = metadata["default_backend"]
-        production_backend = metadata["production_backend"]
-        model_policy = metadata["model_policy"]
+        backend = metadata["backend"]
+        model = metadata["model"]
+        effort = metadata["effort"]
         allowed_backends = metadata["allowed_backends"]
         env_override = metadata["env_override"]
 
         if execution_scope not in VALID_EXECUTION_SCOPES:
             errors.append(f"Role '{role_name}' has invalid execution_scope '{execution_scope}'")
-        if model_policy not in VALID_MODEL_POLICIES:
-            errors.append(f"Role '{role_name}' has invalid model_policy '{model_policy}'")
+        if not isinstance(model, str) or not model:
+            errors.append(f"Role '{role_name}' must define a non-empty model")
+        if effort not in VALID_EFFORTS:
+            errors.append(f"Role '{role_name}' has invalid effort '{effort}'")
 
         if not isinstance(allowed_backends, list) or not allowed_backends:
             errors.append(f"Role '{role_name}' must define a non-empty allowed_backends list")
@@ -151,13 +153,9 @@ def validate_role_registry(data: dict, registry_path: Path) -> None:
                 errors.append(
                     f"Role '{role_name}' has unsupported backends: {', '.join(invalid_backends)}"
                 )
-            if default_backend not in allowed_backends:
+            if backend not in allowed_backends:
                 errors.append(
-                    f"Role '{role_name}' default_backend '{default_backend}' is not in allowed_backends"
-                )
-            if production_backend not in allowed_backends:
-                errors.append(
-                    f"Role '{role_name}' production_backend '{production_backend}' is not in allowed_backends"
+                    f"Role '{role_name}' backend '{backend}' is not in allowed_backends"
                 )
 
         if not isinstance(role_file, str) or not role_file:
@@ -185,24 +183,18 @@ def validate_role_registry(data: dict, registry_path: Path) -> None:
 def build_role_shell_exports(data: dict) -> str:
     roles = data["roles"]
     lines: list[str] = []
-    use_prod_backends = os.environ.get("SAWMILL_USE_PROD_BACKENDS") == "1"
 
     for role_name, prefix in SHELL_PREFIXES.items():
         metadata = roles.get(role_name)
         if metadata is None:
             continue
-        selected_default_backend = (
-            metadata["production_backend"] if use_prod_backends else metadata["default_backend"]
-        )
         lines.append(f"{prefix}_ROLE_FILE={shlex.quote(str(metadata['role_file']))}")
         lines.append(
             f"{prefix}_EXECUTION_SCOPE={shlex.quote(str(metadata['execution_scope']))}"
         )
-        lines.append(f"{prefix}_DEFAULT_BACKEND={shlex.quote(str(selected_default_backend))}")
-        lines.append(
-            f"{prefix}_PRODUCTION_BACKEND={shlex.quote(str(metadata['production_backend']))}"
-        )
-        lines.append(f"{prefix}_MODEL_POLICY={shlex.quote(str(metadata['model_policy']))}")
+        lines.append(f"{prefix}_BACKEND={shlex.quote(str(metadata['backend']))}")
+        lines.append(f"{prefix}_MODEL={shlex.quote(str(metadata['model']))}")
+        lines.append(f"{prefix}_EFFORT={shlex.quote(str(metadata['effort']))}")
         lines.append(
             f"{prefix}_ALLOWED_BACKENDS={shlex.quote(' '.join(metadata['allowed_backends']))}"
         )

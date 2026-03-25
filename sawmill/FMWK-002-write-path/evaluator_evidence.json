@@ -1,0 +1,80 @@
+{
+  "run_id": "20260322T021641Z-00ae718794cd",
+  "attempt": 2,
+  "holdout_hash": "sha256:54419bc259f8896955713d463c4fc18cf5da5f1658aa511fc1ef7dcf0ebfca35",
+  "staging_hash": "sha256:83b87f8988672e8155f8931cda8b78ec0fa924122f049a60f48600d4af90340c",
+  "scenarios": [
+    {
+      "scenario_id": "HS-001",
+      "priority": "P0",
+      "classification": "PUBLIC_API_ONLY",
+      "generated_test_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-001.py",
+      "mapping_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-001.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-001.run1.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-001.run2.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-001.run3.json"
+      ],
+      "run_results": [true, true, true],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-003",
+      "priority": "P0",
+      "classification": "SYNTHESIZED_HELPER",
+      "generated_test_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-003.py",
+      "mapping_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-003.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-003.run1.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-003.run2.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-003.run3.json"
+      ],
+      "run_results": [true, true, true],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-005",
+      "priority": "P0",
+      "classification": "PUBLIC_API_ONLY",
+      "generated_test_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-005.py",
+      "mapping_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-005.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-005.run1.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-005.run2.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-005.run3.json"
+      ],
+      "run_results": [true, true, true],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-002",
+      "priority": "P1",
+      "classification": "SYNTHESIZED_HELPER",
+      "generated_test_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-002.py",
+      "mapping_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-002.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-002.run1.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-002.run2.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-002.run3.json"
+      ],
+      "run_results": [true, true, true],
+      "aggregate_result": "PASS"
+    },
+    {
+      "scenario_id": "HS-004",
+      "priority": "P1",
+      "classification": "PUBLIC_API_ONLY",
+      "generated_test_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-004.py",
+      "mapping_path": "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-004.mapping.md",
+      "run_output_paths": [
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-004.run1.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-004.run2.json",
+        "runs/20260322T021641Z-00ae718794cd/eval_tests/attempt2/HS-004.run3.json"
+      ],
+      "run_results": [true, true, true],
+      "aggregate_result": "PASS"
+    }
+  ],
+  "verdict": "PASS",
+  "pass_rate": 100.0
+}

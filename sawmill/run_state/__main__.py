@@ -49,13 +49,43 @@ def _build_metadata_from_env(output: Path) -> None:
         "evaluator": os.environ["EVAL_AGENT"],
         "auditor": os.environ["AUDIT_AGENT"],
     }
-    model_policies = {
-        "spec-agent": os.environ["SPEC_MODEL_POLICY"],
-        "holdout-agent": os.environ["HOLDOUT_MODEL_POLICY"],
-        "builder": os.environ["BUILD_MODEL_POLICY"],
-        "reviewer": os.environ["REVIEW_MODEL_POLICY"],
-        "evaluator": os.environ["EVAL_MODEL_POLICY"],
-        "auditor": os.environ["AUDIT_MODEL_POLICY"],
+    role_runtime_config = {
+        "spec-agent": {
+            "backend": os.environ["SPEC_AGENT"],
+            "model": os.environ.get("SPEC_MODEL", "default"),
+            "effort": os.environ.get("SPEC_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
+        "holdout-agent": {
+            "backend": os.environ["HOLDOUT_AGENT"],
+            "model": os.environ.get("HOLDOUT_MODEL", "default"),
+            "effort": os.environ.get("HOLDOUT_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
+        "builder": {
+            "backend": os.environ["BUILD_AGENT"],
+            "model": os.environ.get("BUILD_MODEL", "default"),
+            "effort": os.environ.get("BUILD_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
+        "reviewer": {
+            "backend": os.environ["REVIEW_AGENT"],
+            "model": os.environ.get("REVIEW_MODEL", "default"),
+            "effort": os.environ.get("REVIEW_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
+        "evaluator": {
+            "backend": os.environ["EVAL_AGENT"],
+            "model": os.environ.get("EVAL_MODEL", "default"),
+            "effort": os.environ.get("EVAL_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
+        "auditor": {
+            "backend": os.environ["AUDIT_AGENT"],
+            "model": os.environ.get("AUDIT_MODEL", "default"),
+            "effort": os.environ.get("AUDIT_MODEL_POLICY", "default"),
+            "source": "environment",
+        },
     }
     prompt_contract_versions = {
         "builder_prompt_contract": os.environ["BUILDER_PROMPT_CONTRACT_VERSION"],
@@ -85,13 +115,14 @@ def _build_metadata_from_env(output: Path) -> None:
         from_turn=os.environ["FROM_TURN"],
         retry_budget=int(os.environ["MAX_ATTEMPTS"]),
         role_backend_resolution=role_backend_resolution,
-        model_policies=model_policies,
+        model_policies={role: config["effort"] for role, config in role_runtime_config.items()},
         prompt_contract_versions=prompt_contract_versions,
         role_file_hashes=role_file_hashes,
         prompt_file_hashes=prompt_file_hashes,
         artifact_registry_version_hash=_sha256_file(Path(os.environ["ARTIFACT_REGISTRY"])),
         graph_version="none",
         operator_mode=os.environ["OPERATOR_MODE"],
+        role_runtime_config=role_runtime_config,
     )
     output.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

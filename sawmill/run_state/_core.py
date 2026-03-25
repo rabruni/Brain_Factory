@@ -15,6 +15,7 @@ from typing import Any
 ALLOWED_STATES = {
     "running",
     "retrying",
+    "interrupted",
     "escalated",
     "failed",
     "passed",
@@ -75,6 +76,7 @@ WORKER_HEARTBEAT_SUFFIX = ".worker.jsonl"
 ORCHESTRATOR_HEARTBEAT_FILE = "orchestrator.jsonl"
 WORKER_STALE_SECONDS = 300
 ORCHESTRATOR_STALE_SECONDS = 120
+INTERRUPTED_ORCHESTRATOR_STALE_SECONDS = 300
 
 
 @dataclass
@@ -139,6 +141,8 @@ def init_run(run_dir: Path, metadata_file: Path) -> None:
     initial_status = {
         "run_id": metadata["run_id"],
         "framework_id": metadata["framework_id"],
+        "resumed_from_run_id": metadata.get("resumed_from_run_id", ""),
+        "lineage_root_run_id": metadata.get("lineage_root_run_id", metadata["run_id"]),
         "current_turn": "",
         "current_step": "",
         "current_role": "",
@@ -157,6 +161,7 @@ def init_run(run_dir: Path, metadata_file: Path) -> None:
         "last_orchestrator_heartbeat_at": "",
         "worker_stale": False,
         "orchestrator_stale": False,
+        "interruption_reason": "",
     }
     with status_json_path.open("w", encoding="utf-8") as handle:
         json.dump(initial_status, handle, indent=2, sort_keys=True)
@@ -343,6 +348,8 @@ def project_status(run_dir: Path) -> ProjectionResult:
     status = {
         "run_id": run_id,
         "framework_id": run_json["framework_id"],
+        "resumed_from_run_id": run_json.get("resumed_from_run_id", ""),
+        "lineage_root_run_id": run_json.get("lineage_root_run_id", run_id),
         "current_turn": "",
         "current_step": "",
         "current_role": "",
@@ -355,6 +362,7 @@ def project_status(run_dir: Path) -> ProjectionResult:
         "worker_observation": "unknown",
         "last_worker_observed_at": "",
         "last_worker_progress_at": "",
+        "interruption_reason": "",
     }
     for current_position, (_, event) in enumerate(ordered):
         event_id = event.get("event_id")
@@ -388,6 +396,19 @@ def project_status(run_dir: Path) -> ProjectionResult:
         str(status.get("last_orchestrator_heartbeat_at", "")),
         ORCHESTRATOR_STALE_SECONDS,
     )
+    if status["state"] in {"running", "retrying"} and heartbeat_is_stale(
+        str(status.get("last_orchestrator_heartbeat_at", "")),
+        INTERRUPTED_ORCHESTRATOR_STALE_SECONDS,
+    ):
+        if status.get("worker_observation") == "exited":
+            status["state"] = "interrupted"
+            status["interruption_reason"] = "worker_exited_without_completion"
+        elif status.get("worker_stale"):
+            status["state"] = "interrupted"
+            status["interruption_reason"] = "orchestrator_and_worker_stale"
+        else:
+            status["state"] = "interrupted"
+            status["interruption_reason"] = "orchestrator_stale"
     status["governed_path_intact"] = bool(status["governed_path_intact"])
     return ProjectionResult(status=status, events=[event for _, event in ordered])
 
@@ -427,10 +448,17 @@ def build_run_metadata(
     artifact_registry_version_hash: str,
     graph_version: str,
     operator_mode: str,
+    role_runtime_config: dict[str, dict[str, str]] | None = None,
+    resumed_from_run_id: str = "",
+    lineage_root_run_id: str = "",
+    launch_manifest_path: str = "",
+    launch_manifest_hash: str = "",
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "framework_id": framework_id,
+        "resumed_from_run_id": resumed_from_run_id,
+        "lineage_root_run_id": lineage_root_run_id or run_id,
         "started_at": started_at,
         "requested_entry_path": requested_entry_path,
         "from_turn": from_turn,
@@ -443,6 +471,9 @@ def build_run_metadata(
         "artifact_registry_version_hash": artifact_registry_version_hash,
         "graph_version": graph_version,
         "operator_mode": operator_mode,
+        "role_runtime_config": role_runtime_config or {},
+        "launch_manifest_path": launch_manifest_path,
+        "launch_manifest_hash": launch_manifest_hash,
     }
 
 

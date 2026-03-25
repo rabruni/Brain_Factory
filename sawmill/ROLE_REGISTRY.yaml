@@ -3,9 +3,9 @@ roles:
   orchestrator:
     role_file: .claude/agents/orchestrator.md
     execution_scope: orchestrator
-    default_backend: claude
-    production_backend: claude
-    model_policy: max_capability
+    backend: claude
+    model: opus
+    effort: max
     allowed_backends:
       - claude
       - gemini
@@ -14,9 +14,9 @@ roles:
   spec-agent:
     role_file: .claude/agents/spec-agent.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: codex
-    model_policy: default
+    backend: codex
+    model: default
+    effort: default
     allowed_backends:
       - claude
       - codex
@@ -27,9 +27,9 @@ roles:
   holdout-agent:
     role_file: .claude/agents/holdout-agent.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: codex
-    model_policy: default
+    backend: codex
+    model: default
+    effort: default
     allowed_backends:
       - claude
       - codex
@@ -40,9 +40,9 @@ roles:
   builder:
     role_file: .claude/agents/builder.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: codex
-    model_policy: default
+    backend: codex
+    model: default
+    effort: default
     allowed_backends:
       - claude
       - codex
@@ -53,9 +53,9 @@ roles:
   reviewer:
     role_file: .claude/agents/reviewer.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: claude
-    model_policy: max_capability
+    backend: claude
+    model: opus
+    effort: max
     allowed_backends:
       - claude
       - codex
@@ -66,9 +66,9 @@ roles:
   evaluator:
     role_file: .claude/agents/evaluator.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: claude
-    model_policy: max_capability
+    backend: claude
+    model: opus
+    effort: max
     allowed_backends:
       - claude
       - codex
@@ -79,9 +79,9 @@ roles:
   auditor:
     role_file: .claude/agents/auditor.md
     execution_scope: worker
-    default_backend: claude
-    production_backend: claude
-    model_policy: max_capability
+    backend: claude
+    model: opus
+    effort: max
     allowed_backends:
       - claude
       - codex

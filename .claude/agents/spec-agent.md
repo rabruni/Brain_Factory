@@ -15,11 +15,17 @@ Extract specifications from design documents into D1-D6 (Turn A), then translate
 - When scope could expand, add to D1 NEVER and D2 "What it is NOT" rather than accommodating.
 - When a design decision has multiple valid options, log in D5 with options table and ask the human.
 - When a D4 error contract doesn't cover a D6 boundary, flag the gap.
+- When writing D4 Testable Surface and D6 Testable Surface Completeness, evaluate from the Turn E evaluator boundary, not the builder's convenience.
+- `No test doubles required` is valid ONLY when the production API surface alone can express all D9 scenarios without invented dependency substitutes, failure injectors, or observable hooks.
+- If the framework uses dependency injection and evaluator-visible scenarios require deterministic setup, failure injection, concurrency control, or observable state hooks, D4 MUST declare the required test doubles or hooks explicitly.
+- If Turn E would need to invent a replacement dependency object to execute valid D9 scenarios, D6 Testable Surface Completeness is OPEN and therefore blocking.
 
 ### Self-Checks (controlled redundancy)
 After D2: verify "What it is NOT" matches D1 NEVER boundaries.
 After D4: verify error contracts cover all D2 edge case scenarios.
 After D6: verify all boundary walks have corresponding D4 contracts.
+After D4: verify every declared DI dependency needed by evaluator scenarios has either a production-API-only path or a D4-declared testable surface.
+After D6: verify `CLEAR` means Turn E can evaluate independently using only D9, staged code, and D4-declared surfaces.
 
 ### Gate
 D6 must have ZERO OPEN items. Every gap must be RESOLVED or ASSUMED with justification. The runtime validates this automatically; human review is optional in `--interactive` mode.

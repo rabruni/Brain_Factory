@@ -1,4 +1,5 @@
-def test_ping() -> None:
-    from smoke import ping
+from smoke import ping
 
+
+def test_ping() -> None:
     assert ping() == "pong"

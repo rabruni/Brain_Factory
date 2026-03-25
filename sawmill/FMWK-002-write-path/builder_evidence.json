@@ -1,0 +1,129 @@
+{
+  "run_id": "20260322T021641Z-00ae718794cd",
+  "attempt": 2,
+  "handoff_hash": "sha256:5c58bdfe3208553fc09decfff99aea990ae3bcc45fb46cb460016c2923179c8d",
+  "q13_answers_hash": "sha256:6114ca8cf19cc8b9cc2486ad872493c6eec46788bc7c5f9ed0d4735029c07af9",
+  "behaviors": [
+    {
+      "behavior_id": "D8-01-models-errors-ports",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_models.py -v",
+      "failing_observation": "Collection failed with ModuleNotFoundError for write_path.errors before implementation existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_models.py -v",
+      "passing_observation": "11 passed in 0.20s.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/__init__.py",
+        "staging/FMWK-002-write-path/write_path/errors.py",
+        "staging/FMWK-002-write-path/write_path/models.py",
+        "staging/FMWK-002-write-path/write_path/ports.py",
+        "staging/FMWK-002-write-path/tests/conftest.py",
+        "staging/FMWK-002-write-path/tests/test_models.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-02-system-events",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_system_events.py -v",
+      "failing_observation": "Collection failed with ModuleNotFoundError for write_path.models and write_path.system_events before implementation existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_system_events.py -v",
+      "passing_observation": "6 passed in 0.21s.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/system_events.py",
+        "staging/FMWK-002-write-path/write_path/__init__.py",
+        "staging/FMWK-002-write-path/tests/test_system_events.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-03-fold-primitives",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_folds.py -v",
+      "failing_observation": "Collection failed with ModuleNotFoundError for write_path.folds before fold helpers existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_folds.py -v",
+      "passing_observation": "14 passed in 0.22s.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/folds.py",
+        "staging/FMWK-002-write-path/write_path/__init__.py",
+        "staging/FMWK-002-write-path/tests/test_folds.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-04-core-service",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_service_mutations.py -v",
+      "failing_observation": "Collection failed with ModuleNotFoundError for write_path.service before the synchronous append-then-fold service existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_service_mutations.py -v",
+      "passing_observation": "14 passed in 0.19s.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/service.py",
+        "staging/FMWK-002-write-path/write_path/__init__.py",
+        "staging/FMWK-002-write-path/tests/conftest.py",
+        "staging/FMWK-002-write-path/tests/test_service_mutations.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-05-system-event-routing",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_service_mutations.py -v",
+      "failing_observation": "The same red collection failure blocked the service routing tests until submit_mutation and the system-event builders existed together.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_service_mutations.py -v",
+      "passing_observation": "System-event routing assertions passed within the 14 passing service tests.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/service.py",
+        "staging/FMWK-002-write-path/write_path/system_events.py",
+        "staging/FMWK-002-write-path/tests/test_service_mutations.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-06-snapshot-creation",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_recovery.py -v",
+      "failing_observation": "Collection failed with ModuleNotFoundError for write_path.recovery before snapshot orchestration code existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_recovery.py -v",
+      "passing_observation": "Snapshot creation assertions passed within the 12 passing recovery tests.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/recovery.py",
+        "staging/FMWK-002-write-path/write_path/service.py",
+        "staging/FMWK-002-write-path/tests/test_recovery.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-07-startup-recovery",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_recovery.py -v",
+      "failing_observation": "The same missing recovery module blocked replay and unusable-snapshot fallback tests until recovery code existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_recovery.py -v",
+      "passing_observation": "Startup recovery assertions passed within the 12 passing recovery tests.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/recovery.py",
+        "staging/FMWK-002-write-path/write_path/service.py",
+        "staging/FMWK-002-write-path/tests/test_recovery.py"
+      ]
+    },
+    {
+      "behavior_id": "D8-08-full-refold",
+      "failing_test_command": "PLATFORM_ENVIRONMENT=test pytest staging/FMWK-002-write-path/tests/test_recovery.py -v",
+      "failing_observation": "Full-refold tests were blocked by the missing recovery module until refold_from_genesis existed.",
+      "passing_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/test_recovery.py -v",
+      "passing_observation": "Full-refold assertions passed within the 12 passing recovery tests.",
+      "files_touched": [
+        "staging/FMWK-002-write-path/write_path/recovery.py",
+        "staging/FMWK-002-write-path/tests/test_recovery.py"
+      ]
+    }
+  ],
+  "full_test_command": "cd staging/FMWK-002-write-path && PLATFORM_ENVIRONMENT=test pytest tests/ -v --tb=short",
+  "full_test_result": "57 passed in 0.19s",
+  "files_changed": [
+    "staging/FMWK-002-write-path/README.md",
+    "staging/FMWK-002-write-path/tests/conftest.py",
+    "staging/FMWK-002-write-path/tests/test_folds.py",
+    "staging/FMWK-002-write-path/tests/test_models.py",
+    "staging/FMWK-002-write-path/tests/test_recovery.py",
+    "staging/FMWK-002-write-path/tests/test_service_mutations.py",
+    "staging/FMWK-002-write-path/tests/test_system_events.py",
+    "staging/FMWK-002-write-path/write_path/__init__.py",
+    "staging/FMWK-002-write-path/write_path/errors.py",
+    "staging/FMWK-002-write-path/write_path/folds.py",
+    "staging/FMWK-002-write-path/write_path/models.py",
+    "staging/FMWK-002-write-path/write_path/ports.py",
+    "staging/FMWK-002-write-path/write_path/recovery.py",
+    "staging/FMWK-002-write-path/write_path/service.py",
+    "staging/FMWK-002-write-path/write_path/system_events.py",
+    "sawmill/FMWK-002-write-path/RESULTS.md",
+    "sawmill/FMWK-002-write-path/builder_evidence.json"
+  ],
+  "results_hash": "sha256:630fe03b52f32ca201fd988692fc50aad2f56d434caeb87392e9b2dcbd2f7f2c"
+}
